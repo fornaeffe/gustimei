@@ -6,8 +6,9 @@
 
 ---
 
-
 ## Guidelines
+
+Always read IMPLEMENTATION_PLAN.md to check the current status and next steps. Update it after implementing steps and when new questions or ideas arise.
 
 Keep the project scalable and easily maintainable. Better a bit more work now that a lot of work when trying to scale or maintain the project later.
 
