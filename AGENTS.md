@@ -6,6 +6,15 @@
 
 ---
 
+
+## Guidelines
+
+Keep the project scalable and easily maintainable. Better a bit more work now that a lot of work when trying to scale or maintain the project later.
+
+Don't repeat yourself: if something will be probably repeated/reused in the same project, make it reusable (abstracting it as a component, as a function, as a theme variable...).
+
+---
+
 You are able to use the Svelte MCP server, where you have access to comprehensive Svelte 5 and SvelteKit documentation. Here's how to use the available tools effectively:
 
 ## Available Svelte MCP Tools:
