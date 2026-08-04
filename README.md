@@ -1,6 +1,13 @@
 # GustiMei
 
-A hotel/restaurant recommendation web app based on users' ordinal preferences.
+> It’s 4 a.m. in a hotel room rated 9/10, and I’m awake because, after a broken shutter,
+> a burned-out bedside lamp, a missing bath mat, and electrical sockets coming off the wall,
+> a group of noisy thugs playing basketball on the court next door is keeping me from sleeping.
+> It’s in this moment that I realize rating and review systems are doomed,
+> and that something different is needed. But I find no alternatives on the web,
+> so I decide to create one.
+
+This is hotel/restaurant recommendation web app based on users' ordinal preferences.
 
 No stars, no need of bad reviews to justify non-top ratings, no rate inflation.
 

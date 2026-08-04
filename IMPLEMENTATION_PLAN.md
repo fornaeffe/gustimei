@@ -6,7 +6,7 @@ No stars, no need of bad reviews to justify non-top ratings, no rate inflation.
 
 It ranks places according to the rankings done by user with similar preferences: there are no "top places" that fit for everyone, just the places that most probably will fit user's preferences.
 
-## How it should works
+## How it works
 
 The recommendation system is a Ranking-based Collaborative Filtering/Sorting.
 
@@ -16,7 +16,39 @@ With this data, the app matches users with similar preferences, then propose to 
 
 ## PROs
 
-- It avoids rate inflation: in rating systems, often users avoid giving non-top ratings to avoid social friction. With ranking there is no such issue.
+- It avoids rate inflation: in rating systems, often users avoid giving non-top ratings to avoid social friction. With rankings there is no such issue.
+
+- Users' preferences differ, and sorting is done per-user according to his/her preferences. A hotel that could be a top rating for a user, may be not optimal for another.
+
+- It's easy to buy some hundreds of "five star" rating, it's much harder to buy hundreds of interconnecting rankings.
+
+## Tech stack
+
+Svelte 5
+SvelteKit
+BetterAuth
+Drizzle
+Postgres (dockerized in development)
+
+i18n: Paraglide
+theming and components: Tailwind (with `@theme` directive) + Bits.UI where needed
+
+## Guidelines
+
+Keep the project scalable and easily maintainable. Better a bit more work now that a lot of work when trying to scale or maintain the project later.
+
+Don't repeat yourself: if something will be probably repeated/reused in the same project, make it reusable (abstracting it as a component, as a function, as a theme variable...).
+
+## Implementation steps
+
+- Project setup - DONE
+- Schema and db seeding
+
+## Decisions
+
+## Open questions
+
+
 
 
 
