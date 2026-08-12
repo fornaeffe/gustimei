@@ -17,12 +17,12 @@ Success therefore depends more on ranking completion, data quality, and recommen
 
 - Italian and English public landing/onboarding.
 - Account registration, sign-in, sign-out, and protected product routes.
-- Hotels category implemented end-to-end first, while keeping the schema extensible to restaurants.
-- Search and selection of visited hotels, with locality as a search/filter dimension rather than a list boundary.
+- Restaurants implemented end-to-end first, with hotels added before the first beta release.
+- Search and selection of visited restaurants, with locality as a search/filter dimension rather than a list boundary.
 - A resumable pairwise-comparison session with left choice, right choice, tie, undo, progress, and accessible non-gesture controls.
 - A completed personal ranked list, including tied positions where applicable.
 - Efficient insertion of a newly visited place into an existing stable list.
-- A first recommendation feed that predicts the user's order across visited and not-yet-visited hotels, based on overlapping user preferences and optionally filtered by locality, with a deterministic fallback for cold starts.
+- A first recommendation feed that predicts the user's order across visited and not-yet-visited places in the selected category, based on overlapping user preferences and optionally filtered by locality, with a deterministic fallback for cold starts.
 - Basic profile/settings: locale, delete ranking, delete account, and privacy information.
 - Seed catalogue and synthetic ranking data sufficient to test recommendations locally.
 - Product analytics events without storing sensitive free-form content.
@@ -33,32 +33,32 @@ Success therefore depends more on ranking completion, data quality, and recommen
 - Business-owner pages, claims, ads, or promoted placement.
 - Native mobile applications.
 - Complex trip planning, bookings, and multi-criteria rankings.
-- A first-party hotel photo catalogue; the ranking flow must work with reliable non-photo fallbacks.
+- A first-party restaurant or hotel photo catalogue; the ranking flow must work with reliable non-photo fallbacks.
 
 ## Confirmed MVP product decisions
 
-1. **Initial category:** hotels. Keep category in the domain contracts so restaurants can be added later, but do not build restaurant-specific UX in the MVP.
-2. **Place catalogue:** use OpenStreetMap as the primary hotel catalogue. Import regional extracts into an application-owned search index/database rather than relying on public OSM services at request time. See “OpenStreetMap catalogue approach” below.
+1. **Category rollout:** implement restaurants first to validate the complete ranking and recommendation loop. Add hotels as the second category before the first beta release. Category-specific behavior must remain behind shared domain and UI contracts rather than being hard-coded into the restaurant flow.
+2. **Place catalogue:** use OpenStreetMap as the primary restaurant and hotel catalogue. Import regional extracts into an application-owned search index/database rather than relying on public OSM services at request time. See “OpenStreetMap catalogue approach” below.
 3. **Ranking scope:** each user has one global list per category. Locality is metadata used to search, filter, and display subsets; it is not part of list identity.
-4. **Comparison meaning:** overall preference. Keep the hotel comparison prompt stable and localized, for example “Overall, which hotel did you prefer?”
+4. **Comparison meaning:** overall preference. Keep the prompt stable within each category and localized, for example “Overall, which restaurant did you prefer?” and “Overall, which hotel did you prefer?”
 5. **Ties:** support explicit equivalence tiers. “Tie” means equal overall preference and may result in the same displayed position. Keep “skip / cannot compare” separate because it supplies no preference evidence. The ranking-engine spike must validate how tiers interact with insertion and contradictory answers.
-6. **Identity:** users must register or sign in before they can add or rank visited hotels. There is no anonymous draft-to-account handoff in the MVP.
+6. **Identity:** users must register or sign in before they can add or rank visited places. There is no anonymous draft-to-account handoff in the MVP.
 7. **Privacy and participation:** personal rankings are private in the UI but their preference data is always used, without public identity, to calculate recommendations for the community. There is no per-user opt-out because reciprocal preference sharing is part of the service itself. This must be stated clearly before registration and reflected in the privacy policy, terms, deletion behavior, and analytics design.
 
 ## OpenStreetMap catalogue approach
 
-OpenStreetMap is suitable for the MVP's core hotel identity, name, category, address, and geographic filtering needs. Hotel coverage and tag completeness vary by location, so launch-area coverage must be measured before beta. OSM should not be assumed to provide complete amenities, commercial descriptions, availability, prices, or dependable photos.
+OpenStreetMap is suitable for the core identity, name, category, address, and geographic filtering needs of both restaurants and hotels. Coverage and tag completeness vary by category and location, so both must be measured before beta. OSM should not be assumed to provide complete cuisine/amenity details, commercial descriptions, availability, prices, or dependable photos.
 
 Implementation constraints:
 
-- Source `tourism=hotel` elements from a launch-region OSM PBF extract and refresh them through repeatable imports/diffs. Do not scrape or use the OSM editing API for bulk catalogue creation.
+- Source `amenity=restaurant` first and `tourism=hotel` before beta from a launch-region OSM PBF extract, then refresh them through repeatable imports/diffs. Do not scrape or use the OSM editing API for bulk catalogue creation.
 - Store the OSM element type plus numeric ID as the external identity; IDs are not globally unique without their type. Preserve source version/timestamp and design for deleted, retagged, moved, split, or merged elements.
 - Normalize nodes, ways, and relations into one application `place` representation, with geometry reduced to a representative point where appropriate.
-- Search the imported database directly. The [public Nominatim usage policy](https://operations.osmfoundation.org/policies/nominatim/) prohibits client-side autocomplete and systematic POI downloads, has a maximum of one request per second, and can withdraw access; it must not be a production dependency for hotel search. A hosted/self-managed geocoder can be considered later if database search is insufficient.
+- Search the imported database directly. The [public Nominatim usage policy](https://operations.osmfoundation.org/policies/nominatim/) prohibits client-side autocomplete and systematic POI downloads, has a maximum of one request per second, and can withdraw access; it must not be a production dependency for place search. A hosted/self-managed geocoder can be considered later if database search is insufficient.
 - Public Overpass instances may support one-off development validation, but production ingestion should use extracts or a dedicated/hosted service so community infrastructure is not part of the request path.
 - Display clear “OpenStreetMap” attribution linked to its copyright/licence information wherever OSM-derived catalogue data is presented, following the [OSMF attribution guidelines](https://osmfoundation.org/wiki/Licence/Attribution_Guidelines). Document whether the application catalogue is a Derivative Database and meet the ODbL share-alike obligations before launch; obtain legal review if combining it with proprietary catalogue data.
-- Treat `wikimedia_commons`, `image`, and similar tags only as optional references. Resolve and retain each media item's own licence and attribution before display; otherwise use a non-photo hotel card fallback. Never assume OSM's ODbL licenses linked images.
-- Run a coverage audit for the intended launch geography: known-hotel recall, duplicates, missing names/addresses/locality, stale/closed hotels, and photo availability. If core identity coverage is inadequate, retain the provider interface and add an ODbL-compatible enrichment source rather than replacing domain contracts.
+- Treat `wikimedia_commons`, `image`, and similar tags only as optional references. Resolve and retain each media item's own licence and attribution before display; otherwise use a category-appropriate non-photo card fallback. Never assume OSM's ODbL licenses linked images.
+- Run separate coverage audits for restaurants and hotels in the intended launch geography: known-place recall, duplicates, missing names/addresses/locality, stale/closed places, category metadata, and photo availability. The restaurant audit gates initial development; the hotel audit gates beta. If core identity coverage is inadequate, retain the provider interface and add an ODbL-compatible enrichment source rather than replacing domain contracts.
 
 ## Domain model proposal
 
@@ -80,14 +80,14 @@ Use UUIDs or generated text IDs consistently, UTC timestamps, explicit foreign-k
 
 These are separate concepts and must remain separate in the product language, domain services, code modules, versioning, tests, and analytics:
 
-- **Personal ranking UX:** an interactive elicitation process that helps one authenticated user build and maintain their single global ranked list of hotels they have visited. It asks pairwise questions and records direct preference evidence. It does not recommend hotels.
-- **Recommendation system:** a non-interactive collaborative algorithm that consumes completed/reliable personal lists from many users and predicts an ordered list for the current user. It may rank both visited and not-yet-visited hotels and apply locality as a result filter. It never changes the user's explicit personal ranking.
+- **Personal ranking UX:** an interactive elicitation process that helps one authenticated user build and maintain a global ranked list of places they have visited for each category. It asks pairwise questions within one category and records direct preference evidence. It does not recommend places.
+- **Recommendation system:** a non-interactive collaborative algorithm that consumes completed/reliable category-specific personal lists from many users and predicts an ordered list for the current user. It may rank both visited and not-yet-visited places and apply locality as a result filter. It never changes the user's explicit personal ranking.
 
 Use distinct names such as `rankingEngineVersion` and `recommendationEngineVersion`; changing either system must not silently reinterpret the other.
 
 ## Personal ranking UX and ranking engine
 
-The ranking UX begins only after login. The user searches the global hotel catalogue, marks hotels as visited, and adds them to their one hotel list. Locality may narrow catalogue search or the displayed personal list, but adding a hotel always modifies the same global list.
+The ranking UX begins only after login. Initially, the user searches the global restaurant catalogue, marks restaurants as visited, and adds them to their one restaurant list. Before beta, the same flow supports a separate global hotel list. Locality may narrow catalogue search or a displayed personal list, but adding a place always modifies the global list for that category.
 
 The UX idea proposes assisted QuickSort for a new list and binary insertion for later additions. Binary insertion is a good fit when an existing strict order is trusted. Interactive QuickSort is a useful baseline, but it must not be adopted literally before validating equivalence tiers, inconsistent answers, pivot quality, interruption, and edits.
 
@@ -103,7 +103,7 @@ Prototype and test at least these approaches against synthetic users:
 
 Measure number of questions, worst-case behavior, stability, reproducibility, ability to undo, and quality under ties/noise. Choose and document the algorithm before building the comparison UI. Persist the ranking-engine version so ranking state can be migrated or recomputed after changes.
 
-The completed personal list is the authoritative record of the user's stated overall preference among visited hotels. A locality-filtered view must preserve each hotel's global position/tier rather than renumbering it as if it were a separate ranking, unless the UI labels the filtered positions explicitly.
+Each completed category list is the authoritative record of the user's stated overall preference among visited places in that category. A locality-filtered view must preserve each place's global position/tier rather than renumbering it as if it were a separate ranking, unless the UI labels the filtered positions explicitly.
 
 ## Recommendation system
 
@@ -111,14 +111,14 @@ The recommendation system consumes user lists. Its output is a predicted global 
 
 Candidate results include both:
 
-- **not-yet-visited hotels**, which are the main discovery/recommendation use case;
-- **visited hotels**, which provide context, allow the predicted order to be evaluated against the user's actual order, and help explain where new hotels might fit.
+- **not-yet-visited places in the selected category**, which are the main discovery/recommendation use case;
+- **visited places in that category**, which provide context, allow the predicted order to be evaluated against the user's actual order, and help explain where new places might fit.
 
-For the first baseline, compare understandable collaborative methods offline — for example rank correlation over common hotels followed by confidence-weighted rank aggregation — against popularity and random baselines. Determine how ties contribute to similarity without arbitrarily converting them into strict wins.
+For the first baseline, compare understandable collaborative methods offline — for example rank correlation over common places within the same category followed by confidence-weighted rank aggregation — against popularity and random baselines. Determine how ties contribute to similarity without arbitrarily converting them into strict wins.
 
 Locality filtering should be applied consistently. Prototype both candidate filtering before aggregation and result filtering after a global prediction, because sparse overlap may make a locality-only model unusable. Record the chosen behavior in the recommendation contract.
 
-The output contract should include hotel, predicted order, visited state, confidence/eligibility metadata, and privacy-safe explanation data. Similarity or confidence values are internal signals, not consumer ratings. Recommendation versions and source ranking revisions must be recorded so results can be invalidated and evaluated independently of the ranking UX.
+The output contract should include category, place, predicted order, visited state, confidence/eligibility metadata, and privacy-safe explanation data. Similarity or confidence values are internal signals, not consumer ratings. Recommendation versions and source ranking revisions must be recorded so results can be invalidated and evaluated independently of the ranking UX.
 
 ## Implementation phases
 
@@ -131,15 +131,15 @@ The output contract should include hotel, predicted order, visited state, confid
 - Define environment validation and separate development, test, preview, and production database configuration.
 - Establish branch/CI checks for formatting, linting, type checks, unit tests, build, and focused end-to-end tests.
 
-**Exit:** clean reproducible baseline, chosen MVP vertical/catalogue/privacy model, and passing CI.
+**Exit:** clean reproducible baseline, confirmed restaurant-first/hotel-before-beta rollout, catalogue/privacy model, and passing CI.
 
 ### Phase 1 — Separate algorithm spikes and contracts
 
 - Define one contract for personal ranking state/comparison outcomes/progress and a separate contract for recommendation inputs/results.
 - Build pure personal-ranking prototypes and property-based or exhaustive small-list tests. Test 3, 10, 25, and larger lists; balanced, already ordered, reverse ordered, tied, skipped, and contradictory inputs; undo and resume.
 - Decide how explicit equivalence tiers, skip, binary insertion, cycles, and edits behave in the personal ranking without reference to recommendation scoring.
-- Separately build an offline collaborative recommendation experiment with synthetic global hotel lists. Include visited and unseen candidates and locality-filtered evaluation.
-- Measure recommendation precision/hit rate at K, rank agreement on held-out visited hotels, catalogue coverage, novelty, cold-start behavior, and performance at different overlap thresholds.
+- Separately build an offline collaborative recommendation experiment with synthetic global restaurant lists, then validate the same contracts with hotel fixtures before beta. Include visited and unseen candidates and locality-filtered evaluation.
+- Measure recommendation precision/hit rate at K, rank agreement on held-out visited places, catalogue coverage, novelty, cold-start behavior, and performance at different overlap thresholds per category.
 - Document each selected algorithm, limitation, version, and recomputation strategy independently.
 
 **Exit:** deterministic engine contracts and evidence for the initial ranking and recommendation approaches.
@@ -149,13 +149,13 @@ The output contract should include hotel, predicted order, visited state, confid
 - Replace the example schema with the domain tables, relations, constraints, and indexes.
 - Generate and review the first domain migration; add test-database setup and reset helpers.
 - Implement repositories/services so route code does not contain raw domain queries.
-- Add a repeatable OpenStreetMap PBF import/update pipeline, initially for a manageable region, plus synthetic users/rankings.
+- Add a repeatable OpenStreetMap PBF import/update pipeline, initially importing restaurants for a manageable region, plus synthetic users/rankings.
 - Normalize OSM nodes/ways/relations behind a catalogue provider interface and deduplicate by element identity plus geographic/name quality checks.
-- Build locality-aware hotel search over the imported application database; do not use public Nominatim for autocomplete.
+- Build locality-aware restaurant search over the imported application database; do not use public Nominatim for autocomplete.
 - Add OSM attribution, ODbL compliance documentation, source-version tracking, and licence-aware optional image handling.
-- Run and record the launch-area OSM coverage audit before accepting the catalogue milestone.
+- Run and record the launch-area restaurant coverage audit before accepting the initial catalogue milestone.
 
-**Exit:** a user, their one global hotel list, hotels, session, and comparisons can be persisted and reconstructed; search works against imported OSM data and catalogue compliance is documented.
+**Exit:** a user, their global restaurant list, restaurants, session, and comparisons can be persisted and reconstructed; restaurant search works against imported OSM data and catalogue compliance is documented.
 
 ### Phase 3 — Product shell, authentication, and onboarding
 
@@ -168,9 +168,9 @@ The output contract should include hotel, predicted order, visited state, confid
 
 **Exit:** a new user understands that private preference data contributes anonymously to community recommendations, creates an account, signs in, and reaches an accessible empty dashboard in either locale. Ranking routes reject unauthenticated access.
 
-### Phase 4 — Visited-hotel selection bucket
+### Phase 4 — Visited-restaurant selection bucket
 
-- Load or create the authenticated user's single global hotel list.
+- Load or create the authenticated user's single global restaurant list.
 - Add locality search/filter controls without changing list identity.
 - Build debounced server-side search with loading, empty, error, attribution, and duplicate states.
 - Let users add/remove places in a persistent unordered bucket.
@@ -207,21 +207,33 @@ The output contract should include hotel, predicted order, visited state, confid
 - Consume completed/reliable personal lists through a dedicated recommendation service; never mutate explicit personal rankings.
 - Aggregate both visited and not-yet-visited candidates, filter inactive/ineligible entries, and return a predicted order with each result's visited state.
 - Add locality as a user-controlled result filter and validate its interaction with sparse data.
-- Implement cold-start states: ask the user to rank more visited hotels, broaden/remove locality filtering, or show a clearly labelled non-personalized discovery fallback.
-- Clearly distinguish predicted recommendation positions from personal ranking positions. Present concise recommendation reasoning and a path to mark “already visited,” feeding that hotel into the ranking UX.
+- Implement cold-start states: ask the user to rank more visited restaurants, broaden/remove locality filtering, or show a clearly labelled non-personalized discovery fallback. Generalize the copy by category when hotels are added.
+- Clearly distinguish predicted recommendation positions from personal ranking positions. Present concise recommendation reasoning and a path to mark “already visited,” feeding that place into the ranking UX for its category.
 - Cache or snapshot only after measuring latency; version results and invalidate on relevant ranking/catalogue changes.
 - Evaluate recommendation quality with synthetic fixtures before launch and behavioral metrics after consented use.
 
-**Exit:** users with adequate overlap receive an explainable predicted order of visited and unseen hotels, filterable by locality without altering their global personal list; all other users see an honest useful next step.
+**Exit:** users with adequate overlap receive an explainable predicted order of visited and unseen restaurants, filterable by locality without altering their global restaurant list; all other users see an honest useful next step.
 
-### Phase 8 — Hardening and release
+### Phase 8 — Add hotels before beta
+
+- Extend the OSM importer and coverage audit to `tourism=hotel`, preserving the same canonical place/provider contracts.
+- Add hotel-specific catalogue metadata, search filters, empty states, card fallbacks, and localized overall-preference copy without branching the shared ranking components unnecessarily.
+- Enable one separate global hotel list per user and enforce that comparisons and recommendations never cross categories.
+- Exercise the existing ranking engine against hotel fixtures and behavior; introduce category-specific policy only where product evidence requires it.
+- Validate the recommendation engine independently for hotels, including overlap thresholds, cold starts, locality filtering, and visited/unseen result labeling.
+- Add restaurant-and-hotel integration, component, algorithm, and end-to-end coverage.
+- Run a hotel catalogue/licensing quality review and targeted usability sessions before declaring beta readiness.
+
+**Exit:** restaurants and hotels both support the complete authenticated selection → personal ranking → recommendation loop, and no beta is released until both categories meet their quality gates.
+
+### Phase 9 — Hardening and beta release
 
 - Threat-model authentication, authorization/IDOR, catalogue ingestion, comparison writes, rate limiting, CSRF, XSS, and abuse paths.
 - Add database backup/restore, migration rollout/rollback, observability, structured redacted logging, error reporting, and health checks.
 - Complete accessibility testing for keyboard, screen reader, contrast, touch targets, zoom, reduced motion, and both locales.
 - Add privacy policy, terms/provider attribution, consent/retention rules, data export if required, and account/data deletion.
 - Run responsive and cross-browser end-to-end tests of sign-up, draft/resume, ranking, insertion, recommendation, locale switching, and failure recovery.
-- Run a small private beta in one category and area; review funnel and qualitative relevance before expanding the catalogue.
+- Run a small private beta with both restaurants and hotels in the chosen area; measure and review each category separately before expanding the catalogue.
 
 **Exit:** operable production release with defined rollback, support, privacy, and measurement procedures.
 
@@ -257,10 +269,10 @@ Set numeric beta targets after prototype usability sessions establish realistic 
 
 ### Blocking MVP design
 
-1. What launch geography should the hotel catalogue cover first, and does its OpenStreetMap hotel data pass the coverage audit?
-2. What should the default recommendation view contain: unseen hotels only with an optional “include visited” control, or the full predicted order with visited status visible? Discovery-only by default is likely clearer even though the algorithm ranks both.
-3. What minimum number of visited hotels is needed to start ranking, and what higher evidence threshold is needed before personalized recommendations are useful?
-4. Is “skip / cannot compare” required in the MVP, or should a user remove a hotel they cannot meaningfully compare? It must remain distinct from a tie if implemented.
+1. What launch geography should the restaurant catalogue cover first, and do both its OpenStreetMap restaurant data and pre-beta hotel data pass their category-specific coverage audits?
+2. What should the default recommendation view contain: unseen places only with an optional “include visited” control, or the full predicted order with visited status visible? Discovery-only by default is likely clearer even though the algorithm ranks both.
+3. What minimum number of visited places is needed to start ranking, and should the higher evidence threshold for personalized recommendations differ between restaurants and hotels?
+4. Is “skip / cannot compare” required, or should a user remove a place they cannot meaningfully compare? It must remain distinct from a tie if implemented.
 5. What exact pre-registration wording clearly explains that rankings are private but participation in anonymized collaborative recommendation is a required part of the service?
 
 ### Personal ranking UX and ranking-engine questions
@@ -274,18 +286,18 @@ Set numeric beta targets after prototype usability sessions establish realistic 
 
 ### Recommendation-system questions
 
-12. What minimum common-hotel count and confidence are required before another user contributes as a recommendation neighbor?
+12. What minimum common-place count and confidence are required before another user contributes as a recommendation neighbor, and should thresholds differ by category?
 13. Which similarity and rank-aggregation method wins the offline prototype, and what is the fallback when overlap is sparse?
 14. Should locality filter candidates before aggregation or filter a globally predicted order afterward, and how should the UI explain broader fallback results?
 15. How should equivalence tiers contribute to similarity and aggregation without inventing strict preferences?
 16. How will malicious or coordinated rankings be detected without recreating a public/global reputation score?
-17. How should held-out visited hotels be used to evaluate predicted order without leaking private rankings or confusing offline evaluation with live recommendations?
+17. How should held-out visited places be used to evaluate predicted order without leaking private rankings or confusing offline evaluation with live recommendations?
 
 ### Product and operations
 
 18. Is email/password enough for beta, or are passkeys/social providers needed? Are verification and password reset required before invite-only testing?
 19. What is the launch definition of a recommendation conversion: open, save, directions, booking click, or later addition as visited?
-20. Which non-photo card design gives users enough identity/context when OSM has no safely usable hotel image?
+20. Which category-appropriate non-photo card designs give users enough identity/context when OSM has no safely usable restaurant or hotel image?
 21. Which deployment, managed PostgreSQL, OSM import/update, analytics, error-reporting, and email services will be used, with what regional/data-processing constraints?
 22. What data export, retention, deletion, age restriction, and consent requirements apply? In particular, when an account is deleted, which comparison data must be erased rather than irreversibly anonymized and retained?
 23. Who can correct, merge, hide, or remove bad OSM-derived catalogue records locally, how are upstream corrections handled, and what audit trail is needed?
@@ -294,10 +306,10 @@ Set numeric beta targets after prototype usability sessions establish realistic 
 
 ## Suggested immediate next actions
 
-1. Choose the launch geography and run an OpenStreetMap hotel coverage/licence/import spike for it.
+1. Choose the launch geography and run an OpenStreetMap restaurant coverage/licence/import spike for it, followed by a hotel coverage check early enough to protect the beta commitment.
 2. Resolve the remaining five blocking MVP questions in a short product workshop.
 3. Diagnose the baseline command hang and establish green local/CI checks.
-4. Prototype the personal-ranking state machine and, independently, the recommendation baseline with synthetic global hotel lists before committing the schema.
+4. Prototype the personal-ranking state machine and, independently, the recommendation baseline with synthetic global restaurant lists before committing the schema; include hotel fixtures when validating category boundaries.
 5. Validate the authenticated selection and two-card ranking flow with a clickable low-fidelity mobile prototype and 5–8 target users.
-6. Then implement one thin ranking vertical slice: imported OSM hotel search → global visited-hotel bucket → persisted comparisons → completed private personal list.
-7. Only after that data path is reliable, add the separate recommendation service and locality-filtered predicted results.
+6. Then implement one thin ranking vertical slice: imported OSM restaurant search → global visited-restaurant bucket → persisted comparisons → completed private personal list.
+7. After that data path is reliable, add the separate recommendation service and locality-filtered predicted results, then extend the complete loop to hotels before beta.
