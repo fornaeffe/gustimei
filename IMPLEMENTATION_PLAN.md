@@ -54,6 +54,7 @@ Success therefore depends more on ranking completion, data quality, and recommen
 15. **Ranking-session size:** the MVP does not cap personal-list size or split large selection buckets into shorter ranking sessions. Measure large-list behavior and revisit this only if the ranking spike or beta usage demonstrates a need.
 16. **Filtered personal-list positions:** when locality filters the personal list, display ordinal labels recalculated for the filtered results. Clearly identify them as filtered positions; the underlying global tiers and order remain unchanged.
 17. **Incomplete orders after skips:** when skips leave insufficient evidence for a total order, display the affected places as an unresolved tier. Preserve the missing evidence so a later iteration can request targeted comparisons.
+18. **Recommendation conversion:** the primary launch conversion is a previously unvisited place being added as visited after the user was shown it as a recommendation. Opens, saves, directions, and booking clicks are secondary intent signals, not conversions. Completing the place's later insertion into the personal ranking is a separate recommendation-quality signal.
 
 ### Proposed pre-registration wording
 
@@ -199,7 +200,7 @@ Compute the category-wide candidate utilities first and apply locality to the re
 
 For offline evaluation, split whole visited places or contiguous tier groups from each test user's ranking before generating any pairwise view. Fit the user's factors only from the remaining ranking and predict the held-out places. Never hold out a derived pair while leaving a transitive path to the same answer in training.
 
-Report pairwise accuracy, tie-aware Kendall's `tau-b`, NDCG/top-tier retrieval, coverage, novelty, calibration by evidence bucket, and performance relative to the smoothed global prior. Split train/test by category and include temporal and geographic slices. A held-out visited place is only a proxy for an unseen recommendation; it must not be described as proof that the user would visit an actually unseen place. After launch, use later “already visited” additions and their eventual personal rank as the delayed live relevance signal.
+Report pairwise accuracy, tie-aware Kendall's `tau-b`, NDCG/top-tier retrieval, coverage, novelty, calibration by evidence bucket, and performance relative to the smoothed global prior. Split train/test by category and include temporal and geographic slices. A held-out visited place is only a proxy for an unseen recommendation; it must not be described as proof that the user would visit an actually unseen place. After launch, use attributed additions as visited as the primary recommendation conversion and the place's eventual personal rank as the delayed quality signal.
 
 Run evaluation inside the controlled data boundary, retain only the minimum derived data required, and publish/log aggregated metrics with minimum cohort sizes rather than raw private rankings or user-level examples.
 
@@ -312,6 +313,7 @@ The output contract should include category, place, predicted order, visited sta
 - Apply locality after the global order is scored. When filtered support is sparse, return fewer results and offer an explicit scope expansion rather than silently inserting broader candidates.
 - Enforce the validation-calibrated personalization gate. Below it, use the regularized global place prior with a clear community-based/non-personalized label, ask the user to rank more visited restaurants, or show an honest insufficient-evidence state. Generalize the copy by category when hotels are added.
 - Clearly distinguish predicted recommendation positions from personal ranking positions. Present concise recommendation reasoning and a path to mark “already visited,” feeding that place into the ranking UX for its category.
+- Instrument recommendation exposure and conversion first-party: an exposure occurs only when an eligible, previously unvisited result is actually rendered to the user. Count at most one conversion per `(user, category, place)` when that place is added as visited within 90 days of its most recent eligible exposure. Exclude synthetic/demo data and places already marked visited at exposure time.
 - Cache or snapshot only after measuring latency; version results and invalidate on relevant ranking/catalogue changes.
 - Evaluate recommendation quality with leakage-safe held-out fixtures and appropriately consented real beta data before launch; after launch, measure delayed agreement when recommended places are later added and ranked.
 
@@ -352,7 +354,7 @@ Design this as encouragement for kind, factual reviewing rather than as a public
 
 ## Testing strategy
 
-- **Pure unit tests:** ranking state machine, progress bounds, ties, contradictions, undo, serialization/version migration, recommendation scoring, and permission helpers.
+- **Pure unit tests:** ranking state machine, progress bounds, ties, contradictions, undo, serialization/version migration, recommendation scoring, recommendation-exposure attribution/deduplication, and permission helpers.
 - **Database integration tests:** constraints, transactions, idempotency, list ownership, concurrent revisions, seed imports, verification/reset token expiry and single use, session revocation after password reset, and recommendation queries against isolated PostgreSQL.
 - **Component tests:** place cards, bucket, comparison controls, focus management, localization, reduced motion, and all loading/error/empty states.
 - **End-to-end tests:** authentication/disclosure; blocked sign-in before email verification; verification resend/success/expired link; generic duplicate-sign-up and password-reset responses; password-reset success/invalid or reused token/session revocation; Google sign-in and account linking before beta; create/resume a draft; complete a 2-place and larger ranking; tie/skip/undo; refresh mid-session; concurrent-tab conflict; insert/remove a place; view the full predicted order with visited status and locality filtering; receive or fail gracefully to receive recommendations; delete data.
@@ -372,7 +374,9 @@ Initial funnel:
 - ranking started → ranking completed;
 - median comparisons and time to completion by list size;
 - abandon/resume, tie, skip, undo, and error rates;
-- recommendation impressions → detail/open/save/already-visited actions;
+- recommendation exposures → detail/open/save/directions/booking-click intent events → later addition as visited;
+- primary recommendation conversion rate: unique exposed, previously unvisited places added as visited within 90 days, deduplicated per user/category/place and attributed to the most recent eligible exposure;
+- post-conversion quality: percentage of converted places later inserted into the personal ranking and their predicted-versus-actual rank agreement;
 - percentage of users with enough overlap for personalized results;
 - return rate to add a newly visited place.
 
@@ -405,7 +409,7 @@ Replace with ANSWERED when the question is answered and decisions are documented
 ### Product and operations
 
 15. ANSWERED — email/password is sufficient for local development. For beta, require link-based email verification before email/password sign-in, auto-sign in after successful verification, and offer link-based password reset that revokes existing sessions; verification and reset links expire after one hour. Add Sign in with Google near the end of beta hardening. Passkeys and additional social providers are deferred.
-16. What is the launch definition of a recommendation conversion: open, save, directions, booking click, or later addition as visited?
+16. ANSWERED — the primary launch conversion is later addition of an exposed, previously unvisited recommendation as visited, within a 90-day attribution window and deduplicated per user/category/place. Open, save, directions, and booking clicks remain secondary intent events; later ranking placement is a separate quality signal.
 17. Which category-appropriate non-photo card designs give users enough identity/context when OSM has no safely usable restaurant or hotel image?
 18. Which deployment, managed PostgreSQL, OSM import/update, analytics, error-reporting, and transactional email services will be used, with what regional/data-processing constraints? Local development uses the provider-neutral console/in-memory email surrogate; the preview/beta/production email provider remains to be selected here.
 19. What data export, retention, deletion, age restriction, and consent requirements apply? In particular, when an account is deleted, which comparison data must be erased rather than irreversibly anonymized and retained?
