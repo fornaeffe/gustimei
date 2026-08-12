@@ -49,6 +49,11 @@ Success therefore depends more on ranking completion, data quality, and recommen
 10. **Ranking threshold:** ranking may start with two visited places; one pairwise choice is sufficient to form the smallest meaningful ordered list. Recommendation eligibility is a separate threshold to determine experimentally and must not prevent users from maintaining a two-place personal list.
 11. **Uncertainty:** provide “Skip / cannot compare” as a first-class outcome. It records missing preference evidence, keeps both places in the visited list, and is never interpreted as a reason to remove either place.
 12. **Default recommendation view:** show the full predicted order for the selected category, with visited status clearly visible on every result. Users may optionally filter by locality without changing the underlying global predicted order.
+13. **Tie repair:** an explicit tie remains direct user evidence, but it is not permanently immune to later contradictory transitive evidence. If later answers conflict with a tied tier, prompt a targeted repair using the tied-tier insertion policy; never split the tier silently.
+14. **Cycle and contradiction recovery:** resolve preference cycles by asking a targeted clarifying comparison. Until that clarification is completed, retain the newest answer and temporarily leave the oldest conflicting ranking evidence out of the active order. Prompt the user to rerank the involved places; do not decay preferences merely because time has passed.
+15. **Ranking-session size:** the MVP does not cap personal-list size or split large selection buckets into shorter ranking sessions. Measure large-list behavior and revisit this only if the ranking spike or beta usage demonstrates a need.
+16. **Filtered personal-list positions:** when locality filters the personal list, display ordinal labels recalculated for the filtered results. Clearly identify them as filtered positions; the underlying global tiers and order remain unchanged.
+17. **Incomplete orders after skips:** when skips leave insufficient evidence for a total order, display the affected places as an unresolved tier. Preserve the missing evidence so a later iteration can request targeted comparisons.
 
 ### Proposed pre-registration wording
 
@@ -129,6 +134,10 @@ Use the following escalation policy:
 
 Never guess a strict position after a skip and never silently dissolve an existing tie. If targeted repair still leaves insufficient evidence, persist the new item in an unresolved tier adjacent to the narrowed boundary, mark the list partial/stale for recommendation eligibility, and let the user resume later. The thresholds and the need for a second tie confirmation must be validated in the Phase 1 spike and stored as versioned ranking-engine policy.
 
+An explicit tied tier may be reconsidered when later transitive evidence contradicts it. Such evidence must open the same targeted local-repair flow; it must not silently split or overwrite the user's tie. For any preference cycle, first ask a clarifying comparison among the involved places. While that clarification is pending, retain the newest answer, exclude the oldest conflicting evidence from the active order, and show the affected places as needing repair. Once clarified, supersede evidence explicitly so the history remains auditable.
+
+Personal rankings do not decay with age. Time alone never makes a comparison stale. Staleness arises only from concrete invalidation or contradiction, such as answers implying `A > B`, `C > A`, and `B > C`; in that case prompt a focused reranking of the involved places and apply the temporary newest-answer/oldest-evidence policy above.
+
 Implement the ranking engine as a pure, framework-independent TypeScript module that emits the next comparison and consumes an outcome. The Svelte UI and persistence layer should not know the sorting algorithm's internal details.
 
 Prototype and test at least these approaches against synthetic users:
@@ -141,7 +150,7 @@ Prototype and test at least these approaches against synthetic users:
 
 Measure number of questions, worst-case behavior, stability, reproducibility, ability to undo, and quality under ties/noise. Choose and document the algorithm before building the comparison UI. Persist the ranking-engine version so ranking state can be migrated or recomputed after changes.
 
-Each completed category list is the authoritative record of the user's stated overall preference among visited places in that category. A locality-filtered view must preserve each place's global position/tier rather than renumbering it as if it were a separate ranking, unless the UI labels the filtered positions explicitly.
+Each completed category list is the authoritative record of the user's stated overall preference among visited places in that category. A locality-filtered view displays recalculated ordinal labels for the filtered subset, clearly identified as filtered positions; filtering never changes the underlying global position, tier, or ranking evidence.
 
 ## Recommendation system
 
@@ -175,7 +184,8 @@ The output contract should include category, place, predicted order, visited sta
 
 - Define one contract for personal ranking state/comparison outcomes/progress and a separate contract for recommendation inputs/results.
 - Build pure personal-ranking prototypes and property-based or exhaustive small-list tests. Test 2, 3, 10, 25, and larger lists; balanced, already ordered, reverse ordered, tied, skipped, and contradictory inputs; undo and resume.
-- Decide how explicit equivalence tiers, skip, binary insertion, cycles, and edits behave in the personal ranking without reference to recommendation scoring.
+- Validate the decided behavior for explicit equivalence tiers, skip, binary insertion, cycles, contradictions, and edits without reference to recommendation scoring, including repair after later evidence conflicts with an explicit tie.
+- Do not implement a list-size cap or large-bucket splitting in the MVP; use spike measurements to record when either might become necessary.
 - Separately build an offline collaborative recommendation experiment with synthetic global restaurant lists, then validate the same contracts with hotel fixtures before beta. Include visited and unseen candidates and locality-filtered evaluation.
 - Measure recommendation precision/hit rate at K, rank agreement on held-out visited places, catalogue coverage, novelty, cold-start behavior, and performance at different overlap thresholds per category.
 - Verify if the proposed tied-tier insertion policy minimize questions without causing too many local repairs, and are the proposed `max(5 tiers, 25% of the list)` fallback threshold and second-member tie confirmation appropriate?
@@ -226,6 +236,7 @@ The output contract should include category, place, predicted order, visited sta
 - Show two balanced place cards with photo fallback, name, area, and category-relevant metadata—never ratings.
 - Support card tap/click, explicit buttons, keyboard controls, tie, “skip / cannot compare,” and undo. Treat swipes as progressive enhancement, not the only input.
 - A skipped comparison leaves both places in the list, records no preference edge, and allows the engine to continue or finish with a partial order when strict placement cannot be inferred.
+- When skipped comparisons leave insufficient evidence for a total order, render the affected places as an unresolved tier. Preserve resumable state so targeted comparisons can be added later without blocking the initial MVP flow.
 - Save each response idempotently before advancing; handle double taps, stale revisions, multiple tabs, offline/interrupted requests, and session expiry.
 - Add reduced-motion-safe transitions, selection feedback, and an honest progress estimate.
 - Use occasional partial-ranking feedback only if it does not reveal unstable or misleading positions.
@@ -236,8 +247,11 @@ The output contract should include category, place, predicted order, visited sta
 ### Phase 6 — Existing-list maintenance
 
 - Add a new visited place to a completed list using binary insertion.
-- Define insertion behavior around tied tiers and stale/inconsistent rankings.
+- Implement targeted local repair when later transitive evidence contradicts an explicit tied tier; never split a tie silently.
+- Detect preference cycles and ask a clarifying comparison. Pending clarification, retain the newest answer, temporarily exclude the oldest conflicting evidence, and prompt a focused reranking of the involved places.
+- Do not age or decay personal-ranking evidence over time; mark rankings stale only after concrete contradiction or invalidation.
 - Support removing a place and changing an answer without unnecessarily discarding valid evidence.
+- Show clearly labelled, recalculated ordinal positions in locality-filtered personal-list views without modifying the global ranking.
 - Mark downstream recommendation results stale when a ranking revision changes.
 - Provide deliberate “rebuild this list” and delete actions with clear consequences.
 
@@ -314,13 +328,13 @@ Replace with ANSWERED when the question is answered and decisions are documented
 
 ### Personal ranking UX and ranking-engine questions
 
-1. Should an explicit tie be permanent until edited, or may later transitive evidence split an equivalence tier?
+1. ANSWERED — later contradictory transitive evidence prompts targeted repair under the tied-tier insertion policy; it never splits an explicit tie silently.
 2. ANSWERED
-3. How should preference cycles be resolved: ask a clarifying comparison, retain the newest answer, calculate a best-fit order, or flag the list for rebuild?
-4. When does a personal ranking become stale as tastes change, and should old comparisons decay over time?
-5. Should ranking sessions cap list size or split very large buckets into shorter resumable sessions?
-6. When a locality filter is applied to the personal list, should the UI show global positions (possibly with gaps), filtered ordinal labels, or no position numbers?
-7. When skips leave insufficient evidence for a total order, should the UI show a partial order, unresolved tier, or ask targeted comparisons later?
+3. ANSWERED — ask a clarifying comparison; until it is completed, retain the newest answer and temporarily omit the oldest conflicting evidence from the active order.
+4. ANSWERED — personal rankings do not decay over time. Contradictions trigger focused reranking of the involved places, with the oldest conflicting evidence temporarily omitted until the user resolves them.
+5. ANSWERED — do not implement a list-size cap or large-bucket splitting in the MVP; measure and reconsider later if needed.
+6. ANSWERED — show clearly labelled filtered ordinal positions while preserving the underlying global order and tiers.
+7. ANSWERED — show an unresolved tier. Preserve the state so a later iteration can ask targeted comparisons.
 
 ### Recommendation-system questions
 
