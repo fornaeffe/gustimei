@@ -61,6 +61,9 @@ Success therefore depends more on ranking completion, data quality, and recommen
 20. **Provisional beta operations stack:** plan for a SvelteKit Node deployment on Koyeb in Frankfurt, managed PostgreSQL on Neon in Frankfurt, Sentry's EU/Germany service for error reporting, and Brevo for transactional email. Implement OSM ingestion and the narrow product-analytics collector in application-owned code. This is the current implementation target, not a final vendor commitment: confirm or revise it after local/import/deployment testing establishes catalogue and index size, Better Auth password-hashing performance, database activity and cost, email deliverability, regional/data-processing suitability, and operational reliability.
 21. **Legal-design baseline:** make the MVP available only to adults aged 18 or over; use purpose-specific GDPR lawful bases rather than bundled consent; provide self-service access/export and deletion; erase account-linked ranking evidence on deletion; and complete a DPIA, processing record, retention schedule, processor review, and legal review before public deployment. Recommendations are profiling but are designed only as suggestions, without legal or similarly significant effects.
 22. **MVP communications and tracking:** send only authentication, security, privacy/terms, data-rights, and essential service-operation email. Do not send marketing email. Use necessary first-party authentication/preferences storage and first-party server-side analytics only; do not implement cross-site analytics, non-essential tracking, fingerprinting, pixels, advertising identifiers, or session replay.
+23. **Catalogue governance:** ordinary users may submit structured catalogue issue reports but cannot modify catalogue records. Only a least-privilege catalogue curator or administrator can apply reversible local corrections, quarantine/hide records, or create canonical merge redirects. Preserve imported OSM facts separately from local overlays, audit every moderation action, never automatically write changes to OSM, and reconcile verified upstream changes on later imports.
+24. **Public list sharing:** defer public or link-based sharing of completed personal lists beyond the MVP. Rankings remain private to their owner in every MVP route, API, export authorization, and search surface.
+25. **Beta research definition:** define the beta cohort, recruitment, qualitative method, scripts, consent, incentives, and success interpretation in a separate research brief outside this implementation plan. This plan records only the product/engineering gates and the requirement to execute the approved research before expansion.
 
 ### Proposed pre-registration disclosure
 
@@ -94,6 +97,32 @@ Implementation constraints:
 - Display clear “OpenStreetMap” attribution linked to its copyright/licence information wherever OSM-derived catalogue data is presented, following the [OSMF attribution guidelines](https://osmfoundation.org/wiki/Licence/Attribution_Guidelines). Document whether the application catalogue is a Derivative Database and meet the ODbL share-alike obligations before launch; obtain legal review if combining it with proprietary catalogue data.
 - Treat `wikimedia_commons`, `image`, and similar tags only as optional references. Resolve and retain each media item's own licence and attribution before display; otherwise use a category-appropriate non-photo card fallback. Never assume OSM's ODbL licenses linked images.
 - Run separate loose coverage audits for Italian restaurants and hotels: unusable identities, severe duplicates, missing names/coordinates, stale/closed places, category errors, geographic skews, and any gaps likely to deeply bias the system. Quarantine clearly harmful records and document lesser limitations. The restaurant audit gates initial development only on severe issues; the hotel audit uses the same threshold before beta. If a severe systemic issue is found, retain the provider interface and add an ODbL-compatible enrichment source rather than replacing domain contracts.
+
+### Catalogue correction and moderation policy
+
+Keep the imported provider snapshot immutable for provenance and apply local decisions through a separate overlay. Search and display resolve the effective place from the current OSM snapshot plus active overrides and redirects; imports never silently overwrite or erase a local moderation decision.
+
+Roles and intake:
+
+- Any authenticated user may submit a structured issue report such as wrong name/location/category, duplicate, closed/nonexistent, unsafe content, or other. Reports are private operational records, not public reviews; rate-limit them and minimize optional free text.
+- A `catalogue_curator` may triage reports, apply or expire field-level overrides, and quarantine/unquarantine a place. An `admin` may do the same and may also approve merges, reversals, and exceptional removals. In a single-operator beta the administrator may hold both roles, but the permissions and audit identities remain distinct so duties can be separated later.
+- Neither ordinary users nor claimed business owners can directly edit, merge, hide, or remove a catalogue place in the MVP. Business claims remain out of scope.
+
+Local actions:
+
+- **Correct:** store only the changed effective fields as a provenance-bearing override with reason, evidence/reference, actor, review status, and optional expiry. Never mutate the imported OSM value in place.
+- **Hide/quarantine:** remove the place from search and new recommendations immediately while retaining its stable identity, source history, existing list references, and audit trail. Existing owners see a neutral unavailable/under-review state rather than a vanished list item. Quarantined evidence does not train or serve new recommendations until restored.
+- **Merge:** select one stable canonical application place and redirect every duplicate application/source identity to it. Show an impact preview, perform the redirect and reference migration transactionally, invalidate affected search/model artifacts, and keep the operation reversible. If one user had both duplicates, collapse to one visited item, preserve the original history as superseded evidence, and mark the affected ranking for targeted repair rather than inventing a preference.
+- **Remove:** reserve physical deletion for unreferenced erroneous/synthetic records or a validated legal/security requirement. OSM-derived records that were referenced by rankings are soft-deleted/tombstoned; use hide or redirect for ordinary catalogue errors.
+
+Upstream handling:
+
+- Do not make automated OSM edits and do not treat a user report as sufficient evidence for an upstream change. A curator may separately correct OSM through a named human OSM account only when the fact is verifiable under OSM's contributor rules and compatible sources; never copy proprietary provider data into OSM.
+- Record the OSM changeset ID and affected element IDs on the local issue. Keep an urgent local override when product safety or correctness cannot wait for the next extract.
+- On import, compare changed OSM values with active overrides. If upstream now matches the verified correction, propose retiring the override after review. If it conflicts, keep the effective local decision and reopen the issue; never resolve the conflict silently.
+- Handle OSM deletion, retagging, split, or merge through stable application IDs and source-identity mappings. Reconcile redirects before replacing catalogue revisions, and invalidate affected ranking/recommendation caches or artifacts.
+
+Maintain an append-only `catalogue_change` audit entry for every report transition and effective mutation: action ID/type/status, actor and role, target and canonical/source identities, before/after diff, reason category, evidence references, linked report, upstream changeset where applicable, timestamps, importer revision, impact counts, and reversal/supersession linkage. Do not put secrets or unnecessary reporter personal data in the audit. Restrict audit access to curators/admins, retain it for the catalogue's operational life, and export it with backups so every effective record can answer what changed, why, by whom, from which source revision, and how it was reversed.
 
 ## Provisional deployment and operations approach
 
@@ -184,7 +213,12 @@ Enforce these defaults through scheduled jobs and tests; final periods remain su
 
 Finalize names and constraints with small algorithm prototypes before generating the first domain migration.
 
-- `place`: canonical identity, category, name, coordinates, locality/country, address, status, source, source element type/ID/version, explicit synthetic/demo marker, and timestamps.
+- `place`: stable application identity, category, imported/effective status, explicit synthetic/demo marker, and timestamps. Effective catalogue fields are resolved from the current source snapshot plus active local overrides rather than destroying source provenance.
+- `place_source`: place, provider, source element type/ID/version/timestamp, imported fields or revision reference, and lifecycle status. Uniqueness covers `(provider, element_type, element_id)` and supports multiple source identities redirecting to one canonical place.
+- `place_override`: place, field/action scope, replacement value or quarantine state, reason/evidence, actor, review/expiry/supersession metadata, and timestamps. Validate allowed fields and never use arbitrary executable patches.
+- `place_redirect`: losing place/source identity, canonical place, merge reason, status, reversible migration metadata, and timestamps. Resolve redirect chains to one canonical target and prevent cycles.
+- `catalogue_issue`: reporter when applicable, structured issue type, target place/source, private optional detail, status/assignee/resolution, upstream changeset reference, and timestamps. Reports never become public reviews.
+- `catalogue_change`: append-only actor/role/action, before/after diff, source/import revision, reason/evidence references, affected counts, linked issue/change/reversal, and timestamp.
 - `place_translation` or localized provider fields only if catalogue names/descriptions require them; do not translate proper names by default.
 - `place_media`: provider URL/reference, attribution, sort order, dimensions, and lifecycle metadata. Avoid copying remote images without explicit rights.
 - `ranking_list`: owner, category, status (`draft`, `ranking`, `complete`, `stale`), ranking-engine version, revision, and timestamps. Enforce one active global list per `(owner, category)`; locality does not belong to list identity.
@@ -336,6 +370,9 @@ The output contract should include category, place, predicted order, visited sta
 - Implement repositories/services so route code does not contain raw domain queries.
 - Add a repeatable TypeScript OpenStreetMap PBF import/update pipeline, initially importing Italian restaurants, with manual/on-demand initial execution, a validated GitHub Actions update path, atomic staging/promotion, and environment-safe synthetic users/rankings.
 - Normalize OSM nodes/ways/relations behind a catalogue provider interface and deduplicate by element identity plus geographic/name quality checks.
+- Implement source snapshots plus effective overlay resolution, canonical source mappings, cycle-free redirects, quarantine behavior, and transactional/reversible merge impact handling. Imports must surface rather than overwrite conflicts with active overrides.
+- Add protected curator/admin catalogue workflows and append-only audit services. Let authenticated users submit private, rate-limited structured issue reports without granting catalogue mutation rights; keep business claims out of scope.
+- Test that hidden records leave existing rankings intelligible while being excluded from new search/training/serving, and that duplicate merges preserve/supersede evidence and request targeted ranking repair without inventing preferences.
 - Build locality-aware restaurant search over the imported application database; do not use public Nominatim for autocomplete.
 - Add OSM attribution, ODbL compliance documentation, source-version tracking, and licence-aware optional image handling.
 - Run and record the loose Italian restaurant coverage audit; block the milestone only for issues that clearly break or deeply bias the system.
@@ -360,7 +397,7 @@ The output contract should include category, place, predicted order, visited sta
 - Build the landing page around the no-ratings value proposition and a single clear call to action; show the approved preference-sharing disclosure before registration.
 - Expand Paraglide messages for every product string; add checks that Italian and English catalogues stay aligned.
 
-**Exit:** a new user understands that private preference data contributes anonymously to community recommendations, creates an account, signs in, and reaches an accessible empty dashboard in either locale. Ranking routes reject unauthenticated access.
+**Exit:** a new user understands that private preference data contributes pseudonymously to community recommendations, creates an account, signs in, and reaches an accessible empty dashboard in either locale. Ranking routes reject unauthenticated access.
 
 ### Phase 4 — Visited-restaurant selection bucket
 
@@ -425,7 +462,7 @@ The output contract should include category, place, predicted order, visited sta
 - Exercise the existing ranking engine against hotel fixtures and behavior; introduce category-specific policy only where product evidence requires it.
 - Validate the recommendation engine independently for hotels, including evidence/support thresholds, cold starts, locality filtering, and visited/unseen result labeling.
 - Add restaurant-and-hotel integration, component, algorithm, and end-to-end coverage.
-- Run an Italian hotel catalogue/licensing quality review and targeted usability sessions before declaring beta readiness.
+- Run an Italian hotel catalogue/licensing quality review and the usability research defined in the separate approved beta-research brief before declaring beta readiness.
 
 **Exit:** restaurants and hotels both support the complete authenticated selection → personal ranking → recommendation loop, and no beta is released until both categories meet their quality gates.
 
@@ -442,7 +479,7 @@ The output contract should include category, place, predicted order, visited sta
 - Verify that the MVP ships no marketing email, cross-site/third-party analytics, non-essential tracking, fingerprinting, pixels, advertising identifiers, or session replay, and that transactional templates contain no promotional material.
 - Run responsive and cross-browser end-to-end tests of sign-up, draft/resume, ranking, insertion, recommendation, locale switching, and failure recovery.
 - Verify beta synthetic-data labelling and isolation, including that no synthetic ranking evidence is associated with or affects real places.
-- Run a small private beta with both restaurants and hotels in the chosen area; measure and review each category separately before expanding the catalogue.
+- Run the externally defined private-beta cohort and research method with both restaurants and hotels in the chosen area; measure and review each category separately before expanding the catalogue.
 
 **Exit:** operable production release with defined rollback, support, privacy, and measurement procedures.
 
@@ -455,9 +492,9 @@ Design this as encouragement for kind, factual reviewing rather than as a public
 ## Testing strategy
 
 - **Pure unit tests:** ranking state machine, progress bounds, ties, contradictions, undo, serialization/version migration, recommendation scoring, recommendation-exposure attribution/deduplication, and permission helpers.
-- **Database integration tests:** constraints, transactions, idempotency, list ownership, concurrent revisions, seed imports, verification/reset token expiry and purge, session revocation after password reset, retention jobs, erasure tombstones, category/account evidence exclusion, model invalidation/rebuild requests, and recommendation queries against isolated PostgreSQL.
+- **Database integration tests:** constraints, transactions, idempotency, list ownership, concurrent revisions, seed imports, source/override resolution, redirect-cycle prevention, reversible merge transactions, quarantine exclusions, append-only catalogue audits, verification/reset token expiry and purge, session revocation after password reset, retention jobs, erasure tombstones, category/account evidence exclusion, model invalidation/rebuild requests, and recommendation queries against isolated PostgreSQL.
 - **Component tests:** place cards with missing/broken media, restaurant/hotel fallback variants, decorative versus interactive icon accessibility, bucket, comparison controls, focus management, localization, reduced motion, and all loading/error/empty states.
-- **End-to-end tests:** 18+ declaration, Terms acceptance, separately linked Privacy Notice, and registration disclosure; blocked sign-in before email verification; verification resend/success/expired link; generic duplicate-sign-up and password-reset responses; password-reset success/invalid or reused token/session revocation; Google sign-in and account linking before beta; create/resume a draft; complete a 2-place and larger ranking; tie/skip/undo; refresh mid-session; concurrent-tab conflict; insert/remove a place; view the full predicted order with visited status and locality filtering; receive or fail gracefully to receive recommendations; request/download/expire a JSON/CSV export; delete one ranking category; delete the account and verify session revocation, live-data erasure, evidence exclusion, and restored-backup tombstone replay.
+- **End-to-end tests:** 18+ declaration, Terms acceptance, separately linked Privacy Notice, and registration disclosure; blocked sign-in before email verification; verification resend/success/expired link; generic duplicate-sign-up and password-reset responses; password-reset success/invalid or reused token/session revocation; Google sign-in and account linking before beta; create/resume a draft; complete a 2-place and larger ranking; tie/skip/undo; refresh mid-session; concurrent-tab conflict; insert/remove a place; submit a private structured catalogue issue; enforce user/curator/admin permissions; correct, quarantine, merge, reverse, and reconcile an upstream catalogue change with a complete audit; view the full predicted order with visited status and locality filtering; receive or fail gracefully to receive recommendations; request/download/expire a JSON/CSV export; delete one ranking category; delete the account and verify session revocation, live-data erasure, evidence exclusion, and restored-backup tombstone replay.
 - **Algorithm tests:** exhaustive permutations for small lists and generated noisy/tied/partial rankings for larger lists; listwise likelihood and gradient checks; deterministic pairwise-view derivation; no double counting across revisions; skip/unresolved exclusion; tie handling; per-list normalization; cold-start shrinkage; locality-invariant scores; held-out split leakage checks; and reproducible benchmark metrics.
 - **Non-functional tests:** mobile performance on a throttled connection, catalogue/recommendation query plans, basic load tests, automated accessibility checks backed by manual review, privacy scans proving the absence of forbidden trackers/marketing paths, and retention/processor-failure drills.
 
@@ -482,7 +519,7 @@ Initial funnel:
 - percentage of users with enough overlap for personalized results;
 - return rate to add a newly visited place.
 
-Set numeric beta targets after prototype usability sessions establish realistic baselines.
+Set numeric beta targets after the research defined outside this plan establishes realistic baselines.
 
 ## Open questions
 
@@ -515,18 +552,8 @@ Replace with ANSWERED when the question is answered and decisions are documented
 17. ANSWERED — use a shared category-themed fallback panel built with `@lucide/svelte`: `UtensilsCrossed` for restaurants and `Hotel` for hotels, accompanied by the visible place name, category, and locality. Preserve the media aspect ratio, avoid generic stock imagery and unsupported metadata, and add no second icon library for the MVP because Lucide covers the required cases.
 18. ANSWERED PROVISIONALLY — the current beta target is Koyeb Node hosting in Frankfurt, Neon PostgreSQL in Frankfurt, an application-owned OSM TypeScript importer run manually and then through validated GitHub Actions updates, first-party server-side allowlisted analytics in PostgreSQL, Sentry EU/Germany for scrubbed error reporting, and Brevo's REST API for transactional email. The MVP has no cross-site/third-party analytics or marketing email. Keep the application email, catalogue-ingestion, analytics, and observability boundaries provider-neutral. Make the final vendor decision only after local/import and deployed end-to-end tests verify catalogue/index size, Better Auth performance, database cost/activity, backups/restores, email delivery, reliability, and the documented EU/DPA/subprocessor constraints within the beta budget.
 19. ANSWERED PROVISIONALLY — make the MVP 18+; use purpose-specific contract/legitimate-interest bases subject to documented necessity and balancing rather than bundled consent; provide self-service JSON/CSV export and manual rights handling; enforce the stated retention schedule; and erase account- or category-linked comparisons, rankings, exposures, user factors, and analytics from live systems within 30 days. Exclude deleted evidence and rebuild affected model artifacts within that window, expire it from rolling backups, and retain derived statistics only if genuinely anonymous. Complete a DPIA and obtain Italian legal review before public deployment.
-20. Who can correct, merge, hide, or remove bad OSM-derived catalogue records locally, how are upstream corrections handled, and what audit trail is needed?
-21. Is public sharing of a completed list ever compatible with “private by default,” or should it remain explicitly deferred beyond the MVP?
-22. What beta cohort and qualitative research method will separately determine whether the ranking UX is usable and whether recommendations are credible?
+20. ANSWERED — authenticated users may submit private structured issue reports but cannot edit catalogue data. A least-privilege curator may apply reviewed field overrides and quarantine records; an administrator may additionally approve reversible canonical merges and exceptional removals. Keep immutable OSM source provenance plus a local effective overlay, never write to OSM automatically, link human upstream changesets, reconcile later imports without silently overriding local decisions, and append an actor/reason/evidence/before-after/source-revision/impact/reversal audit for every transition.
+21. ANSWERED — defer all public or link-based sharing of completed personal lists beyond the MVP. Lists remain private to their owner throughout MVP UI, APIs, authorization rules, exports, and search.
+22. ANSWERED OUTSIDE THIS PLAN — define and approve the beta cohort, recruitment, research method, scripts, consent, incentives, and interpretation in a separate research brief. This implementation plan requires the research to run before expansion but does not prescribe its design.
 23. ANSWERED PROVISIONALLY — use the revised layered Italian/English disclosure: rankings are private but processed pseudonymously for reciprocal automated recommendations; contribution is presented as an essential service feature rather than optional marketing consent; recommendations have no legal or similarly significant effects; and principal rights are stated. Require only the separate unchecked 18+/Terms declaration, link the Privacy Notice visibly without an “I consent” checkbox, and complete the full Article 13 notice and legal review before public deployment.
 
-## Suggested immediate next actions
-
-1. Run the loose Italy OpenStreetMap restaurant coverage/licence/import spike, including normalized Neon storage/index and projected-cost measurements, followed by an early hotel coverage check to protect the beta commitment.
-2. Run a thin Koyeb/Neon/Brevo/Sentry deployment spike after the local vertical slice exists, measuring Better Auth `scrypt`, SSR/query latency, cold starts, mail delivery, error scrubbing, restore/backup behavior, regional processing, and expected monthly cost before finalizing providers.
-3. Diagnose the baseline command hang and establish green local/CI checks.
-4. Prototype the personal-ranking state machine—including two-place start and skip behavior—and, independently, the recommendation baseline with synthetic global restaurant lists before committing the schema; include hotel fixtures when validating category boundaries.
-5. Define and test synthetic-data provenance guards before creating shared beta/demo seeds.
-6. Validate the authenticated selection and two-card ranking flow with a clickable low-fidelity mobile prototype and 5–8 target users, including the proposed registration disclosure.
-7. Then implement one thin ranking vertical slice: imported Italian OSM restaurant search → global visited-restaurant bucket → persisted comparisons → completed private personal list.
-8. After that data path is reliable, add the full predicted-order recommendation view with visited status and locality filtering, then extend the complete loop to hotels before beta.
