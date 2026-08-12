@@ -2,7 +2,7 @@
 
 ## Product goal
 
-GustiMei is a hotel and restaurant discovery app based on ordinal preferences rather than ratings. A user identifies places they have visited, compares them in a low-effort pairwise flow, and receives recommendations inferred from people whose rankings overlap with and resemble their own.
+GustiMei is a hotel and restaurant discovery app based on ordinal preferences rather than ratings. A user identifies places they have visited, compares them in a low-effort pairwise flow, and receives recommendations inferred from shared latent preference patterns learned across connected community rankings.
 
 The first release should prove two assumptions:
 
@@ -95,6 +95,7 @@ Finalize names and constraints with small algorithm prototypes before generating
 - `ranking_item`: list, place, computed ordinal position or tier, insertion time, and optional removal time. Unique `(list_id, place_id)`.
 - `ranking_session`: list/revision, algorithm state, status, estimated/actual comparison count, and timestamps. Store state in a versioned representation that can be migrated or replayed.
 - `comparison`: session, left place, right place, outcome (`left`, `right`, `tie`, `skip`), sequence, response time, superseded/undone marker, and timestamp. Enforce that both places belong to the list and differ.
+- `recommendation_model`: category, recommendation-engine version, model family, hyperparameters/factor dimension, training-data cutoff, artifact identity/location, validation metrics, status, and timestamps. Restaurant and hotel artifacts are always separate.
 - `recommendation_snapshot` (optional initially): user/category, locality filter parameters, recommendation-engine version, source ranking revision, generated time, candidate place, predicted position, visited state, and internal explanation metadata. Start with on-demand results unless measurement shows snapshots are needed.
 - Better Auth tables remain the identity source. Add application profile/preferences only when a field is not auth-owned.
 
@@ -112,7 +113,7 @@ Use UUIDs or generated text IDs consistently, UTC timestamps, explicit foreign-k
 These are separate concepts and must remain separate in the product language, domain services, code modules, versioning, tests, and analytics:
 
 - **Personal ranking UX:** an interactive elicitation process that helps one authenticated user build and maintain a global ranked list of places they have visited for each category. It asks pairwise questions within one category and records direct preference evidence. It does not recommend places.
-- **Recommendation system:** a non-interactive collaborative algorithm that consumes completed/reliable category-specific personal lists from many users and predicts an ordered list for the current user. It may rank both visited and not-yet-visited places and apply locality as a result filter. It never changes the user's explicit personal ranking.
+- **Recommendation system:** a non-interactive collaborative algorithm that consumes the active, non-contradictory preference evidence from category-specific personal lists and predicts an ordered list for the current user. It may rank both visited and not-yet-visited places and apply locality as a result filter. Unresolved relations are omitted, while the resolved portions of a partial list may still contribute. It never changes the user's explicit personal ranking.
 
 Use distinct names such as `rankingEngineVersion` and `recommendationEngineVersion`; changing either system must not silently reinterpret the other.
 
@@ -152,6 +153,8 @@ Measure number of questions, worst-case behavior, stability, reproducibility, ab
 
 Each completed category list is the authoritative record of the user's stated overall preference among visited places in that category. A locality-filtered view displays recalculated ordinal labels for the filtered subset, clearly identified as filtered positions; filtering never changes the underlying global position, tier, or ranking evidence.
 
+The persisted ranking output must distinguish three relations: strict order, explicit equivalence, and unresolved/incomparable. Preserve the logical pair independently from randomized left/right card presentation, record why the comparison was requested, and retain supersession provenance. The ranking engine should continue optimizing for a fast and accurate personal list; it must not add questions solely to train recommendations in the MVP. When a skip blocks one path, try a useful alternative pivot before leaving an unresolved relation, without repeatedly pressuring the user to answer the skipped pair.
+
 ## Recommendation system
 
 The recommendation system consumes user lists. Its output is a predicted global preference order for the current user, optionally filtered by locality.
@@ -161,9 +164,44 @@ Candidate results include both:
 - **not-yet-visited places in the selected category**, which are the main discovery/recommendation use case;
 - **visited places in that category**, which provide context, allow the predicted order to be evaluated against the user's actual order, and help explain where new places might fit.
 
-For the first baseline, compare understandable collaborative methods offline — for example rank correlation over common places within the same category followed by confidence-weighted rank aggregation — against popularity and random baselines. Determine how ties contribute to similarity without arbitrarily converting them into strict wins.
+### Selected model: low-rank personalized Plackett–Luce
 
-Locality filtering should be applied consistently. Prototype both candidate filtering before aggregation and result filtering after a global prediction, because sparse overlap may make a locality-only model unusable. Record the chosen behavior in the recommendation contract.
+Use a separate regularized low-rank personalized generalized Plackett–Luce model for each category, with Davidson–Luce tie handling. For user `u` and place `i`, the latent utility is:
+
+`utility(u, i) = globalPlaceBias(i) + userFactors(u) · placeFactors(i)`
+
+The model learns shared place factors and a global place prior from all eligible users, then infers the current user's small factor vector from their own ranking. It orders candidates by their inferred utility. This directly solves collaborative preference completion: it predicts how a user would order places they have not visited without treating unvisited places as dislikes or producing a public rating.
+
+Use the latest active ranking revision as the canonical source, not an append-only bag of historical comparisons:
+
+- A resolved ordered sequence of tiers is one listwise training observation. The listwise likelihood uses the whole relative order jointly rather than pretending every transitive pair is an independent answer.
+- Explicit tied tiers enter through the tie likelihood. A tie is evidence of equivalence, not half a win and not missing data.
+- For a partial ranking graph, add each active non-redundant strict or explicit-tie relation that is not already represented by a resolved listwise segment as a two-item observation under the same model family. Skip and unresolved relations contribute no outcome.
+- Superseded answers, temporarily excluded contradictory evidence, deleted items, and previous list revisions do not train the current model. Do not count the direct comparisons again after their completed tier list has already represented them.
+- Generate a versioned pairwise/rank-broken dataset or database view for diagnostics, reproducible exports, and a pairwise challenger model; do not make an `O(n²)` binary-comparison table the authoritative store or allow derived transitive pairs to inflate confidence.
+- Normalize contribution by user/list revision so a long list supplies more information but does not dominate quadratically merely because more pairs can be derived from it.
+
+Train category-wide place factors and biases periodically. At request time or after a ranking revision, hold those parameters fixed and compute a fast regularized maximum-a-posteriori estimate of the user's factors. Record the model version and ranking revision used. Estimate local uncertainty from the user-factor objective and combine it with item support counts for internal eligibility and calibration; never display it as a consumer rating.
+
+This is the proposed production family because the input is genuinely ranked-list data. Listwise low-rank collaborative ranking can handle ties and missing observations while avoiding the false independence assumption of naive all-pairs expansion. The Phase 1 experiment must still compare it against a regularized low-rank pairwise Bradley–Terry preference-completion model, common-place nearest-neighbor rank aggregation, and smoothed global/random baselines. Ship the proposed model only after it wins the predefined held-out ranking metrics or document an evidence-based replacement in an ADR. Relevant foundations include [SQL-Rank](https://proceedings.mlr.press/v80/wu18c.html), [Preference Completion](https://proceedings.mlr.press/v37/park15.html), and the [generalized Plackett–Luce treatment of partial rankings and ties](https://link.springer.com/article/10.1007/s00180-020-00959-3).
+
+### Eligibility, cold start, and locality
+
+This model does not select recommendation “neighbors,” so no common-place count gates another individual user's contribution. Any category list with at least one active non-skip strict or explicit-tie relation may contribute to training, subject to per-list normalization and regularization. Restaurants and hotels never share observations, factors, thresholds, or evaluation results.
+
+For serving personalized results, use a provisional MVP gate of at least five ranked places across at least three resolved tiers, including at least four places with supported model factors. Initially define a supported place as present in three or more independent eligible lists and connected to the category comparison graph. Tune these numbers independently per category in offline validation; enable the “personalized” label only for evidence buckets whose held-out pairwise accuracy reliably improves on the smoothed global prior. The personal list remains usable from two places regardless of recommendation eligibility.
+
+When the user is below the gate or overlap is sparse, rank supported candidates by the model's regularized global place bias and label the result clearly as community-based/non-personalized. If even that evidence is insufficient, show an honest ranking-more/discovery state rather than manufacture preference from catalogue absence. Unsupported places remain searchable and addable as visited, but are not presented as confident recommendations.
+
+Compute the category-wide candidate utilities first and apply locality to the resulting global order. Locality never trains a separate model or changes scores. If too few supported results match, show the shorter list and an explicit “expand area” action; never silently mix broader results into the active filter. If the user expands it, label the new geographic scope.
+
+### Offline and live evaluation
+
+For offline evaluation, split whole visited places or contiguous tier groups from each test user's ranking before generating any pairwise view. Fit the user's factors only from the remaining ranking and predict the held-out places. Never hold out a derived pair while leaving a transitive path to the same answer in training.
+
+Report pairwise accuracy, tie-aware Kendall's `tau-b`, NDCG/top-tier retrieval, coverage, novelty, calibration by evidence bucket, and performance relative to the smoothed global prior. Split train/test by category and include temporal and geographic slices. A held-out visited place is only a proxy for an unseen recommendation; it must not be described as proof that the user would visit an actually unseen place. After launch, use later “already visited” additions and their eventual personal rank as the delayed live relevance signal.
+
+Run evaluation inside the controlled data boundary, retain only the minimum derived data required, and publish/log aggregated metrics with minimum cohort sizes rather than raw private rankings or user-level examples.
 
 The output contract should include category, place, predicted order, visited state, confidence/eligibility metadata, and privacy-safe explanation data. Similarity or confidence values are internal signals, not consumer ratings. Recommendation versions and source ranking revisions must be recorded so results can be invalidated and evaluated independently of the ranking UX.
 
@@ -186,8 +224,10 @@ The output contract should include category, place, predicted order, visited sta
 - Build pure personal-ranking prototypes and property-based or exhaustive small-list tests. Test 2, 3, 10, 25, and larger lists; balanced, already ordered, reverse ordered, tied, skipped, and contradictory inputs; undo and resume.
 - Validate the decided behavior for explicit equivalence tiers, skip, binary insertion, cycles, contradictions, and edits without reference to recommendation scoring, including repair after later evidence conflicts with an explicit tie.
 - Do not implement a list-size cap or large-bucket splitting in the MVP; use spike measurements to record when either might become necessary.
-- Separately build an offline collaborative recommendation experiment with synthetic global restaurant lists, then validate the same contracts with hotel fixtures before beta. Include visited and unseen candidates and locality-filtered evaluation.
-- Measure recommendation precision/hit rate at K, rank agreement on held-out visited places, catalogue coverage, novelty, cold-start behavior, and performance at different overlap thresholds per category.
+- Build the category-specific low-rank generalized Plackett–Luce prototype with explicit tie support, regularized user/place factors, global place bias, fast per-user factor fitting, and a reproducible derivation from active ranking revisions.
+- Benchmark it against low-rank pairwise Bradley–Terry preference completion, common-place nearest-neighbor rank aggregation, and smoothed global/random baselines. Tune rank, regularization, tie propensity, supported-item rules, and eligibility buckets without sharing parameters across categories.
+- Split held-out places or tier groups before deriving training observations. Measure pairwise accuracy, tie-aware Kendall's `tau-b`, NDCG/top-tier retrieval, coverage, novelty, calibration, cold-start behavior, and improvement over the global prior. Use synthetic restaurant lists first, then hotel fixtures, and repeat the evaluation on appropriately consented real beta data before treating synthetic results as launch evidence.
+- Validate the provisional serving gate of five ranked places, three resolved tiers, and four supported place factors separately for restaurants and hotels; change it when held-out evidence supports a better threshold.
 - Verify if the proposed tied-tier insertion policy minimize questions without causing too many local repairs, and are the proposed `max(5 tiers, 25% of the list)` fallback threshold and second-member tie confirmation appropriate?
 - Document each selected algorithm, limitation, version, and recomputation strategy independently.
 
@@ -234,9 +274,11 @@ The output contract should include category, place, predicted order, visited sta
 
 - Start/resume a server-owned ranking session and request one comparison at a time.
 - Show two balanced place cards with photo fallback, name, area, and category-relevant metadata—never ratings.
+- Randomize left/right presentation independently of the logical comparison and persist the logical pair plus request reason so presentation bias does not become training evidence.
 - Support card tap/click, explicit buttons, keyboard controls, tie, “skip / cannot compare,” and undo. Treat swipes as progressive enhancement, not the only input.
 - A skipped comparison leaves both places in the list, records no preference edge, and allows the engine to continue or finish with a partial order when strict placement cannot be inferred.
 - When skipped comparisons leave insufficient evidence for a total order, render the affected places as an unresolved tier. Preserve resumable state so targeted comparisons can be added later without blocking the initial MVP flow.
+- After a skip, try a useful alternative comparison when it can narrow placement; do not repeat or replace the skipped outcome with inferred evidence merely to help recommendations.
 - Save each response idempotently before advancing; handle double taps, stale revisions, multiple tabs, offline/interrupted requests, and session expiry.
 - Add reduced-motion-safe transitions, selection feedback, and an honest progress estimate.
 - Use occasional partial-ranking feedback only if it does not reveal unstable or misleading positions.
@@ -259,16 +301,16 @@ The output contract should include category, place, predicted order, visited sta
 
 ### Phase 7 — Personalized recommendations
 
-- Consume completed/reliable personal lists through a dedicated recommendation service; never mutate explicit personal rankings.
-- Aggregate both visited and not-yet-visited candidates, filter inactive/ineligible entries, and return a predicted order with each result's visited state.
+- Build versioned restaurant model artifacts from current active ranking revisions. Consume resolved evidence from complete or partial lists, exclude skips/unresolved/superseded/contradictory evidence, and never mutate explicit personal rankings.
+- Fit the current user's regularized factors from their latest ranking while keeping the trained place factors fixed; return visited and not-yet-visited candidates ordered by latent utility with internal support/eligibility metadata.
 - Make the full predicted order the default view and display visited status clearly; do not default to an unseen-only discovery feed.
-- Add locality as a user-controlled result filter and validate its interaction with sparse data.
-- Implement cold-start states: ask the user to rank more visited restaurants, broaden/remove locality filtering, or show a clearly labelled non-personalized discovery fallback. Generalize the copy by category when hotels are added.
+- Apply locality after the global order is scored. When filtered support is sparse, return fewer results and offer an explicit scope expansion rather than silently inserting broader candidates.
+- Enforce the validation-calibrated personalization gate. Below it, use the regularized global place prior with a clear community-based/non-personalized label, ask the user to rank more visited restaurants, or show an honest insufficient-evidence state. Generalize the copy by category when hotels are added.
 - Clearly distinguish predicted recommendation positions from personal ranking positions. Present concise recommendation reasoning and a path to mark “already visited,” feeding that place into the ranking UX for its category.
 - Cache or snapshot only after measuring latency; version results and invalidate on relevant ranking/catalogue changes.
-- Evaluate recommendation quality with synthetic fixtures before launch and behavioral metrics after consented use.
+- Evaluate recommendation quality with leakage-safe held-out fixtures and appropriately consented real beta data before launch; after launch, measure delayed agreement when recommended places are later added and ranked.
 
-**Exit:** users with adequate overlap receive an explainable predicted order of visited and unseen restaurants, filterable by locality without altering their global restaurant list; all other users see an honest useful next step.
+**Exit:** users who pass the calibrated evidence gate receive an explainable predicted order of visited and unseen restaurants, filterable by locality without altering their global restaurant list; all other users see an honest useful next step.
 
 ### Phase 8 — Add hotels before beta
 
@@ -276,7 +318,7 @@ The output contract should include category, place, predicted order, visited sta
 - Add hotel-specific catalogue metadata, search filters, empty states, card fallbacks, and localized overall-preference copy without branching the shared ranking components unnecessarily.
 - Enable one separate global hotel list per user and enforce that comparisons and recommendations never cross categories.
 - Exercise the existing ranking engine against hotel fixtures and behavior; introduce category-specific policy only where product evidence requires it.
-- Validate the recommendation engine independently for hotels, including overlap thresholds, cold starts, locality filtering, and visited/unseen result labeling.
+- Validate the recommendation engine independently for hotels, including evidence/support thresholds, cold starts, locality filtering, and visited/unseen result labeling.
 - Add restaurant-and-hotel integration, component, algorithm, and end-to-end coverage.
 - Run an Italian hotel catalogue/licensing quality review and targeted usability sessions before declaring beta readiness.
 
@@ -294,13 +336,19 @@ The output contract should include category, place, predicted order, visited sta
 
 **Exit:** operable production release with defined rollback, support, privacy, and measurement procedures.
 
+### Future — patron-confirmed review trust
+
+Do not implement malicious/coordinated-ranking detection or public reputation scores in the MVP. When written reviews are reconsidered after the core loop is validated, prototype a positive trust signal in which independent patrons can confirm that another client's review is fair, honest, and useful. Require multiple independent confirmations before they affect trust so coordinated manipulation is materially harder; confirmations must never alter the reviewer's private personal ranking.
+
+Design this as encouragement for kind, factual reviewing rather than as a public blame or downvote mechanism. Before implementation, define what makes a patron eligible to confirm, how visit/account independence is established, caps and conflict-of-interest rules, privacy and appeal behavior, and how confirmations may cautiously weight future recommendation evidence.
+
 ## Testing strategy
 
 - **Pure unit tests:** ranking state machine, progress bounds, ties, contradictions, undo, serialization/version migration, recommendation scoring, and permission helpers.
 - **Database integration tests:** constraints, transactions, idempotency, list ownership, concurrent revisions, seed imports, and recommendation queries against isolated PostgreSQL.
 - **Component tests:** place cards, bucket, comparison controls, focus management, localization, reduced motion, and all loading/error/empty states.
 - **End-to-end tests:** authentication/disclosure; create/resume a draft; complete a 2-place and larger ranking; tie/skip/undo; refresh mid-session; concurrent-tab conflict; insert/remove a place; view the full predicted order with visited status and locality filtering; receive or fail gracefully to receive recommendations; delete data.
-- **Algorithm tests:** exhaustive permutations for small lists and generated noisy/tied rankings for larger lists, with invariants rather than only example outputs.
+- **Algorithm tests:** exhaustive permutations for small lists and generated noisy/tied/partial rankings for larger lists; listwise likelihood and gradient checks; deterministic pairwise-view derivation; no double counting across revisions; skip/unresolved exclusion; tie handling; per-list normalization; cold-start shrinkage; locality-invariant scores; held-out split leakage checks; and reproducible benchmark metrics.
 - **Non-functional tests:** mobile performance on a throttled connection, catalogue/recommendation query plans, basic load tests, and automated accessibility checks backed by manual review.
 
 Use deterministic seeds and clocks where possible. Do not make routine tests depend on a live external place API.
@@ -338,13 +386,13 @@ Replace with ANSWERED when the question is answered and decisions are documented
 
 ### Recommendation-system questions
 
-8. What minimum common-place count and confidence are required before another user contributes as a recommendation neighbor, and should thresholds differ by category?
-9. Which similarity and rank-aggregation method wins the offline prototype, and what is the fallback when overlap is sparse?
-10. Should locality filter candidates before aggregation or filter a globally predicted order afterward, and how should the UI explain broader fallback results?
-11. How should equivalence tiers and skipped comparisons contribute to similarity and aggregation without inventing strict preferences?
-12. How will malicious or coordinated rankings be detected without recreating a public/global reputation score?
-13. How should held-out visited places be used to evaluate predicted order without leaking private rankings or confusing offline evaluation with live recommendations?
-14. What evidence threshold enables personalized recommendations, independently for restaurants and hotels, while the personal ranking remains available from two places?
+8. ANSWERED — the low-rank model has no individual neighbors or common-place gate. Any list with an active non-skip strict or tie relation may contribute with normalized weight; serving confidence and thresholds are calibrated independently per category.
+9. ANSWERED — use category-specific regularized low-rank generalized Plackett–Luce with Davidson–Luce ties, subject to the Phase 1 benchmark gate. Fall back to its smoothed global place prior with a non-personalized label, then to an honest insufficient-evidence state.
+10. ANSWERED — score the global category order first and filter it by locality afterward. Show fewer results when support is sparse and require an explicit, clearly labelled action to expand the area.
+11. ANSWERED — resolved tier lists enter listwise, explicit ties enter the tie likelihood, and active non-redundant relations from partial graphs enter as two-item observations. Skips and unresolved relations contribute nothing; derived transitive pairs never count as independent evidence.
+12. ANSWERED FOR MVP — do not implement malicious/coordinated-ranking detection yet. After reviews are introduced, research multiple independent patron confirmations of a client's fair and honest review as a future positive trust signal, without creating a public reputation score.
+13. ANSWERED — hold out whole places or tier groups before any pairwise derivation, fit the user from what remains, and report aggregate tie-aware ranking metrics inside the controlled data boundary. Treat held-out visited places only as an offline proxy and later ranked visits as the live signal.
+14. ANSWERED — provisionally require five ranked places across three resolved tiers, including four supported place factors; initially, support means presence in at least three independent eligible lists and connection to the category graph. Validate and tune separately for restaurants and hotels. Personal ranking still starts at two places.
 
 ### Product and operations
 
