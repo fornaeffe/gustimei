@@ -42,7 +42,7 @@ Success therefore depends more on ranking completion, data quality, and recommen
 3. **Ranking scope:** each user has one global list per category. Locality is metadata used to search, filter, and display subsets; it is not part of list identity.
 4. **Comparison meaning:** overall preference. Keep the prompt stable within each category and localized, for example “Overall, which restaurant did you prefer?” and “Overall, which hotel did you prefer?”
 5. **Ties:** support explicit equivalence tiers. “Tie” means equal overall preference and may result in the same displayed position. Keep “skip / cannot compare” separate because it supplies no preference evidence. The ranking-engine spike must validate how tiers interact with insertion and contradictory answers.
-6. **Identity:** users must register or sign in before they can add or rank visited places. There is no anonymous draft-to-account handoff in the MVP.
+6. **Identity:** users must register or sign in before they can add or rank visited places. There is no anonymous draft-to-account handoff in the MVP. Email/password is sufficient during local development. For beta, require email verification before an email/password account can sign in and provide a link-based password-reset flow. Add social login, with Sign in with Google as the minimum provider, as one of the final beta-release steps while retaining email/password as a supported method.
 7. **Privacy and participation:** personal rankings are private in the UI but their preference data is always used, without public identity, to calculate recommendations for the community. There is no per-user opt-out because reciprocal preference sharing is part of the service itself. This must be stated clearly before registration and reflected in the privacy policy, terms, deletion behavior, and analytics design.
 8. **Starting geography:** Italy. Import and search Italian restaurants first, then Italian hotels before beta. Locality remains an optional filter over each global category list and predicted order.
 9. **Coverage threshold:** keep initial OSM coverage audits intentionally loose. Exclude or quarantine only records or systemic gaps that would clearly break the product, create unusable identities, or deeply bias ranking/recommendation behavior. Record limitations rather than blocking development on catalogue completeness.
@@ -252,7 +252,12 @@ The output contract should include category, place, predicted order, visited sta
 - Define semantic color, spacing, typography, focus, motion, and card tokens with light/dark behavior.
 - Create reusable shell, button, form, place card, empty/error state, progress, and dialog components; use Bits UI only where it improves accessible behavior.
 - Turn the Better Auth demo into product routes with validation, localized errors, safe redirects, rate-limit strategy, and session-aware navigation.
-- Decide and implement email verification and password reset before public launch.
+- Use email/password as the local-development authentication path. Keep provider-neutral account/session boundaries so late social-login integration does not require product-route changes.
+- Introduce one application-owned transactional-email interface used by Better Auth callbacks. In local development, use a console/in-memory surrogate that records the recipient, purpose, and complete verification/reset URL for manual testing; it must be impossible to enable this transport in preview, beta, or production. Automated tests should inspect the in-memory outbox rather than scrape console output.
+- Implement link-based email verification according to Better Auth's [email verification documentation](https://better-auth.com/docs/concepts/email), using `emailVerification.sendVerificationEmail`, `sendOnSignUp: true`, `sendOnSignIn: true`, `autoSignInAfterVerification: true`, and a one-hour `expiresIn`. Configure `emailAndPassword.requireEmailVerification: true` in every environment so email/password users receive no authenticated session before proving address ownership; local development exercises the flow through the surrogate transport.
+- Add localized “check your email,” verification success/failure/expired-link, and explicit resend states. Use generic sign-up responses for existing addresses as provided by Better Auth when verification is required; do not reveal account existence.
+- Implement “forgot password” and reset-password routes using Better Auth's documented [`sendResetPassword`, `requestPasswordReset`, and `resetPassword` flow](https://better-auth.com/docs/authentication/email-password). Use a one-hour `resetPasswordTokenExpiresIn`, always show the same request confirmation regardless of whether the account exists, and set `revokeSessionsOnPasswordReset: true`.
+- Keep verification and reset delivery callbacks non-blocking as recommended by Better Auth, while using the deployment platform's durable background-work mechanism where required so messages are not dropped. Never put tokens or full action URLs in analytics or ordinary production logs.
 - Build the landing page around the no-ratings value proposition and a single clear call to action; show the approved preference-sharing disclosure before registration.
 - Expand Paraglide messages for every product string; add checks that Italian and English catalogues stay aligned.
 
@@ -327,6 +332,9 @@ The output contract should include category, place, predicted order, visited sta
 ### Phase 9 — Hardening and beta release
 
 - Threat-model authentication, authorization/IDOR, catalogue ingestion, comparison writes, rate limiting, CSRF, XSS, and abuse paths.
+- Near the end of beta hardening, add social login with Sign in with Google as the minimum provider. Configure separate development/preview/production OAuth clients and exact redirect origins; request only the minimum scopes needed for authentication.
+- Link a social identity to an existing account only through Better Auth's verified, explicit account-linking rules. Test duplicate-email, provider-email changes, revoked consent, cancelled callbacks, state/PKCE and redirect validation, existing sessions, account deletion, and recovery so Google login cannot create duplicate profiles or orphan rankings.
+- Retain email/password alongside Google login unless a later product decision explicitly removes it. Replace the local email surrogate with the transactional provider selected under question 18, verify domain/authentication and deliverability configuration, and run end-to-end delivery checks before inviting beta users.
 - Add database backup/restore, migration rollout/rollback, observability, structured redacted logging, error reporting, and health checks.
 - Complete accessibility testing for keyboard, screen reader, contrast, touch targets, zoom, reduced motion, and both locales.
 - Add privacy policy, terms/provider attribution, consent/retention rules, data export if required, and account/data deletion.
@@ -345,9 +353,9 @@ Design this as encouragement for kind, factual reviewing rather than as a public
 ## Testing strategy
 
 - **Pure unit tests:** ranking state machine, progress bounds, ties, contradictions, undo, serialization/version migration, recommendation scoring, and permission helpers.
-- **Database integration tests:** constraints, transactions, idempotency, list ownership, concurrent revisions, seed imports, and recommendation queries against isolated PostgreSQL.
+- **Database integration tests:** constraints, transactions, idempotency, list ownership, concurrent revisions, seed imports, verification/reset token expiry and single use, session revocation after password reset, and recommendation queries against isolated PostgreSQL.
 - **Component tests:** place cards, bucket, comparison controls, focus management, localization, reduced motion, and all loading/error/empty states.
-- **End-to-end tests:** authentication/disclosure; create/resume a draft; complete a 2-place and larger ranking; tie/skip/undo; refresh mid-session; concurrent-tab conflict; insert/remove a place; view the full predicted order with visited status and locality filtering; receive or fail gracefully to receive recommendations; delete data.
+- **End-to-end tests:** authentication/disclosure; blocked sign-in before email verification; verification resend/success/expired link; generic duplicate-sign-up and password-reset responses; password-reset success/invalid or reused token/session revocation; Google sign-in and account linking before beta; create/resume a draft; complete a 2-place and larger ranking; tie/skip/undo; refresh mid-session; concurrent-tab conflict; insert/remove a place; view the full predicted order with visited status and locality filtering; receive or fail gracefully to receive recommendations; delete data.
 - **Algorithm tests:** exhaustive permutations for small lists and generated noisy/tied/partial rankings for larger lists; listwise likelihood and gradient checks; deterministic pairwise-view derivation; no double counting across revisions; skip/unresolved exclusion; tie handling; per-list normalization; cold-start shrinkage; locality-invariant scores; held-out split leakage checks; and reproducible benchmark metrics.
 - **Non-functional tests:** mobile performance on a throttled connection, catalogue/recommendation query plans, basic load tests, and automated accessibility checks backed by manual review.
 
@@ -396,10 +404,10 @@ Replace with ANSWERED when the question is answered and decisions are documented
 
 ### Product and operations
 
-15. Is email/password enough for beta, or are passkeys/social providers needed? Are verification and password reset required before invite-only testing?
+15. ANSWERED — email/password is sufficient for local development. For beta, require link-based email verification before email/password sign-in, auto-sign in after successful verification, and offer link-based password reset that revokes existing sessions; verification and reset links expire after one hour. Add Sign in with Google near the end of beta hardening. Passkeys and additional social providers are deferred.
 16. What is the launch definition of a recommendation conversion: open, save, directions, booking click, or later addition as visited?
 17. Which category-appropriate non-photo card designs give users enough identity/context when OSM has no safely usable restaurant or hotel image?
-18. Which deployment, managed PostgreSQL, OSM import/update, analytics, error-reporting, and email services will be used, with what regional/data-processing constraints?
+18. Which deployment, managed PostgreSQL, OSM import/update, analytics, error-reporting, and transactional email services will be used, with what regional/data-processing constraints? Local development uses the provider-neutral console/in-memory email surrogate; the preview/beta/production email provider remains to be selected here.
 19. What data export, retention, deletion, age restriction, and consent requirements apply? In particular, when an account is deleted, which comparison data must be erased rather than irreversibly anonymized and retained?
 20. Who can correct, merge, hide, or remove bad OSM-derived catalogue records locally, how are upstream corrections handled, and what audit trail is needed?
 21. Is public sharing of a completed list ever compatible with “private by default,” or should it remain explicitly deferred beyond the MVP?
