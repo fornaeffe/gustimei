@@ -521,39 +521,3 @@ Initial funnel:
 
 Set numeric beta targets after the research defined outside this plan establishes realistic baselines.
 
-## Open questions
-
-Replace with ANSWERED when the question is answered and decisions are documented elsewere in this plan.
-
-### Personal ranking UX and ranking-engine questions
-
-1. ANSWERED — later contradictory transitive evidence prompts targeted repair under the tied-tier insertion policy; it never splits an explicit tie silently.
-2. ANSWERED
-3. ANSWERED — ask a clarifying comparison; until it is completed, retain the newest answer and temporarily omit the oldest conflicting evidence from the active order.
-4. ANSWERED — personal rankings do not decay over time. Contradictions trigger focused reranking of the involved places, with the oldest conflicting evidence temporarily omitted until the user resolves them.
-5. ANSWERED — do not implement a list-size cap or large-bucket splitting in the MVP; measure and reconsider later if needed.
-6. ANSWERED — show clearly labelled filtered ordinal positions while preserving the underlying global order and tiers.
-7. ANSWERED — show an unresolved tier. Preserve the state so a later iteration can ask targeted comparisons.
-
-### Recommendation-system questions
-
-8. ANSWERED — the low-rank model has no individual neighbors or common-place gate. Any list with an active non-skip strict or tie relation may contribute with normalized weight; serving confidence and thresholds are calibrated independently per category.
-9. ANSWERED — use category-specific regularized low-rank generalized Plackett–Luce with Davidson–Luce ties, subject to the Phase 1 benchmark gate. Fall back to its smoothed global place prior with a non-personalized label, then to an honest insufficient-evidence state.
-10. ANSWERED — score the global category order first and filter it by locality afterward. Show fewer results when support is sparse and require an explicit, clearly labelled action to expand the area.
-11. ANSWERED — resolved tier lists enter listwise, explicit ties enter the tie likelihood, and active non-redundant relations from partial graphs enter as two-item observations. Skips and unresolved relations contribute nothing; derived transitive pairs never count as independent evidence.
-12. ANSWERED FOR MVP — do not implement malicious/coordinated-ranking detection yet. After reviews are introduced, research multiple independent patron confirmations of a client's fair and honest review as a future positive trust signal, without creating a public reputation score.
-13. ANSWERED — hold out whole places or tier groups before any pairwise derivation, fit the user from what remains, and report aggregate tie-aware ranking metrics inside the controlled data boundary. Treat held-out visited places only as an offline proxy and later ranked visits as the live signal.
-14. ANSWERED — provisionally require five ranked places across three resolved tiers, including four supported place factors; initially, support means presence in at least three independent eligible lists and connection to the category graph. Validate and tune separately for restaurants and hotels. Personal ranking still starts at two places.
-
-### Product and operations
-
-15. ANSWERED — email/password is sufficient for local development. For beta, require link-based email verification before email/password sign-in, auto-sign in after successful verification, and offer link-based password reset that revokes existing sessions; verification and reset links expire after one hour. Add Sign in with Google near the end of beta hardening. Passkeys and additional social providers are deferred. MVP email remains transactional and contains no marketing content.
-16. ANSWERED — the primary launch conversion is later addition of an exposed, previously unvisited recommendation as visited, within a 90-day attribution window and deduplicated per user/category/place. Open, save, directions, and booking clicks remain secondary intent events; later ranking placement is a separate quality signal.
-17. ANSWERED — use a shared category-themed fallback panel built with `@lucide/svelte`: `UtensilsCrossed` for restaurants and `Hotel` for hotels, accompanied by the visible place name, category, and locality. Preserve the media aspect ratio, avoid generic stock imagery and unsupported metadata, and add no second icon library for the MVP because Lucide covers the required cases.
-18. ANSWERED PROVISIONALLY — the current beta target is Koyeb Node hosting in Frankfurt, Neon PostgreSQL in Frankfurt, an application-owned OSM TypeScript importer run manually and then through validated GitHub Actions updates, first-party server-side allowlisted analytics in PostgreSQL, Sentry EU/Germany for scrubbed error reporting, and Brevo's REST API for transactional email. The MVP has no cross-site/third-party analytics or marketing email. Keep the application email, catalogue-ingestion, analytics, and observability boundaries provider-neutral. Make the final vendor decision only after local/import and deployed end-to-end tests verify catalogue/index size, Better Auth performance, database cost/activity, backups/restores, email delivery, reliability, and the documented EU/DPA/subprocessor constraints within the beta budget.
-19. ANSWERED PROVISIONALLY — make the MVP 18+; use purpose-specific contract/legitimate-interest bases subject to documented necessity and balancing rather than bundled consent; provide self-service JSON/CSV export and manual rights handling; enforce the stated retention schedule; and erase account- or category-linked comparisons, rankings, exposures, user factors, and analytics from live systems within 30 days. Exclude deleted evidence and rebuild affected model artifacts within that window, expire it from rolling backups, and retain derived statistics only if genuinely anonymous. Complete a DPIA and obtain Italian legal review before public deployment.
-20. ANSWERED — authenticated users may submit private structured issue reports but cannot edit catalogue data. A least-privilege curator may apply reviewed field overrides and quarantine records; an administrator may additionally approve reversible canonical merges and exceptional removals. Keep immutable OSM source provenance plus a local effective overlay, never write to OSM automatically, link human upstream changesets, reconcile later imports without silently overriding local decisions, and append an actor/reason/evidence/before-after/source-revision/impact/reversal audit for every transition.
-21. ANSWERED — defer all public or link-based sharing of completed personal lists beyond the MVP. Lists remain private to their owner throughout MVP UI, APIs, authorization rules, exports, and search.
-22. ANSWERED OUTSIDE THIS PLAN — define and approve the beta cohort, recruitment, research method, scripts, consent, incentives, and interpretation in a separate research brief. This implementation plan requires the research to run before expansion but does not prescribe its design.
-23. ANSWERED PROVISIONALLY — use the revised layered Italian/English disclosure: rankings are private but processed pseudonymously for reciprocal automated recommendations; contribution is presented as an essential service feature rather than optional marketing consent; recommendations have no legal or similarly significant effects; and principal rights are stated. Require only the separate unchecked 18+/Terms declaration, link the Privacy Notice visibly without an “I consent” checkbox, and complete the full Article 13 notice and legal review before public deployment.
-
