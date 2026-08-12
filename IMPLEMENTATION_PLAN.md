@@ -55,6 +55,7 @@ Success therefore depends more on ranking completion, data quality, and recommen
 16. **Filtered personal-list positions:** when locality filters the personal list, display ordinal labels recalculated for the filtered results. Clearly identify them as filtered positions; the underlying global tiers and order remain unchanged.
 17. **Incomplete orders after skips:** when skips leave insufficient evidence for a total order, display the affected places as an unresolved tier. Preserve the missing evidence so a later iteration can request targeted comparisons.
 18. **Recommendation conversion:** the primary launch conversion is a previously unvisited place being added as visited after the user was shown it as a recommendation. Opens, saves, directions, and booking clicks are secondary intent signals, not conversions. Completing the place's later insertion into the personal ranking is a separate recommendation-quality signal.
+19. **Non-photo place cards:** use `@lucide/svelte` as the sole MVP icon library. Render a reusable, category-themed fallback panel with a Lucide category icon (`UtensilsCrossed` for restaurants and `Hotel` for hotels), the place name, category, and locality. Do not use generic stock photography or add another icon source unless a validated future category cannot be represented by Lucide.
 
 ### Proposed pre-registration wording
 
@@ -251,7 +252,10 @@ The output contract should include category, place, predicted order, visited sta
 ### Phase 3 — Product shell, authentication, and onboarding
 
 - Define semantic color, spacing, typography, focus, motion, and card tokens with light/dark behavior.
-- Create reusable shell, button, form, place card, empty/error state, progress, and dialog components; use Bits UI only where it improves accessible behavior.
+- Create reusable shell, button, form, place card, non-photo fallback, empty/error state, progress, and dialog components; use Bits UI only where it improves accessible behavior.
+- Install and use the official tree-shakable [`@lucide/svelte`](https://lucide.dev/guide/svelte) package for interface and category icons. Import icons statically by name so unused icons do not enter the bundle; centralize size, stroke, and semantic-color defaults in a small reusable icon wrapper or design tokens rather than restyling each use.
+- Make the non-photo fallback occupy the same aspect ratio and layout slot as real media so cards do not shift. Use restrained category-specific surfaces, a large decorative category icon, and visible place name/category/locality; do not generate fake place-specific imagery or imply unavailable cuisine, amenities, quality, or branding.
+- Treat fallback icons as decorative (`aria-hidden`) when adjacent text already communicates their meaning. Interactive icon-only controls require localized accessible names and tooltips where appropriate. Never rely on icon shape or color alone to distinguish category or state.
 - Turn the Better Auth demo into product routes with validation, localized errors, safe redirects, rate-limit strategy, and session-aware navigation.
 - Use email/password as the local-development authentication path. Keep provider-neutral account/session boundaries so late social-login integration does not require product-route changes.
 - Introduce one application-owned transactional-email interface used by Better Auth callbacks. In local development, use a console/in-memory surrogate that records the recipient, purpose, and complete verification/reset URL for manual testing; it must be impossible to enable this transport in preview, beta, or production. Automated tests should inspect the in-memory outbox rather than scrape console output.
@@ -279,7 +283,7 @@ The output contract should include category, place, predicted order, visited sta
 ### Phase 5 — Pairwise ranking experience
 
 - Start/resume a server-owned ranking session and request one comparison at a time.
-- Show two balanced place cards with photo fallback, name, area, and category-relevant metadata—never ratings.
+- Show two balanced place cards with the shared Lucide-based non-photo fallback when licensed media is absent or fails to load, plus name, area, and category-relevant metadata—never ratings.
 - Randomize left/right presentation independently of the logical comparison and persist the logical pair plus request reason so presentation bias does not become training evidence.
 - Support card tap/click, explicit buttons, keyboard controls, tie, “skip / cannot compare,” and undo. Treat swipes as progressive enhancement, not the only input.
 - A skipped comparison leaves both places in the list, records no preference edge, and allows the engine to continue or finish with a partial order when strict placement cannot be inferred.
@@ -322,7 +326,7 @@ The output contract should include category, place, predicted order, visited sta
 ### Phase 8 — Add hotels before beta
 
 - Extend the Italy OSM importer and loose coverage audit to `tourism=hotel`, preserving the same canonical place/provider contracts and blocking beta only for clearly breaking or deeply biasing issues.
-- Add hotel-specific catalogue metadata, search filters, empty states, card fallbacks, and localized overall-preference copy without branching the shared ranking components unnecessarily.
+- Add hotel-specific catalogue metadata, search filters, empty states, and the `Hotel` variant of the shared Lucide-based card fallback, plus localized overall-preference copy without branching the shared ranking components unnecessarily.
 - Enable one separate global hotel list per user and enforce that comparisons and recommendations never cross categories.
 - Exercise the existing ranking engine against hotel fixtures and behavior; introduce category-specific policy only where product evidence requires it.
 - Validate the recommendation engine independently for hotels, including evidence/support thresholds, cold starts, locality filtering, and visited/unseen result labeling.
@@ -356,7 +360,7 @@ Design this as encouragement for kind, factual reviewing rather than as a public
 
 - **Pure unit tests:** ranking state machine, progress bounds, ties, contradictions, undo, serialization/version migration, recommendation scoring, recommendation-exposure attribution/deduplication, and permission helpers.
 - **Database integration tests:** constraints, transactions, idempotency, list ownership, concurrent revisions, seed imports, verification/reset token expiry and single use, session revocation after password reset, and recommendation queries against isolated PostgreSQL.
-- **Component tests:** place cards, bucket, comparison controls, focus management, localization, reduced motion, and all loading/error/empty states.
+- **Component tests:** place cards with missing/broken media, restaurant/hotel fallback variants, decorative versus interactive icon accessibility, bucket, comparison controls, focus management, localization, reduced motion, and all loading/error/empty states.
 - **End-to-end tests:** authentication/disclosure; blocked sign-in before email verification; verification resend/success/expired link; generic duplicate-sign-up and password-reset responses; password-reset success/invalid or reused token/session revocation; Google sign-in and account linking before beta; create/resume a draft; complete a 2-place and larger ranking; tie/skip/undo; refresh mid-session; concurrent-tab conflict; insert/remove a place; view the full predicted order with visited status and locality filtering; receive or fail gracefully to receive recommendations; delete data.
 - **Algorithm tests:** exhaustive permutations for small lists and generated noisy/tied/partial rankings for larger lists; listwise likelihood and gradient checks; deterministic pairwise-view derivation; no double counting across revisions; skip/unresolved exclusion; tie handling; per-list normalization; cold-start shrinkage; locality-invariant scores; held-out split leakage checks; and reproducible benchmark metrics.
 - **Non-functional tests:** mobile performance on a throttled connection, catalogue/recommendation query plans, basic load tests, and automated accessibility checks backed by manual review.
@@ -410,7 +414,7 @@ Replace with ANSWERED when the question is answered and decisions are documented
 
 15. ANSWERED — email/password is sufficient for local development. For beta, require link-based email verification before email/password sign-in, auto-sign in after successful verification, and offer link-based password reset that revokes existing sessions; verification and reset links expire after one hour. Add Sign in with Google near the end of beta hardening. Passkeys and additional social providers are deferred.
 16. ANSWERED — the primary launch conversion is later addition of an exposed, previously unvisited recommendation as visited, within a 90-day attribution window and deduplicated per user/category/place. Open, save, directions, and booking clicks remain secondary intent events; later ranking placement is a separate quality signal.
-17. Which category-appropriate non-photo card designs give users enough identity/context when OSM has no safely usable restaurant or hotel image?
+17. ANSWERED — use a shared category-themed fallback panel built with `@lucide/svelte`: `UtensilsCrossed` for restaurants and `Hotel` for hotels, accompanied by the visible place name, category, and locality. Preserve the media aspect ratio, avoid generic stock imagery and unsupported metadata, and add no second icon library for the MVP because Lucide covers the required cases.
 18. Which deployment, managed PostgreSQL, OSM import/update, analytics, error-reporting, and transactional email services will be used, with what regional/data-processing constraints? Local development uses the provider-neutral console/in-memory email surrogate; the preview/beta/production email provider remains to be selected here.
 19. What data export, retention, deletion, age restriction, and consent requirements apply? In particular, when an account is deleted, which comparison data must be erased rather than irreversibly anonymized and retained?
 20. Who can correct, merge, hide, or remove bad OSM-derived catalogue records locally, how are upstream corrections handled, and what audit trail is needed?
