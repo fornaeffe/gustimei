@@ -117,6 +117,18 @@ The ranking UX begins only after login. Initially, the user searches the Italian
 
 The UX idea proposes assisted QuickSort for a new list and binary insertion for later additions. Binary insertion is a good fit when an existing strict order is trusted. Interactive QuickSort is a useful baseline, but it must not be adopted literally before validating equivalence tiers, inconsistent answers, pivot quality, interruption, and edits.
 
+### Proposed tied-tier insertion policy
+
+Treat a completed ranking as an ordered sequence of atomic equivalence tiers. To insert one new place, binary-search the tiers rather than individual places and compare the new place with a deterministic representative of the selected tier. A strict preference moves the search interval above or below the whole tier. A tie provisionally places the new item in that tier; for tiers with more than one existing item, confirm the merge against one additional deterministic member before completing it. If the second answer is strict, do not split the existing tier implicitly: open a local repair session covering that tier and its immediate boundaries.
+
+Use the following escalation policy:
+
+1. Complete ordinary binary insertion when the answers produce one unambiguous boundary or a confirmed tied-tier merge.
+2. If a skip, conflicting tie confirmation, or contradiction with an existing comparison prevents unique placement, ask targeted comparisons against the unresolved boundary tiers and then run a local repair over the smallest affected contiguous tier window.
+3. Fall back to a broader re-ranking session only when the list was already marked stale or inconsistent, the affected window grows beyond `max(5 tiers, 25% of the list)`, a preference cycle crosses the window boundary, multiple unranked additions are being placed together, or an edit invalidates comparisons outside the local window.
+
+Never guess a strict position after a skip and never silently dissolve an existing tie. If targeted repair still leaves insufficient evidence, persist the new item in an unresolved tier adjacent to the narrowed boundary, mark the list partial/stale for recommendation eligibility, and let the user resume later. The thresholds and the need for a second tie confirmation must be validated in the Phase 1 spike and stored as versioned ranking-engine policy.
+
 Implement the ranking engine as a pure, framework-independent TypeScript module that emits the next comparison and consumes an outcome. The Svelte UI and persistence layer should not know the sorting algorithm's internal details.
 
 Prototype and test at least these approaches against synthetic users:
@@ -166,6 +178,7 @@ The output contract should include category, place, predicted order, visited sta
 - Decide how explicit equivalence tiers, skip, binary insertion, cycles, and edits behave in the personal ranking without reference to recommendation scoring.
 - Separately build an offline collaborative recommendation experiment with synthetic global restaurant lists, then validate the same contracts with hotel fixtures before beta. Include visited and unseen candidates and locality-filtered evaluation.
 - Measure recommendation precision/hit rate at K, rank agreement on held-out visited places, catalogue coverage, novelty, cold-start behavior, and performance at different overlap thresholds per category.
+- Verify if the proposed tied-tier insertion policy minimize questions without causing too many local repairs, and are the proposed `max(5 tiers, 25% of the list)` fallback threshold and second-member tie confirmation appropriate?
 - Document each selected algorithm, limitation, version, and recomputation strategy independently.
 
 **Exit:** deterministic engine contracts and evidence for the initial ranking and recommendation approaches.
@@ -297,10 +310,12 @@ Set numeric beta targets after prototype usability sessions establish realistic 
 
 ## Open questions
 
+Replace with ANSWERED when the question is answered and decisions are documented elsewere in this plan.
+
 ### Personal ranking UX and ranking-engine questions
 
 1. Should an explicit tie be permanent until edited, or may later transitive evidence split an equivalence tier?
-2. How should binary insertion behave around tied tiers, and when must insertion fall back to a broader re-ranking session?
+2. ANSWERED
 3. How should preference cycles be resolved: ask a clarifying comparison, retain the newest answer, calculate a best-fit order, or flag the list for rebuild?
 4. When does a personal ranking become stale as tastes change, and should old comparisons decay over time?
 5. Should ranking sessions cap list size or split very large buckets into shorter resumable sessions?
