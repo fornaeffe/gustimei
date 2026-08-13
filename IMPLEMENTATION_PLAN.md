@@ -64,6 +64,7 @@ Success therefore depends more on ranking completion, data quality, and recommen
 23. **Catalogue governance:** ordinary users may submit structured catalogue issue reports but cannot modify catalogue records. Only a least-privilege catalogue curator or administrator can apply reversible local corrections, quarantine/hide records, or create canonical merge redirects. Preserve imported OSM facts separately from local overlays, audit every moderation action, never automatically write changes to OSM, and reconcile verified upstream changes on later imports.
 24. **Public list sharing:** defer public or link-based sharing of completed personal lists beyond the MVP. Rankings remain private to their owner in every MVP route, API, export authorization, and search surface.
 25. **Beta research definition:** define the beta cohort, recruitment, qualitative method, scripts, consent, incentives, and success interpretation in a separate research brief outside this implementation plan. This plan records only the product/engineering gates and the requirement to execute the approved research before expansion.
+26. **Ranking-list lifecycle:** do not store a single workflow `status` on `ranking_list`. The list is the durable per-user/per-category aggregate and may contain useful resolved evidence even while some places remain unplaced, skipped, or under repair. Persist immutable/versioned ranking revisions and explicit session/evidence facts; derive order coverage, pending repair, the next UX action, and recommendation eligibility independently. A list never becomes globally “stale” merely because one part needs attention.
 
 ### Proposed pre-registration disclosure
 
@@ -221,9 +222,10 @@ Finalize names and constraints with small algorithm prototypes before generating
 - `catalogue_change`: append-only actor/role/action, before/after diff, source/import revision, reason/evidence references, affected counts, linked issue/change/reversal, and timestamp.
 - `place_translation` or localized provider fields only if catalogue names/descriptions require them; do not translate proper names by default.
 - `place_media`: provider URL/reference, attribution, sort order, dimensions, and lifecycle metadata. Avoid copying remote images without explicit rights.
-- `ranking_list`: owner, category, status (`draft`, `ranking`, `complete`, `stale`), ranking-engine version, revision, and timestamps. Enforce one active global list per `(owner, category)`; locality does not belong to list identity.
-- `ranking_item`: list, place, computed ordinal position or tier, insertion time, and optional removal time. Unique `(list_id, place_id)`.
-- `ranking_session`: list/revision, algorithm state, status, estimated/actual comparison count, and timestamps. Store state in a versioned representation that can be migrated or replayed.
+- `ranking_list`: durable owner/category identity, nullable `current_revision_id`, and timestamps. It has no workflow status or ranking-engine version of its own. Enforce one global list per `(owner, category)`; locality does not belong to list identity. Deleting a category ranking erases this aggregate and its evidence rather than transitioning it to a hidden lifecycle state.
+- `ranking_item`: list, place, insertion time, and optional removal time. Unique `(list_id, place_id)`. Whether an active item is resolved, unresolved, or not yet placed comes from the current ranking revision rather than a second item-level workflow status.
+- `ranking_revision`: immutable/versioned output with a monotonic revision number within its list, including ordered equivalence tiers, unresolved/incomparable placement information, active evidence references, excluded/superseded evidence references with conflict/invalidation reasons, ranking-engine version, and timestamps. Publish a revision and advance `ranking_list.current_revision_id` transactionally; retain enough provenance to reproduce, audit, migrate, or recompute it. Derive repair requirements from these facts rather than storing another list lifecycle flag.
+- `ranking_session`: list, base revision, purpose (`initial_order`, `insertion`, `repair`, or `rebuild`), versioned algorithm state, lifecycle (`open`, `completed`, or `superseded`), estimated/actual comparison count, expiry/resume metadata, and timestamps. Session lifecycle is stored because it governs resumability and concurrent writes; expiration is determined from its timestamp, not represented as a list state. Enforce at most one effective open session per list/revision and supersede it explicitly when a conflicting revision wins.
 - `comparison`: session, left place, right place, outcome (`left`, `right`, `tie`, `skip`), sequence, response time, superseded/undone marker, and timestamp. Enforce that both places belong to the list and differ.
 - `recommendation_model`: category, recommendation-engine version, model family, hyperparameters/factor dimension, training-data cutoff, artifact identity/location, validation metrics, status, and timestamps. Restaurant and hotel artifacts are always separate.
 - `recommendation_snapshot` (optional initially): user/category, locality filter parameters, recommendation-engine version, source ranking revision, generated time, candidate place, predicted position, visited state, and internal explanation metadata. Start with on-demand results unless measurement shows snapshots are needed.
@@ -251,6 +253,19 @@ Use distinct names such as `rankingEngineVersion` and `recommendationEngineVersi
 
 The ranking UX begins only after login. Initially, the user searches the Italian restaurant catalogue, marks restaurants as visited, and adds them to their one restaurant list. Before beta, the same flow supports a separate global hotel list. Locality may narrow catalogue search or a displayed personal list, but adding a place always modifies the global list for that category. The user can start ranking as soon as the list contains two places.
 
+### List lifecycle and derived ranking condition
+
+Do not model the list as moving through `draft`, `ranking`, `complete`, `partial`, or `stale` states. Those labels collapse separate facts and would make useful evidence unnecessarily disappear from recommendations whenever a user adds one place, skips one comparison, or opens a repair session.
+
+For each current ranking revision, derive and expose these independent facts from active items, active evidence, unresolved relations, and sessions:
+
+- **Order coverage:** `none` when no strict or explicit-tie relation is resolved, `partial` when some active places/relations are resolved but the active items do not form one total preorder, and `total` when every active place belongs to a consistent ordered sequence of equivalence tiers. These are projection values, not persisted list lifecycle states.
+- **Repair requirement:** the smallest affected places/relations needing clarification because of a concrete contradiction, invalidation, merge, or changed answer. This may coexist with either partial or otherwise total coverage; unaffected resolved evidence remains usable.
+- **Session availability:** whether an effective open initial-order, insertion, repair, or rebuild session can be resumed. The session owns workflow and progress; the list does not become “ranking” while the session is open.
+- **Recommendation evidence and serving eligibility:** counts and support derived independently from the current revision under the rules below. Eligibility must never be inferred from a list-status label.
+
+Derive the next personal-ranking call to action deterministically: invite selection below two active places; otherwise resume the effective open session, offer the smallest pending repair, continue unresolved/unplaced ordering, or show the current total order with the option to add another place. Keep usable resolved tiers visible throughout repair and partial-order flows. For analytics, “ranking completed” is the first transition of a revision to total order coverage with no pending repair, recorded as a deduplicated domain event; it is not a permanent property of the list, and a later addition does not erase the historical completion.
+
 The UX idea proposes assisted QuickSort for a new list and binary insertion for later additions. Binary insertion is a good fit when an existing strict order is trusted. Interactive QuickSort is a useful baseline, but it must not be adopted literally before validating equivalence tiers, inconsistent answers, pivot quality, interruption, and edits.
 
 ### Proposed tied-tier insertion policy
@@ -261,13 +276,13 @@ Use the following escalation policy:
 
 1. Complete ordinary binary insertion when the answers produce one unambiguous boundary or a confirmed tied-tier merge.
 2. If a skip, conflicting tie confirmation, or contradiction with an existing comparison prevents unique placement, ask targeted comparisons against the unresolved boundary tiers and then run a local repair over the smallest affected contiguous tier window.
-3. Fall back to a broader re-ranking session only when the list was already marked stale or inconsistent, the affected window grows beyond `max(5 tiers, 25% of the list)`, a preference cycle crosses the window boundary, multiple unranked additions are being placed together, or an edit invalidates comparisons outside the local window.
+3. Fall back to a broader re-ranking session only when the current revision already has contradictions or invalidated evidence outside the local window, the affected window grows beyond `max(5 tiers, 25% of the list)`, a preference cycle crosses the window boundary, multiple unranked additions are being placed together, or an edit invalidates comparisons outside the local window.
 
-Never guess a strict position after a skip and never silently dissolve an existing tie. If targeted repair still leaves insufficient evidence, persist the new item in an unresolved tier adjacent to the narrowed boundary, mark the list partial/stale for recommendation eligibility, and let the user resume later. The thresholds and the need for a second tie confirmation must be validated in the Phase 1 spike and stored as versioned ranking-engine policy.
+Never guess a strict position after a skip and never silently dissolve an existing tie. If targeted repair still leaves insufficient evidence, publish a revision that keeps the new item unresolved adjacent to the narrowed boundary, preserve all unaffected resolved tiers, and let the user resume later. Recompute recommendation evidence and serving eligibility from that revision without disabling the whole list. The thresholds and the need for a second tie confirmation must be validated in the Phase 1 spike and stored as versioned ranking-engine policy.
 
 An explicit tied tier may be reconsidered when later transitive evidence contradicts it. Such evidence must open the same targeted local-repair flow; it must not silently split or overwrite the user's tie. For any preference cycle, first ask a clarifying comparison among the involved places. While that clarification is pending, retain the newest answer, exclude the oldest conflicting evidence from the active order, and show the affected places as needing repair. Once clarified, supersede evidence explicitly so the history remains auditable.
 
-Personal rankings do not decay with age. Time alone never makes a comparison stale. Staleness arises only from concrete invalidation or contradiction, such as answers implying `A > B`, `C > A`, and `B > C`; in that case prompt a focused reranking of the involved places and apply the temporary newest-answer/oldest-evidence policy above.
+Personal-ranking evidence does not decay with age. Time alone never creates a repair requirement. Concrete invalidation or contradiction, such as answers implying `A > B`, `C > A`, and `B > C`, creates a focused repair requirement for the involved places; apply the temporary newest-answer/oldest-evidence policy above while retaining unaffected evidence.
 
 Implement the ranking engine as a pure, framework-independent TypeScript module that emits the next comparison and consumes an outcome. The Svelte UI and persistence layer should not know the sorting algorithm's internal details.
 
@@ -281,7 +296,7 @@ Prototype and test at least these approaches against synthetic users:
 
 Measure number of questions, worst-case behavior, stability, reproducibility, ability to undo, and quality under ties/noise. Choose and document the algorithm before building the comparison UI. Persist the ranking-engine version so ranking state can be migrated or recomputed after changes.
 
-Each completed category list is the authoritative record of the user's stated overall preference among visited places in that category. A locality-filtered view displays recalculated ordinal labels for the filtered subset, clearly identified as filtered positions; filtering never changes the underlying global position, tier, or ranking evidence.
+The current published category revision is the authoritative record of the user's stated overall preference evidence among visited places in that category, whether its order coverage is partial or total. A locality-filtered view displays recalculated ordinal labels for the filtered resolved subset, clearly identified as filtered positions; filtering never changes the underlying global position, tier, unresolved relations, or ranking evidence.
 
 The persisted ranking output must distinguish three relations: strict order, explicit equivalence, and unresolved/incomparable. Preserve the logical pair independently from randomized left/right card presentation, record why the comparison was requested, and retain supersession provenance. The ranking engine should continue optimizing for a fast and accurate personal list; it must not add questions solely to train recommendations in the MVP. When a skip blocks one path, try a useful alternative pivot before leaving an unresolved relation, without repeatedly pressuring the user to answer the skipped pair.
 
@@ -302,12 +317,12 @@ Use a separate regularized low-rank personalized generalized Plackett–Luce mod
 
 The model learns shared place factors and a global place prior from all eligible users, then infers the current user's small factor vector from their own ranking. It orders candidates by their inferred utility. This directly solves collaborative preference completion: it predicts how a user would order places they have not visited without treating unvisited places as dislikes or producing a public rating.
 
-Use the latest active ranking revision as the canonical source, not an append-only bag of historical comparisons:
+Use each list's current published ranking revision as the canonical source, not a list-status label or an append-only bag of historical comparisons:
 
 - A resolved ordered sequence of tiers is one listwise training observation. The listwise likelihood uses the whole relative order jointly rather than pretending every transitive pair is an independent answer.
 - Explicit tied tiers enter through the tie likelihood. A tie is evidence of equivalence, not half a win and not missing data.
 - For a partial ranking graph, add each active non-redundant strict or explicit-tie relation that is not already represented by a resolved listwise segment as a two-item observation under the same model family. Skip and unresolved relations contribute no outcome.
-- Superseded answers, temporarily excluded contradictory evidence, deleted items, and previous list revisions do not train the current model. Do not count the direct comparisons again after their completed tier list has already represented them.
+- Superseded answers, temporarily excluded contradictory evidence, deleted items, and previous list revisions do not train the current model. Publishing a partial revision does not disable its unaffected resolved evidence. Do not count direct comparisons again after a resolved tier sequence in the same revision has already represented them.
 - Generate a versioned pairwise/rank-broken dataset or database view for diagnostics, reproducible exports, and a pairwise challenger model; do not make an `O(n²)` binary-comparison table the authoritative store or allow derived transitive pairs to inflate confidence.
 - Normalize contribution by user/list revision so a long list supplies more information but does not dominate quadratically merely because more pairs can be derived from it.
 
@@ -350,11 +365,11 @@ The output contract should include category, place, predicted order, visited sta
 
 ### Phase 1 — Separate algorithm spikes and contracts
 
-- Define one contract for personal ranking state/comparison outcomes/progress and a separate contract for recommendation inputs/results.
+- Define one contract for versioned personal-ranking revisions, derived order coverage/repair/next-action projections, session lifecycle, comparison outcomes, and progress; define a separate contract for recommendation evidence and results that consumes resolved evidence without depending on a ranking-list status.
 - Build pure personal-ranking prototypes and property-based or exhaustive small-list tests. Test 2, 3, 10, 25, and larger lists; balanced, already ordered, reverse ordered, tied, skipped, and contradictory inputs; undo and resume.
 - Validate the decided behavior for explicit equivalence tiers, skip, binary insertion, cycles, contradictions, and edits without reference to recommendation scoring, including repair after later evidence conflicts with an explicit tie.
 - Do not implement a list-size cap or large-bucket splitting in the MVP; use spike measurements to record when either might become necessary.
-- Build the category-specific low-rank generalized Plackett–Luce prototype with explicit tie support, regularized user/place factors, global place bias, fast per-user factor fitting, and a reproducible derivation from active ranking revisions.
+- Build the category-specific low-rank generalized Plackett–Luce prototype with explicit tie support, regularized user/place factors, global place bias, fast per-user factor fitting, and a reproducible derivation from current published ranking revisions.
 - Benchmark it against low-rank pairwise Bradley–Terry preference completion, common-place nearest-neighbor rank aggregation, and smoothed global/random baselines. Tune rank, regularization, tie propensity, supported-item rules, and eligibility buckets without sharing parameters across categories.
 - Split held-out places or tier groups before deriving training observations. Measure pairwise accuracy, tie-aware Kendall's `tau-b`, NDCG/top-tier retrieval, coverage, novelty, calibration, cold-start behavior, and improvement over the global prior. Use synthetic restaurant lists first, then hotel fixtures, and repeat the evaluation on appropriately consented real beta data before treating synthetic results as launch evidence.
 - Validate the provisional serving gate of five ranked places, three resolved tiers, and four supported place factors separately for restaurants and hotels; change it when held-out evidence supports a better threshold.
@@ -378,7 +393,7 @@ The output contract should include category, place, predicted order, visited sta
 - Run and record the loose Italian restaurant coverage audit; block the milestone only for issues that clearly break or deeply bias the system.
 - Add explicit provenance and enforcement so beta/production synthetic rankings cannot attach to real places or influence their recommendations.
 
-**Exit:** a user, their global restaurant list, restaurants, session, and comparisons can be persisted and reconstructed; restaurant search works against imported OSM data and catalogue compliance is documented.
+**Exit:** a user, their global restaurant list, immutable revisions, restaurants, session, and comparisons can be persisted and reconstructed; derived order coverage and repair facts are reproducible without a list-status field; restaurant search works against imported OSM data and catalogue compliance is documented.
 
 ### Phase 3 — Product shell, authentication, and onboarding
 
@@ -406,10 +421,10 @@ The output contract should include category, place, predicted order, visited sta
 - Build debounced server-side search with loading, empty, error, attribution, and duplicate states.
 - Let users add/remove places in a persistent unordered bucket.
 - Enable “Order your top list” at two places and explain that adding more visited places improves recommendation confidence.
-- Preserve draft selections across navigation, refresh, and transient network failure. No anonymous authentication handoff is required.
+- Preserve unordered visited-place selections across navigation, refresh, and transient network failure. No anonymous authentication handoff is required.
 - Instrument search, add/remove, threshold reached, and ranking-start events.
 
-**Exit:** a user can create or resume a valid draft list and start ranking it.
+**Exit:** a user can create or resume a persistent visited-place selection and start ranking it; this does not require a persisted `draft` list status.
 
 ### Phase 5 — Pairwise ranking experience
 
@@ -429,21 +444,21 @@ The output contract should include category, place, predicted order, visited sta
 
 ### Phase 6 — Existing-list maintenance
 
-- Add a new visited place to a completed list using binary insertion.
+- Add a new visited place to a current total-order revision using binary insertion while continuing to serve the previous revision's unaffected resolved evidence until the insertion publishes its successor.
 - Implement targeted local repair when later transitive evidence contradicts an explicit tied tier; never split a tie silently.
 - Detect preference cycles and ask a clarifying comparison. Pending clarification, retain the newest answer, temporarily exclude the oldest conflicting evidence, and prompt a focused reranking of the involved places.
-- Do not age or decay personal-ranking evidence over time; mark rankings stale only after concrete contradiction or invalidation.
+- Do not age or decay personal-ranking evidence over time. After concrete contradiction or invalidation, derive the smallest repair requirement and exclude only affected evidence; do not mark the entire list stale.
 - Support removing a place and changing an answer without unnecessarily discarding valid evidence.
 - Show clearly labelled, recalculated ordinal positions in locality-filtered personal-list views without modifying the global ranking.
-- Mark downstream recommendation results stale when a ranking revision changes.
+- Invalidate downstream recommendation results when the current published ranking revision changes; this is cache/model invalidation, not a ranking-list lifecycle state.
 - Provide deliberate “rebuild this list” and delete actions with clear consequences.
 
 **Exit:** rankings remain maintainable over time rather than being one-use onboarding artifacts.
 
 ### Phase 7 — Personalized recommendations
 
-- Build versioned restaurant model artifacts from current active ranking revisions. Consume resolved evidence from complete or partial lists, exclude skips/unresolved/superseded/contradictory evidence, and never mutate explicit personal rankings.
-- Fit the current user's regularized factors from their latest ranking while keeping the trained place factors fixed; return visited and not-yet-visited candidates ordered by latent utility with internal support/eligibility metadata.
+- Build versioned restaurant model artifacts from each list's current published revision. Consume every eligible resolved listwise segment or active relation regardless of total order coverage; exclude skips, unresolved relations, superseded evidence, and temporarily excluded contradictory evidence without disabling unaffected evidence from the same list. Never mutate explicit personal rankings.
+- Fit the current user's regularized factors from eligible evidence in their current published revision while keeping the trained place factors fixed; return visited and not-yet-visited candidates ordered by latent utility with internal support/eligibility metadata.
 - Make the full predicted order the default view and display visited status clearly; do not default to an unseen-only discovery feed.
 - Apply locality after the global order is scored. When filtered support is sparse, return fewer results and offer an explicit scope expansion rather than silently inserting broader candidates.
 - Enforce the validation-calibrated personalization gate. Below it, use the regularized global place prior with a clear community-based/non-personalized label, ask the user to rank more visited restaurants, or show an honest insufficient-evidence state. Generalize the copy by category when hotels are added.
@@ -491,10 +506,10 @@ Design this as encouragement for kind, factual reviewing rather than as a public
 
 ## Testing strategy
 
-- **Pure unit tests:** ranking state machine, progress bounds, ties, contradictions, undo, serialization/version migration, recommendation scoring, recommendation-exposure attribution/deduplication, and permission helpers.
-- **Database integration tests:** constraints, transactions, idempotency, list ownership, concurrent revisions, seed imports, source/override resolution, redirect-cycle prevention, reversible merge transactions, quarantine exclusions, append-only catalogue audits, verification/reset token expiry and purge, session revocation after password reset, retention jobs, erasure tombstones, category/account evidence exclusion, model invalidation/rebuild requests, and recommendation queries against isolated PostgreSQL.
+- **Pure unit tests:** ranking revision/projection invariants, session state machine, derived next action, progress bounds, ties, contradictions, undo, serialization/version migration, recommendation-evidence extraction from none/partial/total coverage, recommendation scoring, recommendation-exposure attribution/deduplication, and permission helpers.
+- **Database integration tests:** constraints, transactions, idempotency, list ownership, monotonic immutable revisions and atomic current-revision publication, one effective open session per list/revision, concurrent revision/session supersession, seed imports, source/override resolution, redirect-cycle prevention, reversible merge transactions, quarantine exclusions, append-only catalogue audits, verification/reset token expiry and purge, session revocation after password reset, retention jobs, erasure tombstones, category/account evidence exclusion, model invalidation/rebuild requests, and recommendation queries against isolated PostgreSQL.
 - **Component tests:** place cards with missing/broken media, restaurant/hotel fallback variants, decorative versus interactive icon accessibility, bucket, comparison controls, focus management, localization, reduced motion, and all loading/error/empty states.
-- **End-to-end tests:** 18+ declaration, Terms acceptance, separately linked Privacy Notice, and registration disclosure; blocked sign-in before email verification; verification resend/success/expired link; generic duplicate-sign-up and password-reset responses; password-reset success/invalid or reused token/session revocation; Google sign-in and account linking before beta; create/resume a draft; complete a 2-place and larger ranking; tie/skip/undo; refresh mid-session; concurrent-tab conflict; insert/remove a place; submit a private structured catalogue issue; enforce user/curator/admin permissions; correct, quarantine, merge, reverse, and reconcile an upstream catalogue change with a complete audit; view the full predicted order with visited status and locality filtering; receive or fail gracefully to receive recommendations; request/download/expire a JSON/CSV export; delete one ranking category; delete the account and verify session revocation, live-data erasure, evidence exclusion, and restored-backup tombstone replay.
+- **End-to-end tests:** 18+ declaration, Terms acceptance, separately linked Privacy Notice, and registration disclosure; blocked sign-in before email verification; verification resend/success/expired link; generic duplicate-sign-up and password-reset responses; password-reset success/invalid or reused token/session revocation; Google sign-in and account linking before beta; create/resume a visited-place selection; complete a 2-place and larger total order; tie/skip/undo; retain and serve unaffected resolved evidence after a skip, new unplaced item, or repair requirement; refresh mid-session; concurrent-tab conflict and session supersession; insert/remove a place; submit a private structured catalogue issue; enforce user/curator/admin permissions; correct, quarantine, merge, reverse, and reconcile an upstream catalogue change with a complete audit; view the full predicted order with visited status and locality filtering; receive or fail gracefully to receive recommendations; request/download/expire a JSON/CSV export; delete one ranking category; delete the account and verify session revocation, live-data erasure, evidence exclusion, and restored-backup tombstone replay.
 - **Algorithm tests:** exhaustive permutations for small lists and generated noisy/tied/partial rankings for larger lists; listwise likelihood and gradient checks; deterministic pairwise-view derivation; no double counting across revisions; skip/unresolved exclusion; tie handling; per-list normalization; cold-start shrinkage; locality-invariant scores; held-out split leakage checks; and reproducible benchmark metrics.
 - **Non-functional tests:** mobile performance on a throttled connection, catalogue/recommendation query plans, basic load tests, automated accessibility checks backed by manual review, privacy scans proving the absence of forbidden trackers/marketing paths, and retention/processor-failure drills.
 
@@ -508,7 +523,7 @@ For the MVP, collect an allowlisted event vocabulary through a first-party serve
 
 Initial funnel:
 
-- landing call-to-action → account/draft started;
+- landing call-to-action → registration/visited-place selection started;
 - first place selected → two-place ranking threshold;
 - ranking started → ranking completed;
 - median comparisons and time to completion by list size;
@@ -520,4 +535,3 @@ Initial funnel:
 - return rate to add a newly visited place.
 
 Set numeric beta targets after the research defined outside this plan establishes realistic baselines.
-
