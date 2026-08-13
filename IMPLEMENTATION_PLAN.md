@@ -50,7 +50,7 @@ Success therefore depends more on ranking completion, data quality, and recommen
 9. **Coverage threshold:** keep initial OSM coverage audits intentionally loose. Exclude or quarantine only records or systemic gaps that would clearly break the product, create unusable identities, or deeply bias ranking/recommendation behavior. Record limitations rather than blocking development on catalogue completeness.
 10. **Ranking threshold:** ranking may start with two visited places; one pairwise choice is sufficient to form the smallest meaningful ordered list. Recommendation eligibility is a separate threshold to determine experimentally and must not prevent users from maintaining a two-place personal list.
 11. **Uncertainty:** provide “Skip / cannot compare” as a first-class outcome. It records missing preference evidence, keeps both places in the visited list, and is never interpreted as a reason to remove either place.
-12. **Default recommendation view:** show the full predicted order for the selected category, with visited status clearly visible on every result. Users may optionally filter by locality without changing the underlying global predicted order.
+12. **Default recommendation view:** show the user's full predicted order for the selected category's eligible candidate universe, with visited status clearly visible on every result. “Full” means the complete stable order within the explicitly defined support/catalogue candidate contract, delivered through pagination or cursors when necessary; it does not silently claim that every imported place has a meaningful prediction. Finalize the universe, unsupported-place behavior, pagination, stable tie-breaking, and maximum browsable depth at the Phase 6 gate before implementing Phase 7. Users may optionally filter by locality without changing the underlying global predicted order.
 13. **Tie repair:** an explicit tie remains direct user evidence, but it is not permanently immune to later contradictory transitive evidence. If later answers conflict with a tied tier, prompt a targeted repair using the tied-tier insertion policy; never split the tier silently.
 14. **Cycle and contradiction recovery:** resolve preference cycles by asking a targeted clarifying comparison. Until that clarification is completed, retain the newest answer and temporarily leave the oldest conflicting ranking evidence out of the active order. Prompt the user to rerank the involved places; do not decay preferences merely because time has passed.
 15. **Ranking-session size:** the MVP does not cap personal-list size or split large selection buckets into shorter ranking sessions. Measure large-list behavior and revisit this only if the ranking spike or beta usage demonstrates a need.
@@ -58,7 +58,7 @@ Success therefore depends more on ranking completion, data quality, and recommen
 17. **Incomplete orders after skips:** when skips leave insufficient evidence for a total order, display the affected places as an unresolved tier. Preserve the missing evidence so a later iteration can request targeted comparisons.
 18. **Recommendation conversion:** the primary launch conversion is a previously unvisited place being added as visited after the user was shown it as a recommendation. Opens, saves, directions, and booking clicks are secondary intent signals, not conversions. Completing the place's later insertion into the personal ranking is a separate recommendation-quality signal.
 19. **Non-photo place cards:** use `@lucide/svelte` as the sole MVP icon library. Render a reusable, category-themed fallback panel with a Lucide category icon (`UtensilsCrossed` for restaurants and `Hotel` for hotels), the place name, category, and locality. Do not use generic stock photography or add another icon source unless a validated future category cannot be represented by Lucide.
-20. **Provisional beta operations stack:** plan for a SvelteKit Node deployment on Koyeb in Frankfurt, managed PostgreSQL on Neon in Frankfurt, Sentry's EU/Germany service for error reporting, and Brevo for transactional email. Implement OSM ingestion and the narrow product-analytics collector in application-owned code. This is the current implementation target, not a final vendor commitment: confirm or revise it after local/import/deployment testing establishes catalogue and index size, Better Auth password-hashing performance, database activity and cost, email deliverability, regional/data-processing suitability, and operational reliability.
+20. **Provisional beta operations stack:** plan for a SvelteKit Node deployment on Koyeb in Frankfurt, managed PostgreSQL on Neon in Frankfurt, Sentry's EU/Germany service for error reporting, and Brevo for transactional email. Implement OSM ingestion and the narrow product-analytics collector in application-owned code. Phases 0–8 remain local and use application-owned provider interfaces plus local/test adapters; do not provision, call, or depend on these hosted services before Phase 9. This is the current Phase 9 integration target, not a final vendor commitment: confirm or revise it after local catalogue/index sizing and the Phase 9 deployment tests establish Better Auth password-hashing performance, database activity and cost, email deliverability, regional/data-processing suitability, and operational reliability.
 21. **Legal-design baseline:** make the MVP available only to adults aged 18 or over; use purpose-specific GDPR lawful bases rather than bundled consent; provide self-service access/export and deletion; erase account-linked ranking evidence on deletion; and complete a DPIA, processing record, retention schedule, processor review, and legal review before public deployment. Recommendations are profiling but are designed only as suggestions, without legal or similarly significant effects.
 22. **MVP communications and tracking:** send only authentication, security, privacy/terms, data-rights, and essential service-operation email. Do not send marketing email. Use necessary first-party authentication/preferences storage and first-party server-side analytics only; do not implement cross-site analytics, non-essential tracking, fingerprinting, pixels, advertising identifiers, or session replay.
 23. **Catalogue governance:** ordinary users may submit structured catalogue issue reports but cannot modify catalogue records. Only a least-privilege catalogue curator or administrator can apply reversible local corrections, quarantine/hide records, or create canonical merge redirects. Preserve imported OSM facts separately from local overlays, audit every moderation action, never automatically write changes to OSM, and reconcile verified upstream changes on later imports.
@@ -127,16 +127,16 @@ Maintain an append-only `catalogue_change` audit entry for every report transiti
 
 ## Provisional deployment and operations approach
 
-Use the following as the current target for implementation and deployment spikes. Keep provider boundaries explicit so the final choice can change without rewriting domain or authentication logic.
+Use the following as the current Phase 9 target. During Phases 0–8, run the application, PostgreSQL, ingestion, email capture, jobs, artifact storage, analytics, and error capture locally. Define provider-neutral interfaces and contract tests from the beginning, but do not integrate or exercise hosted deployment services until Phase 9. Keep provider boundaries explicit so the final choice can change without rewriting domain, authentication, or recommendation logic.
 
 - **Application hosting:** target Koyeb in Frankfurt using SvelteKit's Node adapter and a normal Node runtime. Use Koyeb's free instance only for internal or very small invitation-only testing, where scale-to-zero and cold starts are acceptable. Prefer the low-cost `eco-micro` instance for an externally used beta if the free instance's 0.1 vCPU makes Better Auth's default `scrypt` password hashing or SSR unacceptably slow. Validate signup, sign-in, build/deploy, memory, cold starts, health checks, logs, rollback, and sustained response times before committing.
 - **Managed PostgreSQL:** target one Neon project in Frankfurt and connect through its pooled connection endpoint using the Drizzle-compatible PostgreSQL driver selected during the deployment spike. Start on Neon Free only if the normalized Italy restaurant-and-hotel catalogue, indexes, Better Auth data, rankings, recommendation metadata, analytics allowance, and safety margin fit its current limits. Measure the real import with `pg_database_size`, table/index breakdowns, query plans, active compute time, and projected monthly cost. If Free is too small, evaluate Neon's usage-based Launch plan with scale-to-zero and conservative autoscaling limits; do not accept a projected recurring cost above the beta budget without revisiting scope or provider choice. Treat Neon's restore window as recovery help, not as the only backup.
-- **OSM import/update execution:** own a repeatable TypeScript CLI in this repository. Run the first full Italy import manually or through an explicitly triggered GitHub Actions job; after the spike proves runtime and idempotency, run filtered updates on a conservative weekly schedule. Stream Geofabrik input into staging tables, validate counts/checksums/source timestamps, and promote a complete revision atomically. Do not run bulk ingestion in the Koyeb web process, commit PBF files, or store full extracts as workflow artifacts. GitHub workflows used for this purpose process public OSM data only, not personal ranking exports or database backups.
+- **OSM import/update execution:** own a repeatable TypeScript CLI in this repository. Run all imports locally through Phase 8. In Phase 9, validate an explicitly triggered GitHub Actions path and, after runtime and idempotency are proven, schedule filtered updates conservatively. Stream Geofabrik input into staging tables, validate counts/checksums/source timestamps, and promote a complete revision atomically. Do not run bulk ingestion in the Koyeb web process, commit PBF files, or store full extracts as workflow artifacts. GitHub workflows used for this purpose process public OSM data only, not personal ranking exports or database backups.
 - **Transactional email:** keep the application-owned email interface and target Brevo's REST API for preview/beta/production verification, password reset, security, material terms/privacy changes, data-rights, and strictly necessary service-operation mail. Keep the console/in-memory transport local-only. Authenticate the sending domain with SPF, DKIM, and DMARC; test delivery, bounce/suppression behavior, rate limits, provider branding, expired/reused links, and background delivery before invitations. Send only the recipient and minimum template/action data, keep tokens and action URLs out of analytics and ordinary logs, and review Brevo's DPA, subprocessors, EU processing, and retention configuration before beta. Do not send marketing, promotional, newsletter, or re-engagement email in the MVP. Retain the ability to replace Brevo behind the same interface.
 - **Product analytics:** implement the MVP collector and conversion attribution as first-party code backed by allowlisted domain events in the EU PostgreSQL database. Derive authoritative recommendation exposure-to-visited conversion from domain records. Store no email, name, free-form search text, precise coordinates, full action URLs, or raw comparison pairs in analytics; use internal pseudonymous identifiers and define detailed-event retention and aggregate cleanup before collection. Do not integrate a third-party or cross-site analytics service, browser analytics identifier, pixel, fingerprint, or session replay in the MVP. Any later managed-analytics proposal is a new product/privacy decision rather than an implicit fallback.
 - **Error reporting and logs:** target a Sentry Developer organization created in its EU/Germany region, plus structured redacted Koyeb stdout logs. Configure `sendDefaultPii: false`, inbound and application-side scrubbing, conservative tracing, and no session replay for the MVP. Never send cookies, authorization headers, emails, verification/reset URLs, raw ranking comparisons, or precise location data. Validate source-map upload, release association, alert delivery, quota behavior, and failure handling. Retain essential health and audit signals independently so loss or exhaustion of Sentry does not break the product.
 - **Regional and processor constraints:** keep the application runtime, primary database, analytics records, and error-reporting storage in the EU, provisionally Frankfurt/Germany. Transactional email may process the address and message metadata/content only with an appropriate DPA and reviewed EU/cross-border subprocessors. Require TLS, least-privilege credentials, environment-separated secrets, documented retention/deletion, and a processor/subprocessor review before external beta users. Pseudonymous rankings remain personal data; do not describe them as anonymous.
-- **Cost and final-decision gate:** aim for the free Koyeb, Neon, Brevo, and Sentry tiers during internal testing, then use the smallest continuously available Koyeb instance if beta UX requires it. Domain registration, taxes, backups, and paid database usage must be included in the measured total. Make the final vendor decision only after the Italy import and query spike plus a deployed end-to-end test have demonstrated acceptable size, latency, reliability, regional processing, email delivery, restore/backup behavior, and an expected recurring total within the agreed beta budget.
+- **Cost and final-decision gate:** use only local substitutes through Phase 8. In Phase 9, evaluate the free Koyeb, Neon, Brevo, and Sentry tiers, then use the smallest continuously available Koyeb instance if beta UX requires it. Domain registration, taxes, backups, and paid database usage must be included in the measured total. Make the final vendor decision only after the local Italy import/query measurements and a Phase 9 deployed end-to-end test have demonstrated acceptable size, latency, reliability, regional processing, email delivery, restore/backup behavior, and an expected recurring total within the agreed beta budget.
 
 ## Privacy, retention, deletion, and legal-design proposal
 
@@ -322,14 +322,14 @@ The persisted ranking output must distinguish three relations: strict order, exp
 
 ## Recommendation system
 
-The recommendation system consumes user lists. Its output is a predicted global preference order for the current user, optionally filtered by locality.
+The recommendation system consumes user lists. Its output is a predicted global preference order over the selected category's explicitly eligible candidate universe for the current user, optionally filtered by locality. The precise candidate and pagination contract is a required decision before Phase 7, based on local catalogue size, support, usability, and latency measurements.
 
 Candidate results include both:
 
 - **not-yet-visited places in the selected category**, which are the main discovery/recommendation use case;
 - **visited places in that category**, which provide context, allow the predicted order to be evaluated against the user's actual order, and help explain where new places might fit.
 
-### Selected model: low-rank personalized Plackett–Luce
+### Provisional leading candidate: low-rank personalized Plackett–Luce
 
 Use a separate regularized low-rank personalized generalized Plackett–Luce model for each category, with Davidson–Luce tie handling. For user `u` and place `i`, the latent utility is:
 
@@ -348,7 +348,7 @@ Use each list's current published ranking revision as the canonical source, not 
 
 Train category-wide place factors and biases periodically. At request time or after a ranking revision, hold those parameters fixed and compute a fast regularized maximum-a-posteriori estimate of the user's factors. Record the model version and ranking revision used. Estimate local uncertainty from the user-factor objective and combine it with item support counts for internal eligibility and calibration; never display it as a consumer rating.
 
-This is the proposed production family because the input is genuinely ranked-list data. Listwise low-rank collaborative ranking can handle ties and missing observations while avoiding the false independence assumption of naive all-pairs expansion. The Phase 1 experiment must still compare it against a regularized low-rank pairwise Bradley–Terry preference-completion model, common-place nearest-neighbor rank aggregation, and smoothed global/random baselines. Adopt it as the initial implementation only after it wins the predefined synthetic held-out metrics or document an evidence-based replacement in an ADR; Phase 9 beta evidence remains the external-cohort gate for launch conclusions. Relevant foundations include [SQL-Rank](https://proceedings.mlr.press/v80/wu18c.html), [Preference Completion](https://proceedings.mlr.press/v37/park15.html), and the [generalized Plackett–Luce treatment of partial rankings and ties](https://link.springer.com/article/10.1007/s00180-020-00959-3).
+This is the provisional leading candidate because the input is genuinely ranked-list data. Listwise low-rank collaborative ranking can handle ties and missing observations while avoiding the false independence assumption of naive all-pairs expansion. The Phase 1 experiment must compare it against a regularized low-rank pairwise Bradley–Terry preference-completion model, common-place nearest-neighbor rank aggregation, and smoothed global/random baselines. Adopt it as the initial implementation only after it wins the predefined synthetic held-out metrics or document an evidence-based replacement in an ADR; Phase 9 beta evidence remains the external-cohort gate for launch conclusions. Relevant foundations include [SQL-Rank](https://proceedings.mlr.press/v80/wu18c.html), [Preference Completion](https://proceedings.mlr.press/v37/park15.html), and the [generalized Plackett–Luce treatment of partial rankings and ties](https://link.springer.com/article/10.1007/s00180-020-00959-3).
 
 ### Eligibility, cold start, and locality
 
@@ -377,11 +377,17 @@ The output contract should include category, place, predicted order, visited sta
 - Make `npm run check`, `npm run lint`, unit tests, and a production build complete reliably.
 - Remove or quarantine starter `task`, welcome, and demo code once equivalent product tests/routes exist.
 - Record the MVP decisions listed above in this document or short ADRs.
-- Spike the provisional Koyeb Node target, replace `adapter-auto` with the Node adapter for that spike, and preserve a clean deployment boundary until the post-test vendor decision is recorded.
+- Replace `adapter-auto` with the Node adapter and verify the production build and server locally. Define the hosting/runtime boundary and contract-test seams without deploying to or integrating Koyeb.
 - Define environment validation and separate development, test, preview, and production database configuration.
 - Establish branch/CI checks for formatting, linting, type checks, unit tests, build, and focused end-to-end tests.
 
 **Exit:** clean reproducible baseline, confirmed restaurant-first/hotel-before-beta rollout, catalogue/privacy model, and passing CI.
+
+**Open questions to answer before Phase 1:**
+
+- Which single application-ID format will be used consistently for new domain entities: UUIDs or generated text IDs?
+- What local-only adapter contracts are required now for email, background jobs, artifact/blob storage, error reporting, and deployment configuration so Phases 1–8 cannot accidentally acquire hosted-service dependencies?
+- Which CI checks are mandatory on every branch, and which slower local/database/browser checks may run on a separate cadence?
 
 ### Phase 1 — Separate algorithm spikes and contracts
 
@@ -399,24 +405,53 @@ The output contract should include category, place, predicted order, visited sta
 
 **Exit:** deterministic engine contracts and evidence for the initial ranking and recommendation approaches.
 
-### Phase 2 — Domain persistence and catalogue
+**Open questions to answer before Phase 2A:**
+
+- Which ranking algorithm, tie/insertion policy, contradiction-repair policy, and progress estimator won the Phase 1 tests, and what versioned ADR records the choice?
+- What exact canonical locality representation will search and filtering use initially—administrative fields, normalized locality text, geographic radius/bounds, or a documented combination—and which parts come from OSM versus derived indexing?
+- What are the final persistence invariants for revisions, unresolved relations, supersession, and recommendation-evidence extraction before the first migration is generated?
+- Which synthetic dataset sizes, distributions, and acceptance metrics constitute the reproducible Phase 1 benchmark suite?
+
+### Phase 2A — Core domain persistence and local catalogue
 
 - Replace the example schema with the domain tables, relations, constraints, and indexes.
 - Generate and review the first domain migration; add test-database setup and reset helpers.
 - Implement repositories/services so route code does not contain raw domain queries.
 - Implement processing-restriction persistence plus the contribution-policy resolver and policy-enforcing recommendation-evidence source. Ship only the expected mandatory contribution policy in product configuration, while keeping alternate policy behavior available to automated contract tests rather than users.
-- Add a repeatable TypeScript OpenStreetMap PBF import/update pipeline, initially importing Italian restaurants, with manual/on-demand initial execution, a validated GitHub Actions update path, atomic staging/promotion, and environment-safe synthetic users/rankings.
+- Add a repeatable TypeScript OpenStreetMap PBF import/update pipeline, initially importing Italian restaurants, with local manual/on-demand execution, atomic staging/promotion, and environment-safe synthetic users/rankings. Keep a runner-neutral command boundary for Phase 9 automation; do not integrate GitHub Actions yet.
 - Normalize OSM nodes/ways/relations behind a catalogue provider interface and deduplicate by element identity plus geographic/name quality checks.
-- Implement source snapshots plus effective overlay resolution, canonical source mappings, cycle-free redirects, quarantine behavior, and transactional/reversible merge impact handling. Imports must surface rather than overwrite conflicts with active overrides.
-- Add protected curator/admin catalogue workflows and append-only audit services. Let authenticated users submit private, rate-limited structured issue reports without granting catalogue mutation rights; keep business claims out of scope.
-- Test that hidden records leave existing rankings intelligible while being excluded from new search/training/serving, and that duplicate merges preserve/supersede evidence and request targeted ranking repair without inventing preferences.
+- Implement immutable source snapshots, canonical source mappings, the minimum effective-record resolution contract, and quarantine behavior needed to keep harmful records out of search/training/serving while preserving referenced identities.
 - Build locality-aware restaurant search over the imported application database; do not use public Nominatim for autocomplete.
 - Add OSM attribution, ODbL compliance documentation, source-version tracking, and licence-aware optional image handling.
 - Run and record the loose Italian restaurant coverage audit; block the milestone only for issues that clearly break or deeply bias the system.
 - Add explicit provenance and enforcement so beta/production synthetic rankings cannot attach to real places or influence their recommendations.
 - Add effective-dated participation-cohort assignment and immutable capture provenance so internal developer evidence, private-beta evidence, and later general-release evidence remain separable in evaluation and analytics.
 
-**Exit:** a user, their global restaurant list, immutable revisions, restaurants, session, and comparisons can be persisted and reconstructed; derived order coverage and repair facts are reproducible without a list-status field; restaurant search works against imported OSM data and catalogue compliance is documented.
+**Exit:** a user, their global restaurant list, immutable revisions, restaurants, session, and comparisons can be persisted and reconstructed; derived order coverage and repair facts are reproducible without a list-status field; local restaurant import/search works against application-owned PostgreSQL and catalogue compliance is documented.
+
+**Open questions to answer before Phase 2B:**
+
+- Did the Italy restaurant audit reveal a severe identity, duplication, naming, coordinate, category, or geographic-skew problem requiring enrichment or a changed normalization rule?
+- Which search/index strategy meets the measured local query targets, and what rebuild/versioning behavior does it require?
+- What is the minimum moderation workflow required before product development continues: quarantine only, or also correction, merge, reversal, and user issue intake?
+- Which imported facts may be locally overridden in the MVP, and what evidence, expiry, and review requirements apply to each?
+
+### Phase 2B — Catalogue governance and repair operations
+
+- Implement effective overlay resolution, field-level overrides, canonical redirects, cycle prevention, and transactional/reversible merge impact handling. Imports must surface rather than overwrite conflicts with active overrides.
+- Add protected curator/admin catalogue services and append-only audit records. Let authenticated users submit private, rate-limited structured issue reports without granting catalogue mutation rights; keep business claims out of scope.
+- Define and implement the bootstrap procedure for the first administrator and catalogue curator without granting roles through public routes or mutable client claims.
+- Test that hidden records leave existing rankings intelligible while being excluded from new search/training/serving, and that duplicate merges preserve/supersede evidence and request targeted ranking repair without inventing preferences.
+- Keep moderation workflows service/API-testable locally; a minimal internal UI may be deferred until operationally needed, but every effective mutation must remain authorized, audited, and reversible.
+
+**Exit:** the local catalogue can be corrected, quarantined, merged, reversed, audited, and reconciled with later source revisions without corrupting ranking evidence or requiring public users to edit catalogue facts.
+
+**Open questions to answer before Phase 3:**
+
+- Who is the provisional controller/contact for local notices, and what identifiers/version fields must be stored for Terms acceptance, age declaration, Privacy Notice, and contribution-policy disclosure before auth tables are extended?
+- How are the first `admin` and `catalogue_curator` identities provisioned and rotated in each environment?
+- What local rate-limit implementation and trusted-proxy abstraction will Phase 3 use, and which behavior must remain portable to Phase 9 hosting?
+- What are the application-owned transactional-email and durable-job/outbox contracts? Phase 3 must implement only local/in-memory adapters; Brevo and hosted background delivery remain Phase 9 work.
 
 ### Phase 3 — Product shell, authentication, and onboarding
 
@@ -427,15 +462,22 @@ The output contract should include category, place, predicted order, visited sta
 - Treat fallback icons as decorative (`aria-hidden`) when adjacent text already communicates their meaning. Interactive icon-only controls require localized accessible names and tooltips where appropriate. Never rely on icon shape or color alone to distinguish category or state.
 - Turn the Better Auth demo into product routes with validation, localized errors, safe redirects, rate-limit strategy, and session-aware navigation.
 - Use email/password as the local-development authentication path. Keep provider-neutral account/session boundaries so late social-login integration does not require product-route changes.
-- Introduce one application-owned transactional-email interface used by Better Auth callbacks. In local development, use a console/in-memory surrogate that records the recipient, purpose, and complete verification/reset URL for manual testing; it must be impossible to enable this transport in preview, beta, or production. Automated tests should inspect the in-memory outbox rather than scrape console output. Implement Brevo's REST API as the provisional hosted transport behind this interface, with provider-contract tests that do not make routine test runs send live mail.
+- Introduce one application-owned transactional-email interface used by Better Auth callbacks. Through Phase 8, use only a console/in-memory surrogate that records the recipient, purpose, and complete verification/reset URL for manual testing; it must be impossible to enable this transport in preview, beta, or production. Automated tests should inspect the in-memory outbox rather than scrape console output. Define provider contract tests now, but implement and exercise the Brevo adapter only in Phase 9.
 - Implement link-based email verification according to Better Auth's [email verification documentation](https://better-auth.com/docs/concepts/email), using `emailVerification.sendVerificationEmail`, `sendOnSignUp: true`, `sendOnSignIn: true`, `autoSignInAfterVerification: true`, and a one-hour `expiresIn`. Configure `emailAndPassword.requireEmailVerification: true` in every environment so email/password users receive no authenticated session before proving address ownership; local development exercises the flow through the surrogate transport.
 - Add localized “check your email,” verification success/failure/expired-link, and explicit resend states. Use generic sign-up responses for existing addresses as provided by Better Auth when verification is required; do not reveal account existence.
 - Implement “forgot password” and reset-password routes using Better Auth's documented [`sendResetPassword`, `requestPasswordReset`, and `resetPassword` flow](https://better-auth.com/docs/authentication/email-password). Use a one-hour `resetPasswordTokenExpiresIn`, always show the same request confirmation regardless of whether the account exists, and set `revokeSessionsOnPasswordReset: true`.
-- Keep verification and reset delivery callbacks non-blocking as recommended by Better Auth, while using the deployment platform's durable background-work mechanism where required so messages are not dropped. Never put tokens or full action URLs in analytics or ordinary production logs.
+- Keep verification and reset delivery callbacks non-blocking as recommended by Better Auth. Route them through the application-owned outbox/job boundary and exercise it with a deterministic local worker through Phase 8; integrate hosted durable execution only in Phase 9. Never put tokens or full action URLs in analytics or ordinary production logs.
 - Build the landing page around the no-ratings value proposition and a single clear call to action; show the approved preference-sharing disclosure before registration.
 - Expand Paraglide messages for every product string; add checks that Italian and English catalogues stay aligned.
 
 **Exit:** a new user understands that private preference data contributes pseudonymously to community recommendations, creates an account, signs in, and reaches an accessible empty dashboard in either locale. Ranking routes reject unauthenticated access.
+
+**Open questions to answer before Phase 4:**
+
+- Which product route creates the per-category list: first category visit, first selected place, or an explicit user action?
+- What exact empty-dashboard hierarchy and primary call to action best move a verified user into restaurant selection without confusing personal rankings and recommendations?
+- Which authentication and account fields are owned by Better Auth versus the application profile, and what migration boundary prevents provider integration in Phase 9 from changing product routes?
+- Are the local rate limits, outbox retries/idempotency, generic auth responses, and disclosure/version records sufficient to proceed without a hosted dependency?
 
 ### Phase 4 — Visited-restaurant selection bucket
 
@@ -448,6 +490,13 @@ The output contract should include category, place, predicted order, visited sta
 - Instrument search, add/remove, threshold reached, and ranking-start events.
 
 **Exit:** a user can create or resume a persistent visited-place selection and start ranking it; this does not require a persisted `draft` list status.
+
+**Open questions to answer before Phase 5:**
+
+- What exact locality input, result grouping, and scope-expansion interaction tested best with the Phase 2A search contract?
+- How should users correct an accidental visited-place addition before versus during an open ranking session?
+- Which selected-place count and search/add behavior make the ranking call to action understandable without imposing a list-size cap?
+- What comparison-session snapshot must be created when ranking begins so later catalogue or bucket changes cannot silently alter the active session?
 
 ### Phase 5 — Pairwise ranking experience
 
@@ -466,6 +515,13 @@ The output contract should include category, place, predicted order, visited sta
 
 **Exit:** the core flow is accessible, resumable, concurrency-safe, and produces a reproducible persisted ranking.
 
+**Open questions to answer before Phase 6:**
+
+- Did internal use validate the selected ranking algorithm's question count, progress estimate, tie/skip language, and recovery behavior at the measured list sizes?
+- Which unresolved-order presentation is easiest to understand without implying that skipped places are tied?
+- What session-expiry duration and resume/supersession UX should be retained after testing refresh, multiple tabs, and interrupted writes?
+- Are internal participation provenance, notice, export, restriction, and deletion procedures ready before genuine developer/tester rankings are used more broadly in Phase 6 diagnostics?
+
 ### Phase 6 — Existing-list maintenance
 
 - Add a new visited place to a current total-order revision using binary insertion while continuing to serve the previous revision's unaffected resolved evidence until the insertion publishes its successor.
@@ -480,19 +536,36 @@ The output contract should include category, place, predicted order, visited sta
 
 **Exit:** rankings remain maintainable over time rather than being one-use onboarding artifacts.
 
+**Open questions to answer before Phase 7:**
+
+- Where will model artifacts and reproducible training metadata live locally, and what provider-neutral artifact-store contract will allow Phase 9 external storage without changing recommendation code?
+- How will local training/rebuild jobs be triggered, locked, retried, cancelled, and promoted atomically, and what job contract will later map to hosted execution?
+- What exact evidence/support thresholds from synthetic and internal diagnostics permit personalized serving, while remaining explicitly provisional until Phase 9 beta validation?
+- What does “full predicted order” mean operationally: the entire eligible Italian catalogue, all supported candidates, or a bounded candidate universe defined by support and catalogue status?
+- How is that order delivered: page/cursor size, maximum browsable depth, stable tie-breaking, snapshot/version consistency across pages, and invalidation behavior?
+- Where do unsupported or newly imported places appear, if anywhere, and how are visited items interleaved without implying confidence the model does not have?
+- What local latency, memory, artifact-size, and quality thresholds must the Phase 7 implementation meet before hotels are added?
+
 ### Phase 7 — Personalized recommendations
 
 - Build versioned restaurant model artifacts only through the policy-enforcing `RecommendationEvidenceSource`, recording its contribution-policy version. From each permitted current published revision, consume every eligible resolved listwise segment or active relation regardless of total order coverage; exclude skips, unresolved relations, superseded evidence, temporarily excluded contradictory evidence, and policy-excluded revisions without disabling unaffected permitted evidence. Never mutate explicit personal rankings.
 - Fit the current user's regularized factors from evidence permitted for current-user personalization in their current published revision while keeping the trained place factors fixed; return visited and not-yet-visited candidates ordered by latent utility with internal support/eligibility metadata. Do not assume that permission for personal inference and permission for community-model contribution are technically inseparable.
-- Make the full predicted order the default view and display visited status clearly; do not default to an unseen-only discovery feed.
+- Implement the “full predicted order” candidate-universe and pagination contract decided at the Phase 6 gate. Make that ordered view the default and display visited status clearly; do not default to an unseen-only discovery feed or imply that unsupported catalogue entries received meaningful personalized scores.
 - Apply locality after the global order is scored. When filtered support is sparse, return fewer results and offer an explicit scope expansion rather than silently inserting broader candidates.
-- Enforce the validation-calibrated personalization gate. Below it, use the regularized global place prior with a clear community-based/non-personalized label, ask the user to rank more visited restaurants, or show an honest insufficient-evidence state. Generalize the copy by category when hotels are added.
+- Enforce the provisionally calibrated personalization gate from synthetic and internal diagnostics. Below it, use the regularized global place prior with a clear community-based/non-personalized label, ask the user to rank more visited restaurants, or show an honest insufficient-evidence state. Generalize the copy by category when hotels are added, and treat Phase 9 beta evaluation as the gate for confirming or revising the thresholds.
 - Clearly distinguish predicted recommendation positions from personal ranking positions. Present concise recommendation reasoning and a path to mark “already visited,” feeding that place into the ranking UX for its category.
 - Instrument recommendation exposure and conversion first-party: an exposure occurs only when an eligible, previously unvisited result is actually rendered to the user. Count at most one conversion per `(user, category, place)` when that place is added as visited within 90 days of its most recent eligible exposure. Exclude synthetic/demo data and places already marked visited at exposure time.
 - Cache or snapshot only after measuring latency; version results and invalidate on relevant ranking, catalogue, processing-restriction, or contribution-policy changes.
 - Evaluate recommendation quality with leakage-safe synthetic held-out fixtures and the separately identified internal product-testing rankings collected through Phases 5–6. Report results by data source, use internal evidence only as diagnostic end-to-end validation, and defer external-cohort claims and threshold confirmation to Phase 9. During beta, measure delayed agreement when recommended places are later added and ranked.
 
 **Exit:** users who pass the calibrated evidence gate receive an explainable predicted order of visited and unseen restaurants, filterable by locality without altering their global restaurant list; all other users see an honest useful next step.
+
+**Open questions to answer before Phase 8:**
+
+- Did the chosen candidate-universe, cursor/pagination, and stable-order contract remain understandable and performant with the full local Italy restaurant catalogue?
+- Do internal diagnostic results justify keeping the provisional recommendation family and serving gate for the hotel implementation, or is an ADR/model change required first?
+- Which recommendation explanations are accurate, privacy-safe, and understandable without exposing support/confidence as a rating?
+- Which shared category contracts need extension for hotels, and which restaurant-specific assumptions must be removed before reuse?
 
 ### Phase 8 — Add hotels before beta
 
@@ -506,13 +579,26 @@ The output contract should include category, place, predicted order, visited sta
 
 **Exit:** restaurants and hotels both support the complete authenticated selection → personal ranking → recommendation loop, and no beta is released until both categories meet their quality gates.
 
+**Open questions to answer before Phase 9:**
+
+- What is the approved recurring beta budget, including hosting, database, email, error reporting, backups, domain, taxes, and operational headroom?
+- What numeric latency, cold-start, availability, email-delivery, database-size/activity, backup/restore, and model-rebuild acceptance thresholds will determine whether the provisional vendors are retained?
+- Which private-beta locality, cohort size/composition, recruitment method, research scripts, incentives, and category-specific success interpretation are approved in the external research brief?
+- Has legal review approved mandatory reciprocal contribution, the 18+ approach, notices/Terms, provider processing, retention, and the Phase 9 research/data procedures; if not, which documented fallback must be activated before invitations?
+- Which Koyeb, Neon, Brevo, Sentry, Google OAuth, backup, artifact-storage, and scheduled-job configurations are permitted, and who owns credentials, incident response, and rollback decisions?
+
 ### Phase 9 — Hardening and beta release
 
 - Threat-model authentication, authorization/IDOR, catalogue ingestion, comparison writes, rate limiting, CSRF, XSS, and abuse paths.
+- Provision and validate the selected external deployment stack for the first time: deploy the SvelteKit Node application to Koyeb, migrate/import into Neon through its pooled endpoint, configure environment-separated secrets and health checks, and prove rollback without making provider APIs part of domain logic.
+- Implement and exercise the Brevo transactional-email adapter behind the existing interface. Verify SPF, DKIM, DMARC, bounce/suppression behavior, rate limits, provider branding, expired/reused links, durable background delivery, redacted logs, and provider-contract tests before invitations.
+- Integrate Sentry's selected EU/Germany service behind the error-reporting boundary with source maps, releases, alerts, PII scrubbing, conservative tracing, and no session replay; retain structured redacted Koyeb logs and provider-independent health/audit signals.
+- Validate the runner-neutral OSM importer through an explicitly triggered GitHub Actions job, and enable a conservative filtered-update schedule only after runtime, idempotency, atomic promotion, failure recovery, and cost are proven. Keep PBF files and database backups out of workflow artifacts.
+- Integrate the selected hosted job and artifact/backup mechanisms behind the local contracts established earlier; test model build/promotion, retention jobs, export generation, erasure rebuilds, backup/restore, and tombstone replay under realistic failures.
 - Near the end of beta hardening, add social login with Sign in with Google as the minimum provider. Configure separate development/preview/production OAuth clients and exact redirect origins; request only the minimum scopes needed for authentication.
 - Link a social identity to an existing account only through Better Auth's verified, explicit account-linking rules. Test duplicate-email, provider-email changes, revoked consent, cancelled callbacks, state/PKCE and redirect validation, existing sessions, account deletion, and recovery so Google login cannot create duplicate profiles or orphan rankings.
-- Retain email/password alongside Google login unless a later product decision explicitly removes it. Replace the local email surrogate with the transactional provider selected under question 18, verify domain/authentication and deliverability configuration, and run end-to-end delivery checks before inviting beta users.
-- Add independent database backup/restore, migration rollout/rollback, health checks, structured redacted Koyeb logs, and the provisionally selected Sentry EU/Germany error reporting with source maps, releases, alerts, PII scrubbing, conservative tracing, and no MVP session replay.
+- Retain email/password alongside Google login unless a later product decision explicitly removes it. Disable the local email surrogate outside local/test environments and run end-to-end hosted delivery checks before inviting beta users.
+- Add independent database backup/restore and migration rollout/rollback procedures; do not treat Neon's restore window as the only backup.
 - Complete accessibility testing for keyboard, screen reader, contrast, touch targets, zoom, reduced motion, and both locales.
 - Complete and obtain legal review of the DPIA, processing record, contractual-necessity assessment for the expected mandatory reciprocal contribution policy, fallback legitimate-interest assessment if pursued, processor/transfer register, 18+ age approach, layered Privacy Notice, Terms, cookie/storage notice, and provider attribution. Record the approved contribution-policy version before launch. If mandatory contribution is not approved, activate and test the selected objection or optional-consent policy and matching user controls through the existing boundary before inviting users. Do not launch with placeholder legal text or a mismatch between disclosure, policy configuration, and model inputs.
 - Implement self-service JSON/CSV access/export, ranking-category deletion, account deletion, processing-restriction enforcement, evidence exclusion and category-model rebuild, erasure tombstone replay after restore, retention jobs, privacy-request tracking, and the documented manual rights workflow.
@@ -522,7 +608,14 @@ The output contract should include category, place, predicted order, visited sta
 - Run the approved private-beta cohort and research method with both restaurants and hotels in the chosen area. Collect the first external real-user evidence under the documented product-processing lawful bases, notices, participant controls, and—where a distinct research activity requires it—separate research consent.
 - After sufficient beta evidence exists, repeat the leakage-safe recommendation evaluation on the external cohort, report synthetic, internal-testing, and beta results separately, and recalibrate category-specific support/personalization thresholds. Compare recommendation relevance with the global prior and review delayed predicted-versus-actual agreement before making launch or catalogue-expansion claims.
 
-**Exit:** operable production release with defined rollback, support, privacy, and measurement procedures.
+**Exit:** an operable private beta has run on the selected external stack with defined rollback, support, privacy, and measurement procedures; its evidence is sufficient to decide whether a general release or catalogue expansion is justified.
+
+**Open questions to answer before general release or catalogue expansion:**
+
+- Did restaurant and hotel beta cohorts independently meet the approved ranking-completion, recommendation-relevance, coverage, usability, privacy, and reliability targets?
+- Did external-cohort evaluation confirm or change the model family, candidate universe, pagination behavior, personalization/support gates, and cold-start presentation for each category?
+- Are measured recurring costs, operational load, backup/restore performance, email delivery, incident handling, and vendor/data-processing terms acceptable for continued operation?
+- Which beta findings require remediation before release, and which explicitly documented limitations may be monitored after release without misleading users?
 
 ### Future — patron-confirmed review trust
 
