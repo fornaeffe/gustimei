@@ -8,11 +8,15 @@
 
 ## Guidelines
 
-Always read IMPLEMENTATION_PLAN.md to check the current status and next steps. Update it after implementing steps and when new questions or ideas arise.
+Always read IMPLEMENTATION_PLAN.md to check the current status and next steps. Update it after implementing steps and when new questions or ideas arise. Ask for confirmation before modifying already planned steps or established decisions.
 
 Keep the project scalable and easily maintainable. Better a bit more work now that a lot of work when trying to scale or maintain the project later.
 
 Don't repeat yourself: if something will be probably repeated/reused in the same project, make it reusable (abstracting it as a component, as a function, as a theme variable...).
+
+---
+
+You should be able to access Better Auth MCP server. If not, consult Better Auth online documentation before touching Better Auth related files.
 
 ---
 
