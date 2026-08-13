@@ -225,9 +225,10 @@ Finalize names and constraints with small algorithm prototypes before generating
 - `place_media`: provider URL/reference, attribution, sort order, dimensions, and lifecycle metadata. Avoid copying remote images without explicit rights.
 - `ranking_list`: durable owner/category identity, nullable `current_revision_id`, and timestamps. It has no workflow status or ranking-engine version of its own. Enforce one global list per `(owner, category)`; locality does not belong to list identity. Deleting a category ranking erases this aggregate and its evidence rather than transitioning it to a hidden lifecycle state.
 - `ranking_item`: list, place, insertion time, and optional removal time. Unique `(list_id, place_id)`. Whether an active item is resolved, unresolved, or not yet placed comes from the current ranking revision rather than a second item-level workflow status.
-- `ranking_revision`: immutable/versioned output with a monotonic revision number within its list, including ordered equivalence tiers, unresolved/incomparable placement information, active evidence references, excluded/superseded evidence references with conflict/invalidation reasons, ranking-engine version, and timestamps. Publish a revision and advance `ranking_list.current_revision_id` transactionally; retain enough provenance to reproduce, audit, migrate, or recompute it. Derive repair requirements from these facts rather than storing another list lifecycle flag.
+- `ranking_revision`: immutable/versioned output with a monotonic revision number within its list, including ordered equivalence tiers, unresolved/incomparable placement information, active evidence references, excluded/superseded evidence references with conflict/invalidation reasons, ranking-engine version, capture cohort/provenance, and timestamps. Publish a revision and advance `ranking_list.current_revision_id` transactionally; retain enough provenance to reproduce, audit, migrate, recompute, and separate internal-testing evidence from later beta evidence. Derive repair requirements from these facts rather than storing another list lifecycle flag.
 - `ranking_session`: list, base revision, purpose (`initial_order`, `insertion`, `repair`, or `rebuild`), versioned algorithm state, lifecycle (`open`, `completed`, or `superseded`), estimated/actual comparison count, expiry/resume metadata, and timestamps. Session lifecycle is stored because it governs resumability and concurrent writes; expiration is determined from its timestamp, not represented as a list state. Enforce at most one effective open session per list/revision and supersede it explicitly when a conflicting revision wins.
 - `comparison`: session, left place, right place, outcome (`left`, `right`, `tie`, `skip`), sequence, response time, superseded/undone marker, and timestamp. Enforce that both places belong to the list and differ.
+- `participation_cohort`: account, environment, cohort (`internal_testing`, `private_beta`, or `general_release`), effective interval, assignment source, and timestamps. Stamp revisions and authoritative measurement records at creation so later cohort changes never retroactively relabel earlier evidence. This is operational provenance, not a browser identifier or a substitute for research-participation records.
 - `processing_restriction`: user, optional category, processing purpose, source/reason, effective interval, status, and audit timestamps. Use it for actual legal/privacy restrictions and erasure workflows. Do not create a contribution-choice boolean for the expected mandatory MVP policy; if legal review selects an optional design, add a separate versioned choice/consent record and let the same policy resolver consume it.
 - `recommendation_model`: category, recommendation-engine version, contribution-policy version, model family, hyperparameters/factor dimension, training-data cutoff, artifact identity/location, validation metrics, status, and timestamps. Restaurant and hotel artifacts are always separate.
 - `recommendation_snapshot` (optional initially): user/category, locality filter parameters, recommendation-engine version, contribution-policy version, source ranking revision, generated time, candidate place, predicted position, visited state, and internal explanation metadata. Start with on-demand results unless measurement shows snapshots are needed.
@@ -235,12 +236,16 @@ Finalize names and constraints with small algorithm prototypes before generating
 
 Use UUIDs or generated text IDs consistently, UTC timestamps, explicit foreign-key deletion behavior, indexes for locality/category search and list membership, and migrations rather than `db:push` outside disposable local development.
 
-## Synthetic data policy
+## Test and evaluation data policy
 
 - Local and automated-test environments may attach synthetic rankings to real or fictional places when needed to exercise algorithms and queries.
 - Beta and production must never attach synthetic rankings, comparisons, users, or recommendation evidence to real places.
 - Beta may contain fictional places and rankings for demonstrations only when every such place and all derived views are unmistakably labelled “Synthetic demo data” / “Dati demo sintetici.”
 - Synthetic identities must be structurally isolated (for example through an explicit provenance field and environment/import guard), not inferred from names or ID ranges.
+- Phase 1 algorithm selection uses only deterministic synthetic rankings and fixtures; no real-user or beta evidence exists at that point, and synthetic results justify only an initial implementation choice.
+- Once the persisted ranking UX is usable in Phases 5–6, developers and specifically authorized internal testers may enter their own genuine preferences solely to test usability, persistence, repair behavior, and the end-to-end recommendation pipeline in a controlled internal environment. Treat these rankings as personal data, provide the applicable notice, document the internal-testing purpose and lawful basis, apply normal access/restriction/erasure controls, and mark the account/cohort provenance explicitly. Do not describe this as “consented” unless consent is actually the selected basis for a distinct research activity.
+- Phase 7 may use that limited internal product-testing evidence for leakage-safe diagnostic evaluation and end-to-end verification. Keep its results separate from synthetic benchmarks and from beta success measures; the small, developer-heavy cohort is not representative launch evidence.
+- Real private-beta evidence is collected only during Phase 9 under the approved beta-research and product-data procedures. Use it for the first external-cohort validation of recommendation relevance, usability, and category-specific thresholds. Where research participation requires consent, record that separately from the lawful basis governing ordinary use of rankings and recommendations.
 
 ## System boundary: personal ranking versus recommendations
 
@@ -343,7 +348,7 @@ Use each list's current published ranking revision as the canonical source, not 
 
 Train category-wide place factors and biases periodically. At request time or after a ranking revision, hold those parameters fixed and compute a fast regularized maximum-a-posteriori estimate of the user's factors. Record the model version and ranking revision used. Estimate local uncertainty from the user-factor objective and combine it with item support counts for internal eligibility and calibration; never display it as a consumer rating.
 
-This is the proposed production family because the input is genuinely ranked-list data. Listwise low-rank collaborative ranking can handle ties and missing observations while avoiding the false independence assumption of naive all-pairs expansion. The Phase 1 experiment must still compare it against a regularized low-rank pairwise Bradley–Terry preference-completion model, common-place nearest-neighbor rank aggregation, and smoothed global/random baselines. Ship the proposed model only after it wins the predefined held-out ranking metrics or document an evidence-based replacement in an ADR. Relevant foundations include [SQL-Rank](https://proceedings.mlr.press/v80/wu18c.html), [Preference Completion](https://proceedings.mlr.press/v37/park15.html), and the [generalized Plackett–Luce treatment of partial rankings and ties](https://link.springer.com/article/10.1007/s00180-020-00959-3).
+This is the proposed production family because the input is genuinely ranked-list data. Listwise low-rank collaborative ranking can handle ties and missing observations while avoiding the false independence assumption of naive all-pairs expansion. The Phase 1 experiment must still compare it against a regularized low-rank pairwise Bradley–Terry preference-completion model, common-place nearest-neighbor rank aggregation, and smoothed global/random baselines. Adopt it as the initial implementation only after it wins the predefined synthetic held-out metrics or document an evidence-based replacement in an ADR; Phase 9 beta evidence remains the external-cohort gate for launch conclusions. Relevant foundations include [SQL-Rank](https://proceedings.mlr.press/v80/wu18c.html), [Preference Completion](https://proceedings.mlr.press/v37/park15.html), and the [generalized Plackett–Luce treatment of partial rankings and ties](https://link.springer.com/article/10.1007/s00180-020-00959-3).
 
 ### Eligibility, cold start, and locality
 
@@ -387,7 +392,7 @@ The output contract should include category, place, predicted order, visited sta
 - Do not implement a list-size cap or large-bucket splitting in the MVP; use spike measurements to record when either might become necessary.
 - Build the category-specific low-rank generalized Plackett–Luce prototype with explicit tie support, regularized user/place factors, global place bias, fast per-user factor fitting, and a reproducible derivation from current published ranking revisions.
 - Benchmark it against low-rank pairwise Bradley–Terry preference completion, common-place nearest-neighbor rank aggregation, and smoothed global/random baselines. Tune rank, regularization, tie propensity, supported-item rules, and eligibility buckets without sharing parameters across categories.
-- Split held-out places or tier groups before deriving training observations. Measure pairwise accuracy, tie-aware Kendall's `tau-b`, NDCG/top-tier retrieval, coverage, novelty, calibration, cold-start behavior, and improvement over the global prior. Use synthetic restaurant lists first, then hotel fixtures, and repeat the evaluation on appropriately consented real beta data before treating synthetic results as launch evidence.
+- Split held-out places or tier groups before deriving training observations. Measure pairwise accuracy, tie-aware Kendall's `tau-b`, NDCG/top-tier retrieval, coverage, novelty, calibration, cold-start behavior, and improvement over the global prior. Use only deterministic synthetic restaurant lists and hotel fixtures in this phase; record that these results select the initial approach but do not establish external validity or beta readiness.
 - Validate the provisional serving gate of five ranked places, three resolved tiers, and four supported place factors separately for restaurants and hotels; change it when held-out evidence supports a better threshold.
 - Verify if the proposed tied-tier insertion policy minimize questions without causing too many local repairs, and are the proposed `max(5 tiers, 25% of the list)` fallback threshold and second-member tie confirmation appropriate?
 - Document each selected algorithm, limitation, version, and recomputation strategy independently.
@@ -409,6 +414,7 @@ The output contract should include category, place, predicted order, visited sta
 - Add OSM attribution, ODbL compliance documentation, source-version tracking, and licence-aware optional image handling.
 - Run and record the loose Italian restaurant coverage audit; block the milestone only for issues that clearly break or deeply bias the system.
 - Add explicit provenance and enforcement so beta/production synthetic rankings cannot attach to real places or influence their recommendations.
+- Add effective-dated participation-cohort assignment and immutable capture provenance so internal developer evidence, private-beta evidence, and later general-release evidence remain separable in evaluation and analytics.
 
 **Exit:** a user, their global restaurant list, immutable revisions, restaurants, session, and comparisons can be persisted and reconstructed; derived order coverage and repair facts are reproducible without a list-status field; restaurant search works against imported OSM data and catalogue compliance is documented.
 
@@ -456,6 +462,7 @@ The output contract should include category, place, predicted order, visited sta
 - Add reduced-motion-safe transitions, selection feedback, and an honest progress estimate.
 - Use occasional partial-ranking feedback only if it does not reveal unstable or misleading positions.
 - On completion, present the ranked list/tier groups and allow confirmation or editing.
+- After the persisted flow is usable, run controlled developer/internal-tester sessions using the participants' genuine preferences under the internal product-testing procedure. Verify that entered data is marked with internal-cohort provenance, remains private, can be exported/deleted/restricted, and is excluded from beta funnel and success metrics.
 
 **Exit:** the core flow is accessible, resumable, concurrency-safe, and produces a reproducible persisted ranking.
 
@@ -469,6 +476,7 @@ The output contract should include category, place, predicted order, visited sta
 - Show clearly labelled, recalculated ordinal positions in locality-filtered personal-list views without modifying the global ranking.
 - Invalidate downstream recommendation results when the current published ranking revision changes; this is cache/model invalidation, not a ranking-list lifecycle state.
 - Provide deliberate “rebuild this list” and delete actions with clear consequences.
+- Continue controlled internal use through insertion, contradiction, repair, removal, and rebuild flows. Record qualitative defects and privacy-safe aggregate diagnostics; do not promote individual ranking examples into fixtures, documentation, or bug reports unless they have been deliberately minimized or replaced with synthetic reproductions.
 
 **Exit:** rankings remain maintainable over time rather than being one-use onboarding artifacts.
 
@@ -482,7 +490,7 @@ The output contract should include category, place, predicted order, visited sta
 - Clearly distinguish predicted recommendation positions from personal ranking positions. Present concise recommendation reasoning and a path to mark “already visited,” feeding that place into the ranking UX for its category.
 - Instrument recommendation exposure and conversion first-party: an exposure occurs only when an eligible, previously unvisited result is actually rendered to the user. Count at most one conversion per `(user, category, place)` when that place is added as visited within 90 days of its most recent eligible exposure. Exclude synthetic/demo data and places already marked visited at exposure time.
 - Cache or snapshot only after measuring latency; version results and invalidate on relevant ranking, catalogue, processing-restriction, or contribution-policy changes.
-- Evaluate recommendation quality with leakage-safe held-out fixtures and appropriately consented real beta data before launch; after launch, measure delayed agreement when recommended places are later added and ranked.
+- Evaluate recommendation quality with leakage-safe synthetic held-out fixtures and the separately identified internal product-testing rankings collected through Phases 5–6. Report results by data source, use internal evidence only as diagnostic end-to-end validation, and defer external-cohort claims and threshold confirmation to Phase 9. During beta, measure delayed agreement when recommended places are later added and ranked.
 
 **Exit:** users who pass the calibrated evidence gate receive an explainable predicted order of visited and unseen restaurants, filterable by locality without altering their global restaurant list; all other users see an honest useful next step.
 
@@ -494,7 +502,7 @@ The output contract should include category, place, predicted order, visited sta
 - Exercise the existing ranking engine against hotel fixtures and behavior; introduce category-specific policy only where product evidence requires it.
 - Validate the recommendation engine independently for hotels, including evidence/support thresholds, cold starts, locality filtering, and visited/unseen result labeling.
 - Add restaurant-and-hotel integration, component, algorithm, and end-to-end coverage.
-- Run an Italian hotel catalogue/licensing quality review and the usability research defined in the separate approved beta-research brief before declaring beta readiness.
+- Run an Italian hotel catalogue/licensing quality review and prepare the hotel flows, measures, and data separation needed for the private-beta research executed in Phase 9.
 
 **Exit:** restaurants and hotels both support the complete authenticated selection → personal ranking → recommendation loop, and no beta is released until both categories meet their quality gates.
 
@@ -511,7 +519,8 @@ The output contract should include category, place, predicted order, visited sta
 - Verify that the MVP ships no marketing email, cross-site/third-party analytics, non-essential tracking, fingerprinting, pixels, advertising identifiers, or session replay, and that transactional templates contain no promotional material.
 - Run responsive and cross-browser end-to-end tests of sign-up, draft/resume, ranking, insertion, recommendation, locale switching, and failure recovery.
 - Verify beta synthetic-data labelling and isolation, including that no synthetic ranking evidence is associated with or affects real places.
-- Run the externally defined private-beta cohort and research method with both restaurants and hotels in the chosen area; measure and review each category separately before expanding the catalogue.
+- Run the approved private-beta cohort and research method with both restaurants and hotels in the chosen area. Collect the first external real-user evidence under the documented product-processing lawful bases, notices, participant controls, and—where a distinct research activity requires it—separate research consent.
+- After sufficient beta evidence exists, repeat the leakage-safe recommendation evaluation on the external cohort, report synthetic, internal-testing, and beta results separately, and recalibrate category-specific support/personalization thresholds. Compare recommendation relevance with the global prior and review delayed predicted-versus-actual agreement before making launch or catalogue-expansion claims.
 
 **Exit:** operable production release with defined rollback, support, privacy, and measurement procedures.
 
@@ -536,7 +545,7 @@ Use deterministic seeds and clocks where possible. Do not make routine tests dep
 
 Define events and privacy/retention before collection. The MVP has no third-party or cross-site analytics. Never put place names, search text, precise coordinates, emails, full action URLs, or raw comparison pairs in analytics events.
 
-For the MVP, collect an allowlisted event vocabulary through a first-party server-side service and store it inside the EU PostgreSQL boundary with explicit retention and cleanup. Prefer authoritative domain records for recommendation exposures, additions as visited, and ranking completion rather than duplicating them as untrusted client events. Do not create a separate browser analytics identifier or silently introduce a managed analytics product; either change requires a later explicit product and privacy decision.
+For the MVP, collect an allowlisted event vocabulary through a first-party server-side service and store it inside the EU PostgreSQL boundary with explicit retention and cleanup. Prefer authoritative domain records for recommendation exposures, additions as visited, and ranking completion rather than duplicating them as untrusted client events. Stamp measurements with immutable environment/cohort provenance and report synthetic, internal-testing, private-beta, and general-release evidence separately; internal sessions never enter beta denominators or success targets. Do not create a separate browser analytics identifier or silently introduce a managed analytics product; either change requires a later explicit product and privacy decision.
 
 Initial funnel:
 
