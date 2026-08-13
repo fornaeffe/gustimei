@@ -22,6 +22,7 @@ Success therefore depends more on ranking completion, data quality, and recommen
 - A resumable pairwise-comparison session with left choice, right choice, tie, undo, progress, and accessible non-gesture controls.
 - A completed personal ranked list, including tied positions where applicable.
 - Efficient insertion of a newly visited place into an existing stable list.
+- An optional personal comment on a visited place, visible only to its author and clearly presented as a private memory aid for recalling the experience and comparing it with later experiences elsewhere.
 - A first recommendation feed that predicts the user's order across visited and not-yet-visited places in the selected category, based on overlapping user preferences and optionally filtered by locality, with a deterministic fallback for cold starts.
 - Basic profile/settings: locale, delete ranking, delete account, and privacy information.
 - Clearly separated real and synthetic catalogue/ranking data sufficient to test recommendations locally and demonstrate the beta safely.
@@ -29,7 +30,7 @@ Success therefore depends more on ranking completion, data quality, and recommen
 
 ### Deferred until the core loop is validated
 
-- Reviews, comments, public profiles, follows, likes, and messaging.
+- Public reviews/comments, replies, public profiles, follows, likes, and messaging. This does not include the private personal comments in the MVP scope.
 - Business-owner pages, claims, ads, or promoted placement.
 - Native mobile applications.
 - Complex trip planning, bookings, and multi-criteria rankings.
@@ -65,6 +66,25 @@ Success therefore depends more on ranking completion, data quality, and recommen
 24. **Public list sharing:** defer public or link-based sharing of completed personal lists beyond the MVP. Rankings remain private to their owner in every MVP route, API, export authorization, and search surface.
 25. **Beta research definition:** define the beta cohort, recruitment, qualitative method, scripts, consent, incentives, and success interpretation in a separate research brief outside this implementation plan. This plan records only the product/engineering gates and the requirement to execute the approved research before expansion.
 26. **Ranking-list lifecycle:** do not store a single workflow `status` on `ranking_list`. The list is the durable per-user/per-category aggregate and may contain useful resolved evidence even while some places remain unplaced, skipped, or under repair. Persist immutable/versioned ranking revisions and explicit session/evidence facts; derive order coverage, pending repair, the next UX action, and recommendation eligibility independently. A list never becomes globally “stale” merely because one part needs attention.
+27. **Personal comments:** an authenticated user may optionally keep one private plain-text comment per visited place to remember their experience and make later comparisons easier. This is a personal memory aid, not a review, ranking rationale, catalogue correction, message, or community contribution. Only the owner may create, read, update, delete, or export it. Never publish it, expose it to curators/businesses/other users, use it as ranking or recommendation evidence, derive features or explanations from it, or copy its content into analytics, logs, error reports, search indexes, fixtures, or model artifacts.
+
+### Proposed personal-comment UI copy
+
+Place the explanation next to the optional field wherever it can be edited. Keep the field out of the critical path: it must never be required to add, rank, or compare a place.
+
+**Italian (primary):**
+
+> Commento personale (facoltativo)
+>
+> Una nota visibile solo a te, per ricordare la tua esperienza e confrontarla in futuro con quella vissuta in altri luoghi. Non è una recensione e non influisce sulle raccomandazioni.
+
+**English:**
+
+> Personal comment (optional)
+>
+> A note only you can see, to remember your experience and compare it later with experiences at other places. It is not a review and does not affect recommendations.
+
+Use a localized character counter and an initially provisional 2,000-character maximum. Render saved content as plain text with preserved line breaks; never interpret Markdown or HTML. Finalize the limit and explicit-save versus autosave interaction during Phase 3 component testing.
 
 ### Proposed pre-registration disclosure
 
@@ -165,7 +185,7 @@ Restaurant/hotel choices and locality may incidentally suggest religion, health,
 
 ### User access and export
 
-Provide a self-service export containing a README, canonical JSON, and convenient CSV tables. Include profile/settings, linked sign-in provider names without secrets, visited places, ranking tiers/unresolved states, direct comparisons/ties/skips and supersession history, recommendation exposures/conversions, user-specific recommendation metadata, relevant algorithm and contribution-policy versions, and privacy-choice/request history. Do not expose password hashes, tokens, secrets, another person's data, or model artifacts that would reveal other users.
+Provide a self-service export containing a README, canonical JSON, and convenient CSV tables. Include profile/settings, linked sign-in provider names without secrets, visited places and their personal comments, ranking tiers/unresolved states, direct comparisons/ties/skips and supersession history, recommendation exposures/conversions, user-specific recommendation metadata, relevant algorithm and contribution-policy versions, and privacy-choice/request history. Do not expose password hashes, tokens, secrets, another person's data, or model artifacts that would reveal other users.
 
 Generate exports asynchronously, encrypt them at rest, make the download single-use or expire it after 24 hours, and delete generated archives after seven days. Verify the requester and maintain a manual path for access, rectification, restriction, portability, objection, and complaints; a portability export does not automatically satisfy the broader right of access. Track the GDPR response deadline while targeting substantially faster completion.
 
@@ -174,13 +194,13 @@ Generate exports asynchronously, encrypt them at rest, make the download single-
 On account deletion:
 
 1. Immediately revoke sessions, prevent sign-in, mark the account pending erasure, and stop its data from entering new analytics or training runs.
-2. Delete the email/social identities, profile, lists/items, ranking sessions, direct comparisons including ties/skips, recommendation snapshots/exposures, analytics events, and user-specific latent factors from live systems within 30 days.
+2. Delete the email/social identities, profile, personal comments, lists/items, ranking sessions, direct comparisons including ties/skips, recommendation snapshots/exposures, analytics events, and user-specific latent factors from live systems within 30 days.
 3. Exclude the user's evidence from future training, invalidate affected restaurant/hotel artifacts, and rebuild them without that evidence within the same 30-day window. Do not claim erasure while a deployed model intentionally retains an identifiable user's contribution.
 4. Retain derived statistics only after demonstrating that they are genuinely anonymous and cannot reasonably single out or relink the person. Removing a user ID from place/locality/timestamp evidence is not sufficient anonymization.
 5. Keep only a restricted minimal erasure/request audit when a documented legal-claims or accountability need justifies it. Never retain the deleted preference history in that audit.
 6. Let encrypted backups expire within their rolling window. Any restored backup must replay erasure tombstones before serving traffic or contributing to model training.
 
-Deleting one ranking category follows the same evidence-removal and category-model invalidation process for that category while leaving the account and other category intact.
+Deleting one ranking category also deletes the personal comments for places in that category and follows the same evidence-removal and category-model invalidation process while leaving the account and other category intact. The confirmation must state that these comments will be erased.
 
 ### Provisional retention schedule
 
@@ -188,7 +208,7 @@ Enforce these defaults through scheduled jobs and tests; final periods remain su
 
 | Data | MVP retention |
 | --- | --- |
-| Active account, visited places, rankings, and comparisons | While the account is active or until the category/account is deleted |
+| Active account, visited places, personal comments, rankings, and comparisons | While the account is active or until the user deletes the comment or the category/account is deleted |
 | User-specific recommendation factors and replaceable snapshots | Until superseded, category/account deletion, or 90 days after last relevant use |
 | Recommendation exposures required for the 90-day conversion | 120 days |
 | Detailed first-party analytics events | 90 days |
@@ -225,6 +245,7 @@ Finalize names and constraints with small algorithm prototypes before generating
 - `place_media`: provider URL/reference, attribution, sort order, dimensions, and lifecycle metadata. Avoid copying remote images without explicit rights.
 - `ranking_list`: durable owner/category identity, nullable `current_revision_id`, and timestamps. It has no workflow status or ranking-engine version of its own. Enforce one global list per `(owner, category)`; locality does not belong to list identity. Deleting a category ranking erases this aggregate and its evidence rather than transitioning it to a hidden lifecycle state.
 - `ranking_item`: list, place, insertion time, and optional removal time. Unique `(list_id, place_id)`. Whether an active item is resolved, unresolved, or not yet placed comes from the current ranking revision rather than a second item-level workflow status.
+- `personal_place_comment`: owner, place, plain-text body, and created/updated timestamps, unique on `(owner_id, place_id)`. Enforce the provisional 2,000-character limit in both domain validation and the database. Keep it separate from `ranking_item`, ranking revisions/evidence, catalogue issues, and future public reviews so editing a comment never creates a ranking revision or model invalidation. Application services must require that the place is currently active in the owner's visited list and must scope every read/write by the authenticated owner; never rely on a client-supplied owner ID.
 - `ranking_revision`: immutable/versioned output with a monotonic revision number within its list, including ordered equivalence tiers, unresolved/incomparable placement information, active evidence references, excluded/superseded evidence references with conflict/invalidation reasons, ranking-engine version, capture cohort/provenance, and timestamps. Publish a revision and advance `ranking_list.current_revision_id` transactionally; retain enough provenance to reproduce, audit, migrate, recompute, and separate internal-testing evidence from later beta evidence. Derive repair requirements from these facts rather than storing another list lifecycle flag.
 - `ranking_session`: list, base revision, purpose (`initial_order`, `insertion`, `repair`, or `rebuild`), versioned algorithm state, lifecycle (`open`, `completed`, or `superseded`), estimated/actual comparison count, expiry/resume metadata, and timestamps. Session lifecycle is stored because it governs resumability and concurrent writes; expiration is determined from its timestamp, not represented as a list state. Enforce at most one effective open session per list/revision and supersede it explicitly when a conflicting revision wins.
 - `comparison`: session, left place, right place, outcome (`left`, `right`, `tie`, `skip`), sequence, response time, superseded/undone marker, and timestamp. Enforce that both places belong to the list and differ.
@@ -377,6 +398,7 @@ The output contract should include category, place, predicted order, visited sta
 - Make `npm run check`, `npm run lint`, unit tests, and a production build complete reliably.
 - Remove or quarantine starter `task`, welcome, and demo code once equivalent product tests/routes exist.
 - Record the MVP decisions listed above in this document or short ADRs.
+- Record the personal-comment boundary: private optional memory aid, one per user/place, plain text, owner-only, excluded from ranking/recommendation evidence and public-comment contracts.
 - Replace `adapter-auto` with the Node adapter and verify the production build and server locally. Define the hosting/runtime boundary and contract-test seams without deploying to or integrating Koyeb.
 - Define environment validation and separate development, test, preview, and production database configuration.
 - Establish branch/CI checks for formatting, linting, type checks, unit tests, build, and focused end-to-end tests.
@@ -392,6 +414,7 @@ The output contract should include category, place, predicted order, visited sta
 ### Phase 1 — Separate algorithm spikes and contracts
 
 - Define one contract for versioned personal-ranking revisions, derived order coverage/repair/next-action projections, session lifecycle, comparison outcomes, and progress; define a separate `RecommendationEvidenceSource` and purpose-specific contribution-policy contract that consumes resolved evidence without depending on a ranking-list status or embedding the mandatory/optional decision in ranking code.
+- Add a contract test proving that creating, editing, or deleting a personal comment cannot change ranking revisions, comparison evidence, recommendation-evidence extraction, scores, or model/cache invalidation.
 - Test the expected mandatory policy and a non-production optional-policy fixture. Both must produce the same private ranking behavior; only policy-permitted model-training and personalization evidence may differ. Version policy decisions and verify deterministic exclusion reasons and artifact invalidation inputs.
 - Build pure personal-ranking prototypes and property-based or exhaustive small-list tests. Test 2, 3, 10, 25, and larger lists; balanced, already ordered, reverse ordered, tied, skipped, and contradictory inputs; undo and resume.
 - Validate the decided behavior for explicit equivalence tiers, skip, binary insertion, cycles, contradictions, and edits without reference to recommendation scoring, including repair after later evidence conflicts with an explicit tie.
@@ -417,6 +440,7 @@ The output contract should include category, place, predicted order, visited sta
 - Replace the example schema with the domain tables, relations, constraints, and indexes.
 - Generate and review the first domain migration; add test-database setup and reset helpers.
 - Implement repositories/services so route code does not contain raw domain queries.
+- Persist personal comments behind an owner-scoped repository/service with database and domain length constraints, explicit plain-text handling, and category/account deletion behavior. Add authorization/IDOR tests and prevent comments from entering catalogue search or recommendation queries.
 - Implement processing-restriction persistence plus the contribution-policy resolver and policy-enforcing recommendation-evidence source. Ship only the expected mandatory contribution policy in product configuration, while keeping alternate policy behavior available to automated contract tests rather than users.
 - Add a repeatable TypeScript OpenStreetMap PBF import/update pipeline, initially importing Italian restaurants, with local manual/on-demand execution, atomic staging/promotion, and environment-safe synthetic users/rankings. Keep a runner-neutral command boundary for Phase 9 automation; do not integrate GitHub Actions yet.
 - Normalize OSM nodes/ways/relations behind a catalogue provider interface and deduplicate by element identity plus geographic/name quality checks.
@@ -427,7 +451,7 @@ The output contract should include category, place, predicted order, visited sta
 - Add explicit provenance and enforcement so beta/production synthetic rankings cannot attach to real places or influence their recommendations.
 - Add effective-dated participation-cohort assignment and immutable capture provenance so internal developer evidence, private-beta evidence, and later general-release evidence remain separable in evaluation and analytics.
 
-**Exit:** a user, their global restaurant list, immutable revisions, restaurants, session, and comparisons can be persisted and reconstructed; derived order coverage and repair facts are reproducible without a list-status field; local restaurant import/search works against application-owned PostgreSQL and catalogue compliance is documented.
+**Exit:** a user, their global restaurant list, private personal comments, immutable revisions, restaurants, session, and comparisons can be persisted and reconstructed; comment changes do not affect ranking evidence; derived order coverage and repair facts are reproducible without a list-status field; local restaurant import/search works against application-owned PostgreSQL and catalogue compliance is documented.
 
 **Open questions to answer before Phase 2B:**
 
@@ -458,6 +482,7 @@ The output contract should include category, place, predicted order, visited sta
 
 - Define semantic color, spacing, typography, focus, motion, and card tokens with light/dark behavior.
 - Create reusable shell, button, form, place card, non-photo fallback, empty/error state, progress, and dialog components; use Bits UI only where it improves accessible behavior.
+- Create a reusable localized personal-comment field and read-only presentation. Show the approved purpose/privacy explanation beside the optional field, include an accessible character counter and validation, preserve line breaks, render only escaped plain text, and test explicit-save versus autosave behavior before choosing one consistently.
 - Install and use the official tree-shakable [`@lucide/svelte`](https://lucide.dev/guide/svelte) package for interface and category icons. Import icons statically by name so unused icons do not enter the bundle; centralize size, stroke, and semantic-color defaults in a small reusable icon wrapper or design tokens rather than restyling each use.
 - Make the non-photo fallback occupy the same aspect ratio and layout slot as real media so cards do not shift. Use restrained category-specific surfaces, a large decorative category icon, and visible place name/category/locality; do not generate fake place-specific imagery or imply unavailable cuisine, amenities, quality, or branding.
 - Treat fallback icons as decorative (`aria-hidden`) when adjacent text already communicates their meaning. Interactive icon-only controls require localized accessible names and tooltips where appropriate. Never rely on icon shape or color alone to distinguish category or state.
@@ -468,7 +493,7 @@ The output contract should include category, place, predicted order, visited sta
 - Add localized “check your email,” verification success/failure/expired-link, and explicit resend states. Use generic sign-up responses for existing addresses as provided by Better Auth when verification is required; do not reveal account existence.
 - Implement “forgot password” and reset-password routes using Better Auth's documented [`sendResetPassword`, `requestPasswordReset`, and `resetPassword` flow](https://better-auth.com/docs/authentication/email-password). Use a one-hour `resetPasswordTokenExpiresIn`, always show the same request confirmation regardless of whether the account exists, and set `revokeSessionsOnPasswordReset: true`.
 - Keep verification and reset delivery callbacks non-blocking as recommended by Better Auth. Route them through the application-owned outbox/job boundary and exercise it with a deterministic local worker through Phase 8; integrate hosted durable execution only in Phase 9. Never put tokens or full action URLs in analytics or ordinary production logs.
-- Before collecting genuine internal-tester preferences, implement and document an authenticated, operator-run local procedure for access/export, processing restriction, ranking-category deletion, and account erasure. Back it with the same application services and contribution-policy exclusion path intended for later self-service flows; verify requester identity and audit the request without retaining deleted preference history. A canonical local JSON export is sufficient through Phase 8—hosted asynchronous archives, CSV convenience files, and self-service UI remain Phase 9 work.
+- Before collecting genuine internal-tester preferences or personal comments, implement and document an authenticated, operator-run local procedure for access/export, processing restriction, ranking-category deletion, and account erasure. Include personal comments in access/export and erasure, back the procedure with the same application services and contribution-policy exclusion path intended for later self-service flows, verify requester identity, and audit the request without retaining deleted preference or comment content. A canonical local JSON export is sufficient through Phase 8—hosted asynchronous archives, CSV convenience files, and self-service UI remain Phase 9 work.
 - Build the landing page around the no-ratings value proposition and a single clear call to action; show the approved preference-sharing disclosure before registration.
 - Expand Paraglide messages for every product string; add checks that Italian and English catalogues stay aligned.
 
@@ -486,11 +511,12 @@ The output contract should include category, place, predicted order, visited sta
 - Add locality search/filter controls without changing list identity.
 - Build debounced server-side search with loading, empty, error, attribution, and duplicate states.
 - Let users add/remove places in a persistent unordered bucket.
+- Let users add, view, edit, and delete an optional personal comment from a selected visited-place item or detail surface. Keep the field secondary to selection, use the approved “only you / memory aid / not a review / no recommendation effect” copy, and define removal behavior so a place cannot leave an orphaned comment (confirm comment deletion when removing the visited place).
 - Enable “Order your top list” at two places and explain that adding more visited places improves recommendation confidence.
 - Preserve unordered visited-place selections across navigation, refresh, and transient network failure. No anonymous authentication handoff is required.
 - Instrument search, add/remove, threshold reached, and ranking-start events.
 
-**Exit:** a user can create or resume a persistent visited-place selection and start ranking it; this does not require a persisted `draft` list status.
+**Exit:** a user can create or resume a persistent visited-place selection, privately annotate a selected place, and start ranking it; this does not require a persisted `draft` list status.
 
 **Open questions to answer before Phase 5:**
 
@@ -503,6 +529,7 @@ The output contract should include category, place, predicted order, visited sta
 
 - Start/resume a server-owned ranking session and request one comparison at a time.
 - Show two balanced place cards with the shared Lucide-based non-photo fallback when licensed media is absent or fails to load, plus name, area, and category-relevant metadata—never ratings.
+- Provide an unobtrusive owner-only way to reveal each place's personal comment during a comparison when it helps recall the experience. Keep it collapsed by default so comment length does not unbalance the choices, and do not send comment content with comparison analytics or ranking evidence.
 - Randomize left/right presentation independently of the logical comparison and persist the logical pair plus request reason so presentation bias does not become training evidence.
 - Support card tap/click, explicit buttons, keyboard controls, tie, “skip / cannot compare,” and undo. Treat swipes as progressive enhancement, not the only input.
 - A skipped comparison leaves both places in the list, records no preference edge, and allows the engine to continue or finish with a partial order when strict placement cannot be inferred.
@@ -511,7 +538,7 @@ The output contract should include category, place, predicted order, visited sta
 - Save each response idempotently before advancing; handle double taps, stale revisions, multiple tabs, offline/interrupted requests, and session expiry.
 - Add reduced-motion-safe transitions, selection feedback, and an honest progress estimate.
 - Use occasional partial-ranking feedback only if it does not reveal unstable or misleading positions.
-- On completion, present the ranked list/tier groups and allow confirmation or editing.
+- On completion, present the ranked list/tier groups, show which places have a private personal comment without exposing its text unnecessarily, and allow owner-only viewing/editing alongside ranking confirmation or editing.
 - After the persisted flow is usable, run controlled developer/internal-tester sessions using the participants' genuine preferences under the internal product-testing procedure. Do not collect those preferences until the Phase 3 manual rights procedure has been exercised successfully. Verify that entered data is marked with internal-cohort provenance, remains private, can be accessed/exported, restricted, and deleted through that procedure, and is excluded from beta funnel and success metrics.
 
 **Exit:** the core flow is accessible, resumable, concurrency-safe, and produces a reproducible persisted ranking.
@@ -530,6 +557,7 @@ The output contract should include category, place, predicted order, visited sta
 - Detect preference cycles and ask a clarifying comparison. Pending clarification, retain the newest answer, temporarily exclude the oldest conflicting evidence, and prompt a focused reranking of the involved places.
 - Do not age or decay personal-ranking evidence over time. After concrete contradiction or invalidation, derive the smallest repair requirement and exclude only affected evidence; do not mark the entire list stale.
 - Support removing a place and changing an answer without unnecessarily discarding valid evidence.
+- Support viewing, adding, editing, and deleting personal comments from maintained-list place details without creating ranking revisions or recommendation invalidations. When removing a place or deleting/rebuilding a category, clearly disclose the associated comment-deletion consequence; rebuilding order alone preserves comments.
 - Show clearly labelled, recalculated ordinal positions in locality-filtered personal-list views without modifying the global ranking.
 - Invalidate downstream recommendation results when the current published ranking revision changes; this is cache/model invalidation, not a ranking-list lifecycle state.
 - Provide deliberate “rebuild this list” and delete actions with clear consequences.
@@ -555,6 +583,7 @@ The output contract should include category, place, predicted order, visited sta
 - Apply locality after the global order is scored. When filtered support is sparse, return fewer results and offer an explicit scope expansion rather than silently inserting broader candidates.
 - Enforce the provisionally calibrated personalization gate from synthetic and internal diagnostics. Below it, use the regularized global place prior with a clear community-based/non-personalized label, ask the user to rank more visited restaurants, or show an honest insufficient-evidence state. Generalize the copy by category when hotels are added, and treat Phase 9 beta evaluation as the gate for confirming or revising the thresholds.
 - Clearly distinguish predicted recommendation positions from personal ranking positions. Present concise recommendation reasoning and a path to mark “already visited,” feeding that place into the ranking UX for its category.
+- Never use personal-comment text, presence, length, or edit history as a recommendation feature, explanation, support signal, or candidate filter. Once a recommended place is marked visited, offer the same optional private-comment affordance used elsewhere, not a public review prompt.
 - Instrument recommendation exposure and conversion first-party: an exposure occurs only when an eligible, previously unvisited result is actually rendered to the user. Count at most one conversion per `(user, category, place)` when that place is added as visited within 90 days of its most recent eligible exposure. Exclude synthetic/demo data and places already marked visited at exposure time.
 - Cache or snapshot only after measuring latency; version results and invalidate on relevant ranking, catalogue, processing-restriction, or contribution-policy changes.
 - Evaluate recommendation quality with leakage-safe synthetic held-out fixtures and the separately identified internal product-testing rankings collected through Phases 5–6. Report results by data source, use internal evidence only as diagnostic end-to-end validation, and defer external-cohort claims and threshold confirmation to Phase 9. During beta, measure delayed agreement when recommended places are later added and ranked.
@@ -573,6 +602,7 @@ The output contract should include category, place, predicted order, visited sta
 - Extend the Italy OSM importer and loose coverage audit to `tourism=hotel`, preserving the same canonical place/provider contracts and blocking beta only for clearly breaking or deeply biasing issues.
 - Add hotel-specific catalogue metadata, search filters, empty states, and the `Hotel` variant of the shared Lucide-based card fallback, plus localized overall-preference copy without branching the shared ranking components unnecessarily.
 - Enable one separate global hotel list per user and enforce that comparisons and recommendations never cross categories.
+- Reuse the same personal-comment data/service/UI contracts for visited hotels, including owner-only authorization, localized purpose copy, deletion/export behavior, and optional reveal during comparison; do not create restaurant- or hotel-specific comment implementations.
 - Exercise the existing ranking engine against hotel fixtures and behavior; introduce category-specific policy only where product evidence requires it.
 - Validate the recommendation engine independently for hotels, including evidence/support thresholds, cold starts, locality filtering, and visited/unseen result labeling.
 - Add restaurant-and-hotel integration, component, algorithm, and end-to-end coverage.
@@ -590,7 +620,7 @@ The output contract should include category, place, predicted order, visited sta
 
 ### Phase 9 — Hardening and beta release
 
-- Threat-model authentication, authorization/IDOR, catalogue ingestion, comparison writes, rate limiting, CSRF, XSS, and abuse paths.
+- Threat-model authentication, personal-comment authorization/IDOR and stored-content rendering, catalogue ingestion, comparison writes, rate limiting, CSRF, XSS, and abuse paths.
 - Provision and validate the selected external deployment stack for the first time: deploy the SvelteKit Node application to Koyeb, migrate/import into Neon through its pooled endpoint, configure environment-separated secrets and health checks, and prove rollback without making provider APIs part of domain logic. Keep the environment access-restricted to authorized operators, use only synthetic or authorized internal-test data, and do not invite external users until the legal/privacy, security, email, backup/restore, and operational-readiness gates in this phase have passed.
 - Implement and exercise the Brevo transactional-email adapter behind the existing interface. Verify SPF, DKIM, DMARC, bounce/suppression behavior, rate limits, provider branding, expired/reused links, durable background delivery, redacted logs, and provider-contract tests before invitations.
 - Integrate Sentry's selected EU/Germany service behind the error-reporting boundary with source maps, releases, alerts, PII scrubbing, conservative tracing, and no session replay; retain structured redacted Koyeb logs and provider-independent health/audit signals.
@@ -601,8 +631,8 @@ The output contract should include category, place, predicted order, visited sta
 - Retain email/password alongside Google login unless a later product decision explicitly removes it. Disable the local email surrogate outside local/test environments and run end-to-end hosted delivery checks before inviting beta users.
 - Add independent database backup/restore and migration rollout/rollback procedures; do not treat Neon's restore window as the only backup.
 - Complete accessibility testing for keyboard, screen reader, contrast, touch targets, zoom, reduced motion, and both locales.
-- Complete and obtain legal review of the DPIA, processing record, contractual-necessity assessment for the expected mandatory reciprocal contribution policy, fallback legitimate-interest assessment if pursued, processor/transfer register, 18+ age approach, layered Privacy Notice, Terms, cookie/storage notice, and provider attribution. Record the approved contribution-policy version before launch. If mandatory contribution is not approved, activate and test the selected objection or optional-consent policy and matching user controls through the existing boundary before inviting users. Do not launch with placeholder legal text or a mismatch between disclosure, policy configuration, and model inputs.
-- Implement self-service JSON/CSV access/export, ranking-category deletion, account deletion, processing-restriction enforcement, evidence exclusion and category-model rebuild, erasure tombstone replay after restore, retention jobs, privacy-request tracking, and the documented manual rights workflow.
+- Complete and obtain legal review of the DPIA, processing record (including private personal-comment purpose, access, retention, and exclusion from model/analytics processing), contractual-necessity assessment for the expected mandatory reciprocal contribution policy, fallback legitimate-interest assessment if pursued, processor/transfer register, 18+ age approach, layered Privacy Notice, Terms, cookie/storage notice, and provider attribution. Record the approved contribution-policy version before launch. If mandatory contribution is not approved, activate and test the selected objection or optional-consent policy and matching user controls through the existing boundary before inviting users. Do not launch with placeholder legal text or a mismatch between disclosure, policy configuration, and model inputs.
+- Implement self-service JSON/CSV access/export including personal comments; individual comment deletion; ranking-category and account deletion that erase applicable comments; processing-restriction enforcement; evidence exclusion and category-model rebuild; erasure tombstone replay after restore; retention jobs; privacy-request tracking; and the documented manual rights workflow.
 - Verify that the MVP ships no marketing email, cross-site/third-party analytics, non-essential tracking, fingerprinting, pixels, advertising identifiers, or session replay, and that transactional templates contain no promotional material.
 - Run responsive and cross-browser end-to-end tests of sign-up, draft/resume, ranking, insertion, recommendation, locale switching, and failure recovery.
 - Verify beta synthetic-data labelling and isolation, including that no synthetic ranking evidence is associated with or affects real places.
@@ -626,10 +656,10 @@ Design this as encouragement for kind, factual reviewing rather than as a public
 
 ## Testing strategy
 
-- **Pure unit tests:** ranking revision/projection invariants, session state machine, derived next action, progress bounds, ties, contradictions, undo, serialization/version migration, purpose-specific contribution-policy decisions/versioning, recommendation-evidence extraction from none/partial/total coverage under mandatory and optional-policy fixtures, recommendation scoring, recommendation-exposure attribution/deduplication, and permission helpers.
-- **Database integration tests:** constraints, transactions, idempotency, list ownership, monotonic immutable revisions and atomic current-revision publication, one effective open session per list/revision, concurrent revision/session supersession, processing restrictions, policy-enforced evidence extraction with no raw-query bypass, contribution-policy version lineage, seed imports, source/override resolution, redirect-cycle prevention, reversible merge transactions, quarantine exclusions, append-only catalogue audits, verification/reset token expiry and purge, session revocation after password reset, retention jobs, erasure tombstones, category/account evidence exclusion, model invalidation/rebuild requests, and recommendation queries against isolated PostgreSQL.
-- **Component tests:** place cards with missing/broken media, restaurant/hotel fallback variants, decorative versus interactive icon accessibility, bucket, comparison controls, focus management, localization, reduced motion, and all loading/error/empty states.
-- **End-to-end tests:** 18+ declaration, Terms acceptance, separately linked Privacy Notice, and registration disclosure; blocked sign-in before email verification; verification resend/success/expired link; generic duplicate-sign-up and password-reset responses; password-reset success/invalid or reused token/session revocation; Google sign-in and account linking before beta; create/resume a visited-place selection; complete a 2-place and larger total order; tie/skip/undo; retain and serve unaffected resolved evidence after a skip, new unplaced item, or repair requirement; refresh mid-session; concurrent-tab conflict and session supersession; insert/remove a place; submit a private structured catalogue issue; enforce user/curator/admin permissions; correct, quarantine, merge, reverse, and reconcile an upstream catalogue change with a complete audit; view the full predicted order with visited status and locality filtering; receive or fail gracefully to receive recommendations; request/download/expire a JSON/CSV export; delete one ranking category; delete the account and verify session revocation, live-data erasure, evidence exclusion, and restored-backup tombstone replay.
+- **Pure unit tests:** personal-comment validation/plain-text normalization and its strict non-effect on ranking/recommendation outputs; ranking revision/projection invariants, session state machine, derived next action, progress bounds, ties, contradictions, undo, serialization/version migration, purpose-specific contribution-policy decisions/versioning, recommendation-evidence extraction from none/partial/total coverage under mandatory and optional-policy fixtures, recommendation scoring, recommendation-exposure attribution/deduplication, and permission helpers.
+- **Database integration tests:** personal-comment uniqueness/length constraints, owner scoping, visited-place requirement, concurrent edits, and individual/category/account deletion; constraints, transactions, idempotency, list ownership, monotonic immutable revisions and atomic current-revision publication, one effective open session per list/revision, concurrent revision/session supersession, processing restrictions, policy-enforced evidence extraction with no raw-query bypass, contribution-policy version lineage, seed imports, source/override resolution, redirect-cycle prevention, reversible merge transactions, quarantine exclusions, append-only catalogue audits, verification/reset token expiry and purge, session revocation after password reset, retention jobs, erasure tombstones, category/account evidence exclusion, model invalidation/rebuild requests, and recommendation queries against isolated PostgreSQL.
+- **Component tests:** place cards with missing/broken media, restaurant/hotel fallback variants, decorative versus interactive icon accessibility, bucket, personal-comment helper copy/counter/validation/collapsed comparison display/plain-text rendering, comparison controls, focus management, localization, reduced motion, and all loading/error/empty states.
+- **End-to-end tests:** 18+ declaration, Terms acceptance, separately linked Privacy Notice, and registration disclosure; blocked sign-in before email verification; verification resend/success/expired link; generic duplicate-sign-up and password-reset responses; password-reset success/invalid or reused token/session revocation; Google sign-in and account linking before beta; create/resume a visited-place selection; create/view/edit/delete a personal comment and prove another user cannot access it; reveal it during comparison without affecting evidence; complete a 2-place and larger total order; tie/skip/undo; retain and serve unaffected resolved evidence after a skip, new unplaced item, or repair requirement; refresh mid-session; concurrent-tab conflict and session supersession; insert/remove a place and confirm associated comment deletion; submit a private structured catalogue issue; enforce user/curator/admin permissions; correct, quarantine, merge, reverse, and reconcile an upstream catalogue change with a complete audit; view the full predicted order with visited status and locality filtering; receive or fail gracefully to receive recommendations; request/download/expire a JSON/CSV export containing only the requester's comments; delete one ranking category; delete the account and verify session revocation, live-data/comment erasure, evidence exclusion, and restored-backup tombstone replay.
 - **Algorithm tests:** exhaustive permutations for small lists and generated noisy/tied/partial rankings for larger lists; listwise likelihood and gradient checks; deterministic pairwise-view derivation; no double counting across revisions; skip/unresolved exclusion; tie handling; per-list normalization; cold-start shrinkage; locality-invariant scores; held-out split leakage checks; and reproducible benchmark metrics.
 - **Non-functional tests:** mobile performance on a throttled connection, catalogue/recommendation query plans, basic load tests, automated accessibility checks backed by manual review, privacy scans proving the absence of forbidden trackers/marketing paths, and retention/processor-failure drills.
 
@@ -637,7 +667,7 @@ Use deterministic seeds and clocks where possible. Do not make routine tests dep
 
 ## Analytics and success measures
 
-Define events and privacy/retention before collection. The MVP has no third-party or cross-site analytics. Never put place names, search text, precise coordinates, emails, full action URLs, or raw comparison pairs in analytics events.
+Define events and privacy/retention before collection. The MVP has no third-party or cross-site analytics. Never put place names, personal-comment text, comment excerpts or derived topics, search text, precise coordinates, emails, full action URLs, or raw comparison pairs in analytics events. If comment-affordance usage is measured, allow only coarse allowlisted create/edit/delete events without content, length, place identity, or a persistent comment identifier.
 
 For the MVP, collect an allowlisted event vocabulary through a first-party server-side service and store it inside the EU PostgreSQL boundary with explicit retention and cleanup. Prefer authoritative domain records for recommendation exposures, additions as visited, and ranking completion rather than duplicating them as untrusted client events. Stamp measurements with immutable environment/cohort provenance and report synthetic, internal-testing, private-beta, and general-release evidence separately; internal sessions never enter beta denominators or success targets. Do not create a separate browser analytics identifier or silently introduce a managed analytics product; either change requires a later explicit product and privacy decision.
 
