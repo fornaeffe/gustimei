@@ -435,6 +435,7 @@ The output contract should include category, place, predicted order, visited sta
 - Which search/index strategy meets the measured local query targets, and what rebuild/versioning behavior does it require?
 - What is the minimum moderation workflow required before product development continues: quarantine only, or also correction, merge, reversal, and user issue intake?
 - Which imported facts may be locally overridden in the MVP, and what evidence, expiry, and review requirements apply to each?
+- How will the first `admin` and `catalogue_curator` identities be provisioned, rotated, and recovered in each environment without using public routes or mutable client claims?
 
 ### Phase 2B — Catalogue governance and repair operations
 
@@ -449,7 +450,7 @@ The output contract should include category, place, predicted order, visited sta
 **Open questions to answer before Phase 3:**
 
 - Who is the provisional controller/contact for local notices, and what identifiers/version fields must be stored for Terms acceptance, age declaration, Privacy Notice, and contribution-policy disclosure before auth tables are extended?
-- How are the first `admin` and `catalogue_curator` identities provisioned and rotated in each environment?
+- Which authentication and account fields are owned by Better Auth versus the application profile, and what migration boundary prevents provider integration in Phase 9 from changing product routes?
 - What local rate-limit implementation and trusted-proxy abstraction will Phase 3 use, and which behavior must remain portable to Phase 9 hosting?
 - What are the application-owned transactional-email and durable-job/outbox contracts? Phase 3 must implement only local/in-memory adapters; Brevo and hosted background delivery remain Phase 9 work.
 
@@ -467,6 +468,7 @@ The output contract should include category, place, predicted order, visited sta
 - Add localized “check your email,” verification success/failure/expired-link, and explicit resend states. Use generic sign-up responses for existing addresses as provided by Better Auth when verification is required; do not reveal account existence.
 - Implement “forgot password” and reset-password routes using Better Auth's documented [`sendResetPassword`, `requestPasswordReset`, and `resetPassword` flow](https://better-auth.com/docs/authentication/email-password). Use a one-hour `resetPasswordTokenExpiresIn`, always show the same request confirmation regardless of whether the account exists, and set `revokeSessionsOnPasswordReset: true`.
 - Keep verification and reset delivery callbacks non-blocking as recommended by Better Auth. Route them through the application-owned outbox/job boundary and exercise it with a deterministic local worker through Phase 8; integrate hosted durable execution only in Phase 9. Never put tokens or full action URLs in analytics or ordinary production logs.
+- Before collecting genuine internal-tester preferences, implement and document an authenticated, operator-run local procedure for access/export, processing restriction, ranking-category deletion, and account erasure. Back it with the same application services and contribution-policy exclusion path intended for later self-service flows; verify requester identity and audit the request without retaining deleted preference history. A canonical local JSON export is sufficient through Phase 8—hosted asynchronous archives, CSV convenience files, and self-service UI remain Phase 9 work.
 - Build the landing page around the no-ratings value proposition and a single clear call to action; show the approved preference-sharing disclosure before registration.
 - Expand Paraglide messages for every product string; add checks that Italian and English catalogues stay aligned.
 
@@ -476,7 +478,6 @@ The output contract should include category, place, predicted order, visited sta
 
 - Which product route creates the per-category list: first category visit, first selected place, or an explicit user action?
 - What exact empty-dashboard hierarchy and primary call to action best move a verified user into restaurant selection without confusing personal rankings and recommendations?
-- Which authentication and account fields are owned by Better Auth versus the application profile, and what migration boundary prevents provider integration in Phase 9 from changing product routes?
 - Are the local rate limits, outbox retries/idempotency, generic auth responses, and disclosure/version records sufficient to proceed without a hosted dependency?
 
 ### Phase 4 — Visited-restaurant selection bucket
@@ -511,7 +512,7 @@ The output contract should include category, place, predicted order, visited sta
 - Add reduced-motion-safe transitions, selection feedback, and an honest progress estimate.
 - Use occasional partial-ranking feedback only if it does not reveal unstable or misleading positions.
 - On completion, present the ranked list/tier groups and allow confirmation or editing.
-- After the persisted flow is usable, run controlled developer/internal-tester sessions using the participants' genuine preferences under the internal product-testing procedure. Verify that entered data is marked with internal-cohort provenance, remains private, can be exported/deleted/restricted, and is excluded from beta funnel and success metrics.
+- After the persisted flow is usable, run controlled developer/internal-tester sessions using the participants' genuine preferences under the internal product-testing procedure. Do not collect those preferences until the Phase 3 manual rights procedure has been exercised successfully. Verify that entered data is marked with internal-cohort provenance, remains private, can be accessed/exported, restricted, and deleted through that procedure, and is excluded from beta funnel and success metrics.
 
 **Exit:** the core flow is accessible, resumable, concurrency-safe, and produces a reproducible persisted ranking.
 
@@ -558,7 +559,7 @@ The output contract should include category, place, predicted order, visited sta
 - Cache or snapshot only after measuring latency; version results and invalidate on relevant ranking, catalogue, processing-restriction, or contribution-policy changes.
 - Evaluate recommendation quality with leakage-safe synthetic held-out fixtures and the separately identified internal product-testing rankings collected through Phases 5–6. Report results by data source, use internal evidence only as diagnostic end-to-end validation, and defer external-cohort claims and threshold confirmation to Phase 9. During beta, measure delayed agreement when recommended places are later added and ranked.
 
-**Exit:** users who pass the calibrated evidence gate receive an explainable predicted order of visited and unseen restaurants, filterable by locality without altering their global restaurant list; all other users see an honest useful next step.
+**Exit:** users who pass the provisionally calibrated evidence gate receive an explainable predicted order of visited and unseen restaurants, filterable by locality without altering their global restaurant list; all other users see an honest useful next step. Phase 9 beta evidence must confirm or revise the gate before general release.
 
 **Open questions to answer before Phase 8:**
 
@@ -577,7 +578,7 @@ The output contract should include category, place, predicted order, visited sta
 - Add restaurant-and-hotel integration, component, algorithm, and end-to-end coverage.
 - Run an Italian hotel catalogue/licensing quality review and prepare the hotel flows, measures, and data separation needed for the private-beta research executed in Phase 9.
 
-**Exit:** restaurants and hotels both support the complete authenticated selection → personal ranking → recommendation loop, and no beta is released until both categories meet their quality gates.
+**Exit:** restaurants and hotels both support the complete authenticated selection → personal ranking → recommendation loop and meet their local implementation, catalogue, algorithm, accessibility, and internal-validation gates. External recommendation-quality and usability validation remains a Phase 9 private-beta gate.
 
 **Open questions to answer before Phase 9:**
 
@@ -590,7 +591,7 @@ The output contract should include category, place, predicted order, visited sta
 ### Phase 9 — Hardening and beta release
 
 - Threat-model authentication, authorization/IDOR, catalogue ingestion, comparison writes, rate limiting, CSRF, XSS, and abuse paths.
-- Provision and validate the selected external deployment stack for the first time: deploy the SvelteKit Node application to Koyeb, migrate/import into Neon through its pooled endpoint, configure environment-separated secrets and health checks, and prove rollback without making provider APIs part of domain logic.
+- Provision and validate the selected external deployment stack for the first time: deploy the SvelteKit Node application to Koyeb, migrate/import into Neon through its pooled endpoint, configure environment-separated secrets and health checks, and prove rollback without making provider APIs part of domain logic. Keep the environment access-restricted to authorized operators, use only synthetic or authorized internal-test data, and do not invite external users until the legal/privacy, security, email, backup/restore, and operational-readiness gates in this phase have passed.
 - Implement and exercise the Brevo transactional-email adapter behind the existing interface. Verify SPF, DKIM, DMARC, bounce/suppression behavior, rate limits, provider branding, expired/reused links, durable background delivery, redacted logs, and provider-contract tests before invitations.
 - Integrate Sentry's selected EU/Germany service behind the error-reporting boundary with source maps, releases, alerts, PII scrubbing, conservative tracing, and no session replay; retain structured redacted Koyeb logs and provider-independent health/audit signals.
 - Validate the runner-neutral OSM importer through an explicitly triggered GitHub Actions job, and enable a conservative filtered-update schedule only after runtime, idempotency, atomic promotion, failure recovery, and cost are proven. Keep PBF files and database backups out of workflow artifacts.
