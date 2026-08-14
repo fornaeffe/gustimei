@@ -1,6 +1,8 @@
 import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
-	webServer: { command: 'npm run build && npm run preview', port: 4173 },
+	testDir: './tests',
+	reporter: [['list'], ['./scripts/playwright-completion-reporter.mjs']],
+	use: { baseURL: 'http://127.0.0.1:3000' },
 	testMatch: '**/*.e2e.{ts,js}'
 });

@@ -8,3 +8,12 @@ bun.lockb
 # Miscellaneous
 /static/
 /drizzle/
+
+# Generated files
+/src/lib/paraglide/
+/src/lib/server/db/auth.schema.ts
+/project.inlang/.meta.json
+/project.inlang/README.md
+
+# Product specification is deliberately prose-formatted.
+/IMPLEMENTATION_PLAN.md

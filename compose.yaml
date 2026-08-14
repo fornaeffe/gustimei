@@ -1,14 +1,26 @@
 services:
-  db:
-    image: postgres
+  db-development:
+    image: postgres:17-alpine
     restart: always
     ports:
       - 5432:5432
     environment:
-      POSTGRES_USER: root
-      POSTGRES_PASSWORD: mysecretpassword
-      POSTGRES_DB: local
+      POSTGRES_USER: gustimei
+      POSTGRES_PASSWORD: gustimei-development
+      POSTGRES_DB: gustimei_development
     volumes:
-      - pgdata:/var/lib/postgresql
+      - pgdata-development:/var/lib/postgresql/data
+
+  db-test:
+    image: postgres:17-alpine
+    ports:
+      - 5433:5432
+    environment:
+      POSTGRES_USER: gustimei
+      POSTGRES_PASSWORD: gustimei-test
+      POSTGRES_DB: gustimei_test
+    tmpfs:
+      - /var/lib/postgresql/data
+
 volumes:
-  pgdata:
+  pgdata-development:

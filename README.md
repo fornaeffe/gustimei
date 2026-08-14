@@ -21,5 +21,21 @@ The user selects some places he/she visited, then is guided in sorting them in a
 
 With this data, the app matches users with similar preferences, then propose to the user a list of places sorted according to how matching users sorted them in their rankings.
 
+## Local development
 
+GustiMei targets Node.js 22 and PostgreSQL 17.
 
+1. Copy `.env.example` to `.env` and replace `BETTER_AUTH_SECRET` with a local secret of at least
+   32 characters.
+2. Run `npm ci`.
+3. Start the development and test databases with `npm run db:start`.
+4. Apply the development schema with `npm run db:push`.
+5. Start SvelteKit with `npm run dev`.
+
+Run the fast baseline with `npm run ci`. Browser tests use the isolated test database on port
+5433; install Chromium once with `npm run test:e2e:install`, apply the test schema with
+`$env:DATABASE_URL = 'postgres://gustimei:gustimei-test@localhost:5433/gustimei_test'; npm run db:push`,
+then run `npm run test:e2e`.
+
+See [the runtime boundary](docs/runtime-boundary.md) for environment isolation, provider seams,
+and production Node startup details.

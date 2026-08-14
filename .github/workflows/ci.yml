@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run ci
+
+  focused-e2e:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: gustimei
+          POSTGRES_PASSWORD: gustimei-test
+          POSTGRES_DB: gustimei_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U gustimei -d gustimei_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      APP_ENV: test
+      DATABASE_URL: postgres://gustimei:gustimei-test@127.0.0.1:5432/gustimei_test
+      ORIGIN: http://127.0.0.1:3000
+      BETTER_AUTH_SECRET: gustimei-test-secret-not-for-production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run db:push -- --force
+      - run: npm run test:e2e

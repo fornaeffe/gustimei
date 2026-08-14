@@ -1,4 +1,6 @@
 {
 	"$schema": "https://inlang.com/schema/inlang-message-format",
-	"hello_world": "Hello, {name} from en!"
+	"product_name": "GustiMei",
+	"product_tagline": "Discover places through preferences, not ratings.",
+	"phase_zero_status": "We are building the restaurant experience first, with hotels following before beta."
 }
