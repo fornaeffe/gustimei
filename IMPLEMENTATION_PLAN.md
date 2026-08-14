@@ -397,8 +397,6 @@ The output contract should include category, place, predicted order, visited sta
 
 - Make `npm run check`, `npm run lint`, unit tests, and a production build complete reliably.
 - Remove or quarantine starter `task`, welcome, and demo code once equivalent product tests/routes exist.
-- Record the MVP decisions listed above in this document or short ADRs.
-- Record the personal-comment boundary: private optional memory aid, one per user/place, plain text, owner-only, excluded from ranking/recommendation evidence and public-comment contracts.
 - Replace `adapter-auto` with the Node adapter and verify the production build and server locally. Define the hosting/runtime boundary and contract-test seams without deploying to or integrating Koyeb.
 - Define environment validation and separate development, test, preview, and production database configuration.
 - Establish branch/CI checks for formatting, linting, type checks, unit tests, build, and focused end-to-end tests.
