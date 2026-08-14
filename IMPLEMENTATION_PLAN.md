@@ -432,6 +432,39 @@ Phase 0 decisions:
 
 ### Phase 1 — Separate algorithm spikes and contracts
 
+**Status (2026-08-14): complete.** Pure TypeScript ranking and recommendation boundaries now
+separate private-list behavior from purpose-specific recommendation contribution. The deterministic
+ranking session supports tier-aware stable merge ordering, binary tier insertion, skip, undo,
+serialization/resume, progress estimates, newest-answer contradiction recovery, and targeted repair.
+Mandatory and optional-policy fixtures, comment-isolation contracts, exact generalized
+Plackett–Luce likelihood/gradient tests, alternative models, leakage-safe whole-tier holdouts, and
+seeded restaurant/hotel benchmarks are implemented and passing.
+
+Phase 1 decisions:
+
+- Adopt `ranking-v1-merge-tiers`: bottom-up stable merge for initial ordering, comparison-graph
+  revisions, binary tier insertion, second-member confirmation for multi-place tie insertion, and
+  the versioned `max(5 tiers, 25% of the list)` broader-rebuild threshold. Keep no list-size cap.
+  See [ADR 0001](docs/adr/0001-ranking-engine-v1.md).
+- The provisional generalized Plackett–Luce candidate did not win the primary synthetic metric.
+  Adopt category-versioned nearest-neighbor rank aggregation for restaurants and regularized
+  low-rank Bradley–Terry for hotels, with the smoothed global prior fallback. Retain the provisional
+  5 ranked-place / 3 resolved-tier / 4 supported-factor gate because both selected candidates beat
+  the global prior inside it. See [ADR 0002](docs/adr/0002-recommendation-engine-v1.md) and the
+  [benchmark report](docs/phase-1-benchmark.md). These are implementation choices, not evidence of
+  external validity or beta readiness.
+- Fix the Phase 2A persistence invariants and canonical locality contract: immutable monotonic
+  revisions with atomic current publication; session-only workflow lifecycle; logical,
+  presentation-independent comparisons with explicit supersession; policy-gated extraction from
+  current resolved evidence; separate comments; and OSM administrative boundary identities plus
+  normalized text and coordinate-derived locality indexes. See
+  [ADR 0003](docs/adr/0003-phase-2a-domain-boundaries.md).
+- The reproducible fixtures use 48 restaurant users/32 places and 40 hotel users/28 places, seeded
+  category-specific latent factors, whole-tier holdouts selected before observation derivation, and
+  independent validation/test users. A candidate must beat the global prior on pairwise accuracy
+  and `tau-b`, retain at least 80% supported coverage, and show positive NDCG/top-tier behavior;
+  selection is then pairwise accuracy, `tau-b`, and NDCG in that order.
+
 - Define one contract for versioned personal-ranking revisions, derived order coverage/repair/next-action projections, session lifecycle, comparison outcomes, and progress; define a separate `RecommendationEvidenceSource` and purpose-specific contribution-policy contract that consumes resolved evidence without depending on a ranking-list status or embedding the mandatory/optional decision in ranking code.
 - Add a contract test proving that creating, editing, or deleting a personal comment cannot change ranking revisions, comparison evidence, recommendation-evidence extraction, scores, or model/cache invalidation.
 - Test the expected mandatory policy and a non-production optional-policy fixture. Both must produce the same private ranking behavior; only policy-permitted model-training and personalization evidence may differ. Version policy decisions and verify deterministic exclusion reasons and artifact invalidation inputs.

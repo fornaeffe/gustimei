@@ -37,5 +37,9 @@ Run the fast baseline with `npm run ci`. Browser tests use the isolated test dat
 `$env:DATABASE_URL = 'postgres://gustimei:gustimei-test@localhost:5433/gustimei_test'; npm run db:push`,
 then run `npm run test:e2e`.
 
+Run the deterministic, synthetic-only Phase 1 algorithm suite with `npm run benchmark:phase1`.
+Its dataset, selection criteria, and recorded results are documented in
+[`docs/phase-1-benchmark.md`](docs/phase-1-benchmark.md).
+
 See [the runtime boundary](docs/runtime-boundary.md) for environment isolation, provider seams,
 and production Node startup details.

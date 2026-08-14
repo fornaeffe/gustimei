@@ -1,0 +1,398 @@
+import {
+	RANKING_ENGINE_VERSION,
+	type ComparisonEvidence,
+	type EquivalenceTier,
+	type ExcludedEvidence,
+	type ExclusionReason,
+	type PlaceId,
+	type RankingProjection,
+	type RankingRevision,
+	type RankingSessionSummary,
+	type RepairRequirement,
+	type UnresolvedRelation
+} from './contracts';
+
+interface RevisionInput {
+	id: string;
+	listId: string;
+	category: RankingRevision['category'];
+	revision: number;
+	activePlaceIds: readonly PlaceId[];
+	evidence: readonly ComparisonEvidence[];
+	provenance: RankingRevision['provenance'];
+	publishedAt: string;
+}
+
+class DisjointSet {
+	readonly #parent = new Map<PlaceId, PlaceId>();
+
+	constructor(items: readonly PlaceId[]) {
+		for (const item of items) this.#parent.set(item, item);
+	}
+
+	find(item: PlaceId): PlaceId {
+		const parent = this.#parent.get(item);
+		if (parent === undefined) throw new Error(`Unknown ranking item: ${item}`);
+		if (parent === item) return item;
+		const root = this.find(parent);
+		this.#parent.set(item, root);
+		return root;
+	}
+
+	union(first: PlaceId, second: PlaceId) {
+		const firstRoot = this.find(first);
+		const secondRoot = this.find(second);
+		if (firstRoot === secondRoot) return;
+		const [root, child] = [firstRoot, secondRoot].sort();
+		this.#parent.set(child, root);
+	}
+}
+
+interface ConsistencyResult {
+	consistent: boolean;
+	reason?: Extract<ExclusionReason, 'cycle' | 'tie-conflict'>;
+	conflictingEvidenceIds: string[];
+}
+
+function strictDirection(evidence: ComparisonEvidence): readonly [PlaceId, PlaceId] | undefined {
+	if (evidence.outcome === 'left') return [evidence.leftPlaceId, evidence.rightPlaceId];
+	if (evidence.outcome === 'right') return [evidence.rightPlaceId, evidence.leftPlaceId];
+	return undefined;
+}
+
+function checkConsistency(
+	items: readonly PlaceId[],
+	evidence: readonly ComparisonEvidence[]
+): ConsistencyResult {
+	const ties = new DisjointSet(items);
+	for (const item of evidence) {
+		if (item.outcome === 'tie') ties.union(item.leftPlaceId, item.rightPlaceId);
+	}
+
+	for (const item of evidence) {
+		const direction = strictDirection(item);
+		if (direction && ties.find(direction[0]) === ties.find(direction[1])) {
+			return {
+				consistent: false,
+				reason: 'tie-conflict',
+				conflictingEvidenceIds: evidence
+					.filter(
+						(candidate) =>
+							candidate.id === item.id ||
+							(candidate.outcome === 'tie' &&
+								ties.find(candidate.leftPlaceId) === ties.find(direction[0]) &&
+								ties.find(candidate.rightPlaceId) === ties.find(direction[0]))
+					)
+					.map((candidate) => candidate.id)
+			};
+		}
+	}
+
+	const edges = new Map<PlaceId, Map<PlaceId, string>>();
+	for (const item of evidence) {
+		const direction = strictDirection(item);
+		if (!direction) continue;
+		const preferred = ties.find(direction[0]);
+		const other = ties.find(direction[1]);
+		const outgoing = edges.get(preferred) ?? new Map<PlaceId, string>();
+		outgoing.set(other, item.id);
+		edges.set(preferred, outgoing);
+	}
+
+	const visiting = new Set<PlaceId>();
+	const visited = new Set<PlaceId>();
+	const pathEvidence: string[] = [];
+	const visit = (node: PlaceId): string[] | undefined => {
+		if (visiting.has(node)) return [...pathEvidence];
+		if (visited.has(node)) return undefined;
+		visiting.add(node);
+		for (const [next, evidenceId] of edges.get(node) ?? []) {
+			pathEvidence.push(evidenceId);
+			const cycle = visit(next);
+			if (cycle) return cycle;
+			pathEvidence.pop();
+		}
+		visiting.delete(node);
+		visited.add(node);
+		return undefined;
+	};
+
+	for (const item of items) {
+		const cycle = visit(ties.find(item));
+		if (cycle) {
+			return { consistent: false, reason: 'cycle', conflictingEvidenceIds: [...new Set(cycle)] };
+		}
+	}
+
+	return { consistent: true, conflictingEvidenceIds: [] };
+}
+
+function selectConsistentEvidence(
+	items: readonly PlaceId[],
+	evidence: readonly ComparisonEvidence[]
+): { active: ComparisonEvidence[]; excluded: ExcludedEvidence[] } {
+	const supersededIds = new Set(
+		evidence
+			.filter((item) => item.active && item.supersedesEvidenceId)
+			.map((item) => item.supersedesEvidenceId as string)
+	);
+	const inactive = evidence
+		.filter((item) => !item.active)
+		.map((item) => ({ evidence: item, reason: 'undone' as const, conflictingEvidenceIds: [] }));
+	const superseded = evidence
+		.filter((item) => item.active && supersededIds.has(item.id))
+		.map((item) => ({
+			evidence: item,
+			reason: 'superseded' as const,
+			conflictingEvidenceIds: evidence
+				.filter((candidate) => candidate.supersedesEvidenceId === item.id)
+				.map((candidate) => candidate.id)
+		}));
+	const candidates = evidence
+		.filter((item) => item.active && item.outcome !== 'skip' && !supersededIds.has(item.id))
+		.sort((first, second) => second.sequence - first.sequence || second.id.localeCompare(first.id));
+	const skipped = evidence.filter(
+		(item) => item.active && item.outcome === 'skip' && !supersededIds.has(item.id)
+	);
+	const active: ComparisonEvidence[] = [];
+	const excluded: ExcludedEvidence[] = [...inactive, ...superseded];
+
+	for (const candidate of candidates) {
+		const trial = [...active, candidate];
+		const result = checkConsistency(items, trial);
+		if (result.consistent) active.push(candidate);
+		else {
+			excluded.push({
+				evidence: candidate,
+				reason: candidate.outcome === 'tie' ? 'tie-conflict' : (result.reason ?? 'cycle'),
+				conflictingEvidenceIds: result.conflictingEvidenceIds.filter((id) => id !== candidate.id)
+			});
+		}
+	}
+
+	return {
+		active: [...active, ...skipped].sort((first, second) => first.sequence - second.sequence),
+		excluded: excluded.sort((first, second) => first.evidence.sequence - second.evidence.sequence)
+	};
+}
+
+function transitiveClosure(nodes: readonly PlaceId[], edges: ReadonlyMap<PlaceId, Set<PlaceId>>) {
+	const reachable = new Map<PlaceId, Set<PlaceId>>();
+	for (const node of nodes) reachable.set(node, new Set(edges.get(node) ?? []));
+	for (const through of nodes) {
+		for (const from of nodes) {
+			if (!reachable.get(from)?.has(through)) continue;
+			for (const to of reachable.get(through) ?? []) reachable.get(from)?.add(to);
+		}
+	}
+	return reachable;
+}
+
+function deriveOrder(
+	items: readonly PlaceId[],
+	activeEvidence: readonly ComparisonEvidence[],
+	allEvidence: readonly ComparisonEvidence[],
+	excluded: readonly ExcludedEvidence[]
+): { tiers: EquivalenceTier[]; unresolved: UnresolvedRelation[] } {
+	const ties = new DisjointSet(items);
+	for (const evidence of activeEvidence) {
+		if (evidence.outcome === 'tie') ties.union(evidence.leftPlaceId, evidence.rightPlaceId);
+	}
+
+	const members = new Map<PlaceId, PlaceId[]>();
+	for (const item of items) {
+		const root = ties.find(item);
+		members.set(root, [...(members.get(root) ?? []), item].sort());
+	}
+	const roots = [...members.keys()].sort();
+	const edges = new Map<PlaceId, Set<PlaceId>>();
+	for (const evidence of activeEvidence) {
+		const direction = strictDirection(evidence);
+		if (!direction) continue;
+		const from = ties.find(direction[0]);
+		const to = ties.find(direction[1]);
+		if (from !== to) edges.set(from, new Set([...(edges.get(from) ?? []), to]));
+	}
+	const reachable = transitiveClosure(roots, edges);
+	const indegree = new Map(roots.map((root) => [root, 0]));
+	for (const targets of edges.values()) {
+		for (const target of targets) indegree.set(target, (indegree.get(target) ?? 0) + 1);
+	}
+	const queue = roots.filter((root) => indegree.get(root) === 0).sort();
+	const orderedRoots: PlaceId[] = [];
+	while (queue.length > 0) {
+		const root = queue.shift();
+		if (root === undefined) break;
+		orderedRoots.push(root);
+		for (const target of edges.get(root) ?? []) {
+			const next = (indegree.get(target) ?? 0) - 1;
+			indegree.set(target, next);
+			if (next === 0) {
+				queue.push(target);
+				queue.sort();
+			}
+		}
+	}
+
+	const contradictionPairs = new Set<string>();
+	for (const item of excluded) {
+		if (item.reason === 'cycle' || item.reason === 'tie-conflict') {
+			contradictionPairs.add(pairKey(item.evidence.leftPlaceId, item.evidence.rightPlaceId));
+		}
+	}
+	const skippedPairs = new Set(
+		allEvidence
+			.filter((item) => item.active && item.outcome === 'skip')
+			.map((item) => pairKey(item.leftPlaceId, item.rightPlaceId))
+	);
+	const unresolved: UnresolvedRelation[] = [];
+	for (let firstIndex = 0; firstIndex < roots.length; firstIndex += 1) {
+		for (let secondIndex = firstIndex + 1; secondIndex < roots.length; secondIndex += 1) {
+			const firstRoot = roots[firstIndex];
+			const secondRoot = roots[secondIndex];
+			if (reachable.get(firstRoot)?.has(secondRoot) || reachable.get(secondRoot)?.has(firstRoot)) {
+				continue;
+			}
+			for (const first of members.get(firstRoot) ?? []) {
+				for (const second of members.get(secondRoot) ?? []) {
+					const key = pairKey(first, second);
+					unresolved.push({
+						firstPlaceId: first,
+						secondPlaceId: second,
+						reason: contradictionPairs.has(key)
+							? 'contradiction'
+							: skippedPairs.has(key)
+								? 'skipped'
+								: 'missing-evidence'
+					});
+				}
+			}
+		}
+	}
+
+	return {
+		tiers: orderedRoots.map((root) => ({ placeIds: members.get(root) ?? [] })),
+		unresolved
+	};
+}
+
+function pairKey(first: PlaceId, second: PlaceId) {
+	return [first, second].sort().join('\u0000');
+}
+
+export function createRankingRevision(input: RevisionInput): RankingRevision {
+	const items = [...new Set(input.activePlaceIds)];
+	if (items.length !== input.activePlaceIds.length) throw new Error('Ranking items must be unique');
+	if (!Number.isInteger(input.revision) || input.revision < 1) {
+		throw new Error('Ranking revision numbers must be positive integers');
+	}
+	const itemSet = new Set(items);
+	const evidenceIds = new Set<string>();
+	const evidenceSequences = new Set<number>();
+	for (const evidence of input.evidence) {
+		if (evidenceIds.has(evidence.id)) throw new Error('Comparison evidence IDs must be unique');
+		evidenceIds.add(evidence.id);
+		if (!Number.isInteger(evidence.sequence) || evidence.sequence < 1) {
+			throw new Error('Comparison evidence sequences must be positive integers');
+		}
+		if (evidenceSequences.has(evidence.sequence)) {
+			throw new Error('Comparison evidence sequences must be unique within a revision');
+		}
+		evidenceSequences.add(evidence.sequence);
+		if (evidence.leftPlaceId === evidence.rightPlaceId) {
+			throw new Error('A comparison requires two different places');
+		}
+		const canonicalPair = [evidence.leftPlaceId, evidence.rightPlaceId].sort();
+		if (
+			evidence.logicalPair[0] !== canonicalPair[0] ||
+			evidence.logicalPair[1] !== canonicalPair[1]
+		) {
+			throw new Error('Logical comparison pairs must be canonical and presentation-independent');
+		}
+		if (!itemSet.has(evidence.leftPlaceId) || !itemSet.has(evidence.rightPlaceId)) {
+			throw new Error('Comparison evidence must reference active ranking items');
+		}
+	}
+	for (const evidence of input.evidence) {
+		if (evidence.supersedesEvidenceId && !evidenceIds.has(evidence.supersedesEvidenceId)) {
+			throw new Error('Superseded evidence must exist in the revision history');
+		}
+		if (evidence.supersedesEvidenceId === evidence.id) {
+			throw new Error('Comparison evidence cannot supersede itself');
+		}
+	}
+
+	const selected = selectConsistentEvidence(items, input.evidence);
+	const order = deriveOrder(items, selected.active, input.evidence, selected.excluded);
+	return {
+		id: input.id,
+		listId: input.listId,
+		category: input.category,
+		revision: input.revision,
+		activePlaceIds: items,
+		orderedTiers: order.tiers,
+		unresolvedRelations: order.unresolved,
+		activeEvidence: selected.active,
+		excludedEvidence: selected.excluded,
+		rankingEngineVersion: RANKING_ENGINE_VERSION,
+		provenance: input.provenance,
+		publishedAt: input.publishedAt
+	};
+}
+
+export function deriveRepairRequirement(revision: RankingRevision): RepairRequirement | undefined {
+	const conflicts = revision.excludedEvidence.filter(
+		(item) =>
+			item.reason === 'cycle' || item.reason === 'tie-conflict' || item.reason === 'invalidated'
+	);
+	if (conflicts.length === 0) return undefined;
+	const placeIds = [
+		...new Set(conflicts.flatMap((item) => [item.evidence.leftPlaceId, item.evidence.rightPlaceId]))
+	].sort();
+	const tierCount = revision.orderedTiers.length;
+	const localLimit = Math.max(5, Math.ceil(tierCount * 0.25));
+	return {
+		placeIds,
+		evidenceIds: conflicts.map((item) => item.evidence.id).sort(),
+		reason: conflicts.some((item) => item.reason === 'tie-conflict')
+			? 'tie-conflict'
+			: conflicts.some((item) => item.reason === 'cycle')
+				? 'cycle'
+				: 'invalidated',
+		scope: placeIds.length > localLimit ? 'rebuild' : 'local'
+	};
+}
+
+export function deriveRankingProjection(
+	revision: RankingRevision,
+	openSession?: RankingSessionSummary
+): RankingProjection {
+	const resolvedRelationCount = revision.activeEvidence.filter(
+		(item) => item.outcome !== 'skip'
+	).length;
+	const orderCoverage =
+		resolvedRelationCount === 0
+			? 'none'
+			: revision.unresolvedRelations.length === 0
+				? 'total'
+				: 'partial';
+	const repairRequirement = deriveRepairRequirement(revision);
+	const nextAction =
+		revision.activePlaceIds.length < 2
+			? ({
+					type: 'select-places',
+					minimumAdditionalPlaces: 2 - revision.activePlaceIds.length
+				} as const)
+			: openSession?.lifecycle === 'open'
+				? ({
+						type: 'resume-session',
+						sessionId: openSession.id,
+						purpose: openSession.purpose
+					} as const)
+				: repairRequirement
+					? ({ type: 'repair', requirement: repairRequirement } as const)
+					: orderCoverage !== 'total'
+						? ({ type: 'continue-ranking' } as const)
+						: ({ type: 'view-ranking' } as const);
+	return { orderCoverage, repairRequirement, nextAction };
+}
