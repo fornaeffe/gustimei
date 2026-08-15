@@ -38,3 +38,12 @@ export interface AppProviders {
 	artifacts: ArtifactStore;
 	errors: ErrorReporter;
 }
+
+export type ReviewOutboxPurpose =
+	| 'review-acknowledgement'
+	| 'review-author-notice'
+	| 'review-evidence-window'
+	| 'review-decision'
+	| 'review-reinstatement'
+	| 'review-redress'
+	| 'review-retention-deletion';

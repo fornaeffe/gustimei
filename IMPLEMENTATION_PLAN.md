@@ -677,6 +677,21 @@ Phase 2A invariants. The internal curator UI remains deferred as planned. See
 
 ### Phase 2C — Public-review and notice/action foundations
 
+**Status (2026-08-15): complete for local synthetic implementation.** ADR 0005 records the
+review/publication, deterministic calendar, identity, notice/action, evidence, redress, retention,
+catalogue-collision, rate-limit, outbox, and strict ranking/recommendation-isolation boundaries.
+Migration `0003` preserves earlier data and adds deferred ownership constraints,
+append-only provenance protection, query-time visibility indexes, and the scoped account-erasure
+path. Server services and deterministic workers cover author lifecycle, anonymous public reads,
+exact-version notices, bilateral case material, restricted evidence, moderator decisions,
+reconsideration/reinstatement, expiry, evidence deletion, and erasure holds. Synthetic unit and
+database tests exercise these contracts, including catalogue merge/reversal and zero ranking
+effects. No public review UI or genuine review/case data is enabled. See
+[ADR 0005](docs/adr/0005-public-review-foundation.md), the
+[compliance matrix](docs/phase-2c-compliance-matrix.md), and the
+[operations notes](docs/phase-2c-reviews.md). The open legal/pseudonym/moderation questions below
+remain explicit Phase 3/beta gates and are centralized as versioned policy rather than final copy.
+
 This phase is placed after completed Phase 2B and before any product UI because the new public routes, author forms, optional post-ranking prompt, moderation states, and hotel reuse all depend on stable review/complaint contracts and migrations. It extends the existing stable-place, Better Auth user-ID, server-authorization, audit, provider, and catalogue-redirect boundaries without reopening Phase 2A/2B ranking or catalogue decisions. It is not placed in Phase 8 because deferring the legal lifecycle and moderation foundation until then would force restaurant screens to be rebuilt and would leave too little time to exercise expiry, redress, and retention before beta.
 
 Current-state constraints discovered before planning:

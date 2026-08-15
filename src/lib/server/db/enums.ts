@@ -126,3 +126,78 @@ export const catalogueRepairStatusEnum = pgEnum('catalogue_repair_status', [
 	'completed',
 	'cancelled'
 ]);
+
+export const reviewModeratorRoleEnum = pgEnum('review_moderator_role', [
+	'review_moderator',
+	'admin'
+]);
+export const publicProfileLifecycleEnum = pgEnum('public_profile_lifecycle', [
+	'active',
+	'disabled'
+]);
+export const reviewPublicationLifecycleEnum = pgEnum('review_publication_lifecycle', [
+	'published',
+	'withdrawn',
+	'expired',
+	'removed',
+	'superseded'
+]);
+export const reviewChangeKindEnum = pgEnum('review_change_kind', [
+	'initial',
+	'edit',
+	'substitution'
+]);
+export const reviewNoticeKindEnum = pgEnum('review_notice_kind', [
+	'alleged-illegality',
+	'terms-or-policy',
+	'authenticity',
+	'authority-order'
+]);
+export const reviewNoticeStatusEnum = pgEnum('review_notice_status', [
+	'received',
+	'awaiting-submissions',
+	'under-review',
+	'decided',
+	'closed'
+]);
+export const ownerAssertionStateEnum = pgEnum('owner_assertion_state', [
+	'none',
+	'asserted',
+	'verified',
+	'rejected'
+]);
+export const reviewCasePartyRoleEnum = pgEnum('review_case_party_role', ['author', 'notifier']);
+export const reviewEvidenceScanStateEnum = pgEnum('review_evidence_scan_state', [
+	'pending',
+	'clean',
+	'rejected'
+]);
+export const reviewDecisionOutcomeEnum = pgEnum('review_decision_outcome', [
+	'no-action',
+	'restrict',
+	'remove',
+	'restore'
+]);
+export const reviewRedressStatusEnum = pgEnum('review_redress_status', [
+	'submitted',
+	'under-review',
+	'decided',
+	'rejected'
+]);
+export const reviewNotificationStateEnum = pgEnum('review_notification_state', [
+	'pending',
+	'delivered',
+	'failed'
+]);
+export const reviewModerationActorTypeEnum = pgEnum('review_moderation_actor_type', [
+	'author',
+	'notifier',
+	'review_moderator',
+	'admin',
+	'system'
+]);
+export const reviewCatalogueConflictStatusEnum = pgEnum('review_catalogue_conflict_status', [
+	'open',
+	'resolved',
+	'reversed'
+]);

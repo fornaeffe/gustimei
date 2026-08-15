@@ -29,6 +29,9 @@ import {
 	rankingRevision,
 	rankingRevisionPlace,
 	rankingSession,
+	placeReview,
+	reviewCatalogueConflict,
+	reviewPublication,
 	session,
 	user
 } from '$lib/server/db/schema';
@@ -461,6 +464,52 @@ export class CatalogueGovernanceService {
 				actionId,
 				createdAt: now
 			});
+			const [sourceReviews, canonicalReviews] = await Promise.all([
+				transaction
+					.select({ reviewId: placeReview.id, authorId: placeReview.authorId })
+					.from(placeReview)
+					.innerJoin(reviewPublication, eq(reviewPublication.id, placeReview.currentPublicationId))
+					.where(
+						and(
+							eq(placeReview.placeId, input.sourcePlaceId),
+							eq(reviewPublication.lifecycle, 'published')
+						)
+					),
+				transaction
+					.select({ reviewId: placeReview.id, authorId: placeReview.authorId })
+					.from(placeReview)
+					.innerJoin(reviewPublication, eq(reviewPublication.id, placeReview.currentPublicationId))
+					.where(
+						and(
+							eq(placeReview.placeId, input.canonicalPlaceId),
+							eq(reviewPublication.lifecycle, 'published')
+						)
+					)
+			]);
+			const canonicalByAuthor = new Map(
+				canonicalReviews.flatMap((review) =>
+					review.authorId ? [[review.authorId, review.reviewId] as const] : []
+				)
+			);
+			const reviewCollisions = sourceReviews.flatMap((sourceReview) => {
+				if (!sourceReview.authorId) return [];
+				const canonicalReviewId = canonicalByAuthor.get(sourceReview.authorId);
+				return canonicalReviewId ? [{ ...sourceReview, canonicalReviewId }] : [];
+			});
+			for (const collision of reviewCollisions) {
+				await transaction.insert(reviewCatalogueConflict).values({
+					id: this.id(),
+					redirectId,
+					authorId: collision.authorId,
+					sourceReviewId: collision.reviewId,
+					canonicalReviewId: collision.canonicalReviewId,
+					createdAt: now
+				});
+				await transaction
+					.update(placeReview)
+					.set({ collisionRestrictedAt: now, updatedAt: now })
+					.where(inArray(placeReview.id, [collision.reviewId, collision.canonicalReviewId]));
+			}
 			const memberships = await transaction
 				.select()
 				.from(rankingListPlace)
@@ -520,12 +569,18 @@ export class CatalogueGovernanceService {
 				linkedReportId: input.linkedReportId,
 				impact: {
 					affectedLists: memberships.length,
+					reviewCollisions: reviewCollisions.length,
 					createdCanonicalMemberships,
 					rankingRepairRequested: memberships.length > 0,
 					artifactInvalidationRequested: true
 				}
 			});
-			return { redirectId, actionId: audit.id, affectedLists: memberships.length };
+			return {
+				redirectId,
+				actionId: audit.id,
+				affectedLists: memberships.length,
+				reviewCollisions: reviewCollisions.length
+			};
 		});
 	}
 
@@ -556,6 +611,42 @@ export class CatalogueGovernanceService {
 				.update(cataloguePlaceRedirect)
 				.set({ reversedAt: now, reversalActionId: actionId })
 				.where(eq(cataloguePlaceRedirect.id, redirect.id));
+			const reversedReviewConflicts = await transaction
+				.update(reviewCatalogueConflict)
+				.set({ status: 'reversed', resolution: 'catalogue-merge-reversed', resolvedAt: now })
+				.where(
+					and(
+						eq(reviewCatalogueConflict.redirectId, redirect.id),
+						eq(reviewCatalogueConflict.status, 'open')
+					)
+				)
+				.returning({
+					sourceReviewId: reviewCatalogueConflict.sourceReviewId,
+					canonicalReviewId: reviewCatalogueConflict.canonicalReviewId
+				});
+			for (const conflict of reversedReviewConflicts) {
+				for (const reviewId of [conflict.sourceReviewId, conflict.canonicalReviewId]) {
+					const [other] = await transaction
+						.select({ id: reviewCatalogueConflict.id })
+						.from(reviewCatalogueConflict)
+						.where(
+							and(
+								eq(reviewCatalogueConflict.status, 'open'),
+								or(
+									eq(reviewCatalogueConflict.sourceReviewId, reviewId),
+									eq(reviewCatalogueConflict.canonicalReviewId, reviewId)
+								)
+							)
+						)
+						.limit(1);
+					if (!other) {
+						await transaction
+							.update(placeReview)
+							.set({ collisionRestrictedAt: null, updatedAt: now })
+							.where(eq(placeReview.id, reviewId));
+					}
+				}
+			}
 			await transaction
 				.update(catalogueRankingRepair)
 				.set({ status: 'cancelled', completedAt: now })

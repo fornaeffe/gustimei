@@ -3,3 +3,4 @@ export * from './catalogue.schema';
 export * from './domain.schema';
 export * from './enums';
 export * from './governance.schema';
+export * from './review.schema';
