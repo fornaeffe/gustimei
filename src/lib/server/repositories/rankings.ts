@@ -1,0 +1,480 @@
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import type { AppEnvironment } from '$lib/server/config/environment';
+import type {
+	ComparisonEvidence,
+	RankingCategory,
+	RankingRevision
+} from '$lib/domain/ranking/contracts';
+import { RANKING_ENGINE_VERSION } from '$lib/domain/ranking/contracts';
+import { RankingSession } from '$lib/domain/ranking/session';
+import type { Database } from '$lib/server/db';
+import {
+	comparisonEvidence,
+	effectivePlace,
+	place,
+	rankingList,
+	rankingListPlace,
+	rankingRevision,
+	rankingRevisionEvidence,
+	rankingRevisionPlace,
+	rankingSession,
+	rankingUnresolvedRelation
+} from '$lib/server/db/schema';
+import { ConflictError, DomainValidationError, NotFoundError } from '$lib/server/domain/errors';
+
+export interface CaptureContext {
+	cohortAssignmentId: string;
+	provenance: RankingRevision['provenance'];
+	environment: AppEnvironment;
+}
+
+function permitsDataClass(capture: CaptureContext, dataClass: 'real' | 'synthetic') {
+	if (capture.provenance === 'synthetic') {
+		return ['development', 'test'].includes(capture.environment);
+	}
+	return dataClass === 'real';
+}
+
+function persistedEvidence(row: typeof comparisonEvidence.$inferSelect): ComparisonEvidence {
+	return {
+		id: row.id,
+		logicalPair: [row.logicalFirstPlaceId, row.logicalSecondPlaceId],
+		leftPlaceId: row.leftPlaceId,
+		rightPlaceId: row.rightPlaceId,
+		reason: row.reason,
+		sequence: row.sequence,
+		outcome: row.outcome,
+		active: row.active === 1,
+		...(row.supersedesEvidenceId ? { supersedesEvidenceId: row.supersedesEvidenceId } : {})
+	};
+}
+
+export class RankingRepository {
+	constructor(private readonly database: Database) {}
+
+	async getOrCreateList(input: {
+		id: string;
+		ownerId: string;
+		category: RankingCategory;
+		now: Date;
+	}) {
+		const [inserted] = await this.database
+			.insert(rankingList)
+			.values({
+				id: input.id,
+				ownerId: input.ownerId,
+				category: input.category,
+				createdAt: input.now,
+				updatedAt: input.now
+			})
+			.onConflictDoNothing({ target: [rankingList.ownerId, rankingList.category] })
+			.returning();
+		if (inserted) return inserted;
+		const [existing] = await this.database
+			.select()
+			.from(rankingList)
+			.where(and(eq(rankingList.ownerId, input.ownerId), eq(rankingList.category, input.category)));
+		if (!existing) throw new ConflictError('The ranking list could not be created');
+		return existing;
+	}
+
+	async addVisitedPlace(input: {
+		ownerId: string;
+		listId: string;
+		placeId: string;
+		capture: CaptureContext;
+		now: Date;
+	}) {
+		const [target] = await this.database
+			.select({
+				list: rankingList,
+				placeCategory: place.category,
+				dataClass: place.dataClass,
+				status: effectivePlace.status
+			})
+			.from(rankingList)
+			.innerJoin(place, eq(place.id, input.placeId))
+			.leftJoin(effectivePlace, eq(effectivePlace.placeId, place.id))
+			.where(eq(rankingList.id, input.listId));
+		if (!target || target.list.ownerId !== input.ownerId) {
+			throw new NotFoundError('The ranking list or place was not found');
+		}
+		if (target.list.category !== target.placeCategory) {
+			throw new DomainValidationError('Places cannot cross ranking categories');
+		}
+		if (!permitsDataClass(input.capture, target.dataClass)) {
+			throw new DomainValidationError(
+				'The capture provenance cannot use this catalogue data class'
+			);
+		}
+		if (
+			input.capture.provenance === 'synthetic' &&
+			!['development', 'test'].includes(input.capture.environment)
+		) {
+			throw new DomainValidationError('Synthetic rankings are forbidden in preview and production');
+		}
+		if (target.status !== 'active')
+			throw new DomainValidationError('The place is not catalogue-eligible');
+
+		const [membership] = await this.database
+			.insert(rankingListPlace)
+			.values({
+				listId: input.listId,
+				ownerId: input.ownerId,
+				placeId: input.placeId,
+				addedAt: input.now
+			})
+			.onConflictDoNothing()
+			.returning();
+		return membership;
+	}
+
+	async listVisitedPlaceIds(ownerId: string, listId: string) {
+		const [owned] = await this.database
+			.select({ id: rankingList.id })
+			.from(rankingList)
+			.where(and(eq(rankingList.id, listId), eq(rankingList.ownerId, ownerId)));
+		if (!owned) throw new NotFoundError('The ranking list was not found');
+		const rows = await this.database
+			.select({ placeId: rankingListPlace.placeId })
+			.from(rankingListPlace)
+			.where(eq(rankingListPlace.listId, listId))
+			.orderBy(asc(rankingListPlace.addedAt), asc(rankingListPlace.placeId));
+		return rows.map((row) => row.placeId);
+	}
+
+	async saveSession(ownerId: string, session: RankingSession, capture: CaptureContext, now: Date) {
+		return this.database.transaction(async (transaction) => {
+			const [owned] = await transaction
+				.select({ ownerId: rankingList.ownerId })
+				.from(rankingList)
+				.where(eq(rankingList.id, session.listId));
+			if (!owned || owned.ownerId !== ownerId)
+				throw new NotFoundError('The ranking list was not found');
+			if (
+				capture.provenance === 'synthetic' &&
+				!['development', 'test'].includes(capture.environment)
+			) {
+				throw new DomainValidationError(
+					'Synthetic sessions are forbidden in preview and production'
+				);
+			}
+
+			const summary = session.summary();
+			const [existing] = await transaction
+				.select({ id: rankingSession.id, listId: rankingSession.listId })
+				.from(rankingSession)
+				.where(eq(rankingSession.id, session.id));
+			if (existing && existing.listId !== session.listId) {
+				throw new ConflictError('A ranking session ID cannot move between lists');
+			}
+			if (!existing && summary.lifecycle === 'open') {
+				await transaction
+					.update(rankingSession)
+					.set({ lifecycle: 'superseded', updatedAt: now, completedAt: now })
+					.where(
+						and(
+							eq(rankingSession.listId, session.listId),
+							eq(rankingSession.lifecycle, 'open'),
+							session.baseRevisionId
+								? eq(rankingSession.baseRevisionId, session.baseRevisionId)
+								: isNull(rankingSession.baseRevisionId)
+						)
+					);
+			}
+
+			await transaction
+				.insert(rankingSession)
+				.values({
+					id: session.id,
+					listId: session.listId,
+					baseRevisionId: session.baseRevisionId,
+					purpose: session.purpose,
+					lifecycle: summary.lifecycle,
+					serializedState: session.serialize(),
+					cohortAssignmentId: capture.cohortAssignmentId,
+					createdAt: now,
+					updatedAt: now,
+					completedAt: summary.lifecycle === 'open' ? undefined : now
+				})
+				.onConflictDoUpdate({
+					target: rankingSession.id,
+					set: {
+						lifecycle: summary.lifecycle,
+						serializedState: session.serialize(),
+						updatedAt: now,
+						completedAt: summary.lifecycle === 'open' ? null : now
+					}
+				});
+
+			for (const evidence of session.evidence) {
+				await transaction
+					.insert(comparisonEvidence)
+					.values({
+						id: evidence.id,
+						sessionId: session.id,
+						sequence: evidence.sequence,
+						logicalFirstPlaceId: evidence.logicalPair[0],
+						logicalSecondPlaceId: evidence.logicalPair[1],
+						leftPlaceId: evidence.leftPlaceId,
+						rightPlaceId: evidence.rightPlaceId,
+						outcome: evidence.outcome,
+						reason: evidence.reason,
+						active: evidence.active ? 1 : 0,
+						supersedesEvidenceId: evidence.supersedesEvidenceId,
+						capturedAt: now
+					})
+					.onConflictDoUpdate({
+						target: comparisonEvidence.id,
+						set: { active: evidence.active ? 1 : 0 }
+					});
+			}
+			return summary;
+		});
+	}
+
+	async loadSession(ownerId: string, sessionId: string) {
+		const [record] = await this.database
+			.select({ session: rankingSession, ownerId: rankingList.ownerId })
+			.from(rankingSession)
+			.innerJoin(rankingList, eq(rankingList.id, rankingSession.listId))
+			.where(eq(rankingSession.id, sessionId));
+		if (!record || record.ownerId !== ownerId)
+			throw new NotFoundError('The ranking session was not found');
+		const session = RankingSession.resume(record.session.serializedState);
+		if (record.session.lifecycle === 'superseded') session.supersede();
+		return session;
+	}
+
+	async publishRevision(ownerId: string, revision: RankingRevision, capture: CaptureContext) {
+		if (revision.rankingEngineVersion !== RANKING_ENGINE_VERSION) {
+			throw new DomainValidationError('Unsupported ranking-engine version');
+		}
+		if (revision.provenance !== capture.provenance) {
+			throw new DomainValidationError('Revision provenance must match its capture assignment');
+		}
+		return this.database.transaction(async (transaction) => {
+			const [aggregate] = await transaction
+				.select()
+				.from(rankingList)
+				.where(eq(rankingList.id, revision.listId));
+			if (!aggregate || aggregate.ownerId !== ownerId)
+				throw new NotFoundError('The ranking list was not found');
+			if (aggregate.category !== revision.category) {
+				throw new DomainValidationError('The revision category does not match its ranking list');
+			}
+			const [latest] = await transaction
+				.select({ revisionNumber: rankingRevision.revisionNumber })
+				.from(rankingRevision)
+				.where(eq(rankingRevision.listId, revision.listId))
+				.orderBy(sql`${rankingRevision.revisionNumber} desc`)
+				.limit(1);
+			if (revision.revision !== (latest?.revisionNumber ?? 0) + 1) {
+				throw new ConflictError('Ranking revisions must be monotonically consecutive');
+			}
+			const memberships = await transaction
+				.select({ placeId: rankingListPlace.placeId, dataClass: place.dataClass })
+				.from(rankingListPlace)
+				.innerJoin(place, eq(place.id, rankingListPlace.placeId))
+				.where(
+					and(
+						eq(rankingListPlace.listId, revision.listId),
+						inArray(rankingListPlace.placeId, [...revision.activePlaceIds])
+					)
+				);
+			if (memberships.length !== revision.activePlaceIds.length) {
+				throw new DomainValidationError('Every revision place must be a current visited place');
+			}
+			if (memberships.some((item) => !permitsDataClass(capture, item.dataClass))) {
+				throw new DomainValidationError('The revision provenance cannot use a selected data class');
+			}
+			if (
+				revision.provenance === 'synthetic' &&
+				!['development', 'test'].includes(capture.environment)
+			) {
+				throw new DomainValidationError(
+					'Synthetic revisions are forbidden in preview and production'
+				);
+			}
+
+			const evidence = [
+				...revision.activeEvidence,
+				...revision.excludedEvidence.map((item) => item.evidence)
+			];
+			const uniqueEvidenceIds = [...new Set(evidence.map((item) => item.id))];
+			if (uniqueEvidenceIds.length > 0) {
+				const persisted = await transaction
+					.select({ id: comparisonEvidence.id })
+					.from(comparisonEvidence)
+					.where(inArray(comparisonEvidence.id, uniqueEvidenceIds));
+				if (persisted.length !== uniqueEvidenceIds.length) {
+					throw new DomainValidationError(
+						'Revision evidence must be persisted by a ranking session first'
+					);
+				}
+			}
+
+			await transaction.insert(rankingRevision).values({
+				id: revision.id,
+				listId: revision.listId,
+				revisionNumber: revision.revision,
+				category: revision.category,
+				rankingEngineVersion: revision.rankingEngineVersion,
+				provenance: revision.provenance,
+				cohortAssignmentId: capture.cohortAssignmentId,
+				publishedAt: new Date(revision.publishedAt)
+			});
+
+			const tierByPlace = new Map<string, { tierIndex: number; tierPosition: number }>();
+			for (const [tierIndex, tier] of revision.orderedTiers.entries()) {
+				for (const [tierPosition, placeId] of tier.placeIds.entries()) {
+					tierByPlace.set(placeId, { tierIndex, tierPosition });
+				}
+			}
+			await transaction.insert(rankingRevisionPlace).values(
+				revision.activePlaceIds.map((placeId, membershipOrder) => {
+					const tier = tierByPlace.get(placeId);
+					if (!tier)
+						throw new DomainValidationError('Every active place must occur in exactly one tier');
+					return { revisionId: revision.id, placeId, membershipOrder, ...tier };
+				})
+			);
+			if (revision.unresolvedRelations.length > 0) {
+				await transaction.insert(rankingUnresolvedRelation).values(
+					revision.unresolvedRelations.map((relation) => {
+						const [firstPlaceId, secondPlaceId] = [
+							relation.firstPlaceId,
+							relation.secondPlaceId
+						].sort();
+						return {
+							revisionId: revision.id,
+							firstPlaceId,
+							secondPlaceId,
+							reason: relation.reason
+						};
+					})
+				);
+			}
+			const evidenceRows = [
+				...revision.activeEvidence.map((item) => ({
+					revisionId: revision.id,
+					comparisonId: item.id,
+					disposition: 'active' as const,
+					exclusionReason: null,
+					conflictingEvidenceIds: [] as string[]
+				})),
+				...revision.excludedEvidence.map((item) => ({
+					revisionId: revision.id,
+					comparisonId: item.evidence.id,
+					disposition: 'excluded' as const,
+					exclusionReason: item.reason,
+					conflictingEvidenceIds: [...item.conflictingEvidenceIds]
+				}))
+			];
+			if (evidenceRows.length > 0)
+				await transaction.insert(rankingRevisionEvidence).values(evidenceRows);
+
+			const [published] = await transaction
+				.update(rankingList)
+				.set({ currentRevisionId: revision.id, updatedAt: new Date(revision.publishedAt) })
+				.where(
+					and(
+						eq(rankingList.id, revision.listId),
+						aggregate.currentRevisionId
+							? eq(rankingList.currentRevisionId, aggregate.currentRevisionId)
+							: isNull(rankingList.currentRevisionId)
+					)
+				)
+				.returning({ id: rankingList.id });
+			if (!published) throw new ConflictError('The current ranking revision changed concurrently');
+			return revision;
+		});
+	}
+
+	async loadCurrentRevision(ownerId: string, listId: string): Promise<RankingRevision | undefined> {
+		const [aggregate] = await this.database
+			.select()
+			.from(rankingList)
+			.where(and(eq(rankingList.id, listId), eq(rankingList.ownerId, ownerId)));
+		if (!aggregate) throw new NotFoundError('The ranking list was not found');
+		if (!aggregate.currentRevisionId) return undefined;
+		const [revision] = await this.database
+			.select()
+			.from(rankingRevision)
+			.where(eq(rankingRevision.id, aggregate.currentRevisionId));
+		if (!revision) throw new ConflictError('The current revision pointer is invalid');
+		if (revision.rankingEngineVersion !== RANKING_ENGINE_VERSION) {
+			throw new ConflictError('The persisted ranking-engine version is unsupported');
+		}
+		const [places, unresolved, evidenceRows] = await Promise.all([
+			this.database
+				.select()
+				.from(rankingRevisionPlace)
+				.where(eq(rankingRevisionPlace.revisionId, revision.id))
+				.orderBy(asc(rankingRevisionPlace.membershipOrder)),
+			this.database
+				.select()
+				.from(rankingUnresolvedRelation)
+				.where(eq(rankingUnresolvedRelation.revisionId, revision.id)),
+			this.database
+				.select({ link: rankingRevisionEvidence, comparison: comparisonEvidence })
+				.from(rankingRevisionEvidence)
+				.innerJoin(
+					comparisonEvidence,
+					eq(comparisonEvidence.id, rankingRevisionEvidence.comparisonId)
+				)
+				.where(eq(rankingRevisionEvidence.revisionId, revision.id))
+		]);
+		const tiers = new Map<number, { positions: { position: number; placeId: string }[] }>();
+		for (const item of places) {
+			const tier = tiers.get(item.tierIndex) ?? { positions: [] };
+			tier.positions.push({ position: item.tierPosition, placeId: item.placeId });
+			tiers.set(item.tierIndex, tier);
+		}
+		const activeEvidence = evidenceRows
+			.filter((item) => item.link.disposition === 'active')
+			.map((item) => persistedEvidence(item.comparison))
+			.sort((first, second) => first.sequence - second.sequence);
+		const excludedEvidence = evidenceRows
+			.filter((item) => item.link.disposition === 'excluded')
+			.map((item) => ({
+				evidence: persistedEvidence(item.comparison),
+				reason: item.link.exclusionReason!,
+				conflictingEvidenceIds: item.link.conflictingEvidenceIds
+			}))
+			.sort((first, second) => first.evidence.sequence - second.evidence.sequence);
+
+		return {
+			id: revision.id,
+			listId: revision.listId,
+			category: revision.category,
+			revision: revision.revisionNumber,
+			activePlaceIds: places.map((item) => item.placeId),
+			orderedTiers: [...tiers.entries()]
+				.sort(([first], [second]) => first - second)
+				.map(([, tier]) => ({
+					placeIds: tier.positions
+						.sort((first, second) => first.position - second.position)
+						.map((item) => item.placeId)
+				})),
+			unresolvedRelations: unresolved.map((item) => ({
+				firstPlaceId: item.firstPlaceId,
+				secondPlaceId: item.secondPlaceId,
+				reason: item.reason
+			})),
+			activeEvidence,
+			excludedEvidence,
+			rankingEngineVersion: RANKING_ENGINE_VERSION,
+			provenance: revision.provenance,
+			publishedAt: revision.publishedAt.toISOString()
+		};
+	}
+
+	async deleteCategory(ownerId: string, category: RankingCategory) {
+		const deleted = await this.database
+			.delete(rankingList)
+			.where(and(eq(rankingList.ownerId, ownerId), eq(rankingList.category, category)))
+			.returning({ id: rankingList.id });
+		return deleted.length > 0;
+	}
+}

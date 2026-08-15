@@ -29,7 +29,8 @@ GustiMei targets Node.js 22 and PostgreSQL 17.
    32 characters.
 2. Run `npm ci`.
 3. Start the development and test databases with `npm run db:start`.
-4. Apply the development schema with `npm run db:push`.
+4. Apply the reviewed development migrations with `npm run db:migrate`. Use `npm run db:push`
+   only for explicitly disposable schema experiments.
 5. Start SvelteKit with `npm run dev`.
 
 Run the fast baseline with `npm run ci`. Browser tests use the isolated test database on port
@@ -43,3 +44,10 @@ Its dataset, selection criteria, and recorded results are documented in
 
 See [the runtime boundary](docs/runtime-boundary.md) for environment isolation, provider seams,
 and production Node startup details.
+
+Phase 2A database integration tests use the isolated PostgreSQL instance and can be run with
+`npm run test:db`. The command validates and resets only `gustimei_test` on local port 5433 before
+applying reviewed migrations. See [catalogue operations and compliance](docs/phase-2a-catalogue.md)
+for the on-demand Italy restaurant import, coverage audit, locality rules, and OSM attribution.
+The first domain migration is compatible with the earlier `db:push` auth schema and preserves its
+accounts; it removes only the obsolete starter `task` table.

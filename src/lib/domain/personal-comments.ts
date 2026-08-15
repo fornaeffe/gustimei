@@ -9,6 +9,8 @@ export interface PersonalPlaceComment {
 
 export function normalizePersonalComment(body: string) {
 	const normalized = body.replace(/\r\n?/g, '\n');
+	if (normalized.includes('\u0000'))
+		throw new Error('Personal comments cannot contain null characters');
 	if (normalized.length > PERSONAL_COMMENT_MAX_LENGTH) {
 		throw new Error(`Personal comments are limited to ${PERSONAL_COMMENT_MAX_LENGTH} characters`);
 	}
@@ -16,8 +18,8 @@ export function normalizePersonalComment(body: string) {
 }
 
 /**
- * Phase 1 in-memory contract fixture. Persistence is deliberately deferred to Phase 2A,
- * but the owner/place boundary is fixed now so comments cannot enter ranking aggregates.
+ * In-memory contract fixture for pure isolation tests. Product persistence uses the owner-scoped
+ * Phase 2A repository and deliberately remains outside ranking aggregates.
  */
 export class PersonalCommentCollection {
 	readonly #comments = new Map<string, PersonalPlaceComment>();

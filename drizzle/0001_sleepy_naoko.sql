@@ -1,0 +1,2 @@
+DROP INDEX "catalogue_import_source_checksum_uq";--> statement-breakpoint
+CREATE UNIQUE INDEX "catalogue_import_source_checksum_uq" ON "catalogue_import" USING btree ("provider","category","data_class","source_checksum","normalizer_version","locality_index_version");

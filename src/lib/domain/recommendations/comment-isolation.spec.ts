@@ -25,6 +25,14 @@ describe('personal-comment isolation contract', () => {
 				updatedAt: '2026-08-14T00:00:00.000Z'
 			})
 		).toThrow('limited');
+		expect(() =>
+			comments.upsert({
+				ownerId: 'user-1',
+				placeId: 'a',
+				body: 'not\u0000valid',
+				updatedAt: '2026-08-14T00:00:00.000Z'
+			})
+		).toThrow('null characters');
 	});
 
 	it('cannot affect ranking, evidence extraction, scores, or invalidation inputs', () => {

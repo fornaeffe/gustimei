@@ -1,8 +1,9 @@
-import { drizzle } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
-import * as schema from './schema';
 import { runtimeConfig } from '$lib/server/config';
+import { createDatabase } from './connection';
 
-const client = postgres(runtimeConfig.databaseUrl);
+const connection = createDatabase(runtimeConfig.databaseUrl);
 
-export const db = drizzle(client, { schema });
+export const db = connection.db;
+export const closeDatabase = connection.close;
+export { createDatabase } from './connection';
+export type { Database } from './connection';

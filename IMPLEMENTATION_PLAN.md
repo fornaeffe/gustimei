@@ -128,10 +128,18 @@ Roles and intake:
 - Any authenticated user may submit a structured issue report such as wrong name/location/category, duplicate, closed/nonexistent, unsafe content, or other. Reports are private operational records, not public reviews; rate-limit them and minimize optional free text.
 - A `catalogue_curator` may triage reports, apply or expire field-level overrides, and quarantine/unquarantine a place. An `admin` may do the same and may also approve merges, reversals, and exceptional removals. In a single-operator beta the administrator may hold both roles, but the permissions and audit identities remain distinct so duties can be separated later.
 - Neither ordinary users nor claimed business owners can directly edit, merge, hide, or remove a catalogue place in the MVP. Business claims remain out of scope.
+- Implement the minimum Phase 2B workflow at the service/API and operator-command boundaries: structured user issue intake; curator triage, correction, quarantine/unquarantine, and report resolution; admin-approved merge, reversal, exceptional removal, and category migration; and append-only auditing of every transition and effective mutation. A curator web UI, bulk tooling, public report discussion/status, moderation SLAs, and business-claim workflow are not required before product development continues.
+
+Role assignment and bootstrap:
+
+- Better Auth establishes account identity only. Store `admin` and `catalogue_curator` grants in application-owned PostgreSQL assignments linked to the Better Auth user ID, with active/revoked lifecycle, grant source, grantor where applicable, timestamps, and revocation reason. Resolve authorization server-side from this table; never trust roles from cookies, mutable profile fields, client claims, request parameters, or an email-based startup allowlist.
+- Bootstrap local/test roles only through an explicit environment-guarded operator command after the target account exists and is verified. The command must require the intended environment, target identity, and role; refuse unsupported preview/production use; transact the assignment and append-only bootstrap audit event together; and never expose a public grant route. Each environment has independent assignments.
+- Rotate an operator by granting and verifying the successor before revoking the predecessor and their sessions. Ordinary workflows must not revoke or delete the last active administrator. Recovery uses a documented break-glass database/operator command with an independently recorded audit event; Phase 9 must replace local-only guards with the approved hosted maintenance and credential procedure before external beta access.
 
 Local actions:
 
-- **Correct:** store only the changed effective fields as a provenance-bearing override with reason, evidence/reference, actor, review status, and optional expiry. Never mutate the imported OSM value in place.
+- **Correct:** allow only effective name, address fields/label, an atomic latitude/longitude pair, locality assignment/fallback text, and quarantine/visibility state to be changed through ordinary field-level overrides. Store only the changed effective fields with reason, evidence/reference, actor, review status, and review/expiry metadata. Never mutate the imported OSM value in place or permit an override of provider identity, element type/ID, source version/timestamp/checksum/tags, application place ID, category, or ranking evidence. Validate the field/value shape rather than accepting arbitrary patches.
+- **Recategorize:** treat a wrong category as quarantine first. Moving a place between categories is an admin-only impact-managed operation, not an ordinary override, because existing restaurant and hotel ranking evidence cannot be silently reinterpreted. Preview affected lists/evidence, migrate only under an explicit policy, preserve the original source/category history, and request ranking repair where necessary.
 - **Hide/quarantine:** remove the place from search and new recommendations immediately while retaining its stable identity, source history, existing list references, and audit trail. Existing owners see a neutral unavailable/under-review state rather than a vanished list item. Quarantined evidence does not train or serve new recommendations until restored.
 - **Merge:** select one stable canonical application place and redirect every duplicate application/source identity to it. Show an impact preview, perform the redirect and reference migration transactionally, invalidate affected search/model artifacts, and keep the operation reversible. If one user had both duplicates, collapse to one visited item, preserve the original history as superseded evidence, and mark the affected ranking for targeted repair rather than inventing a preference.
 - **Remove:** reserve physical deletion for unreferenced erroneous/synthetic records or a validated legal/security requirement. OSM-derived records that were referenced by rankings are soft-deleted/tombstoned; use hide or redirect for ordinary catalogue errors.
@@ -141,6 +149,7 @@ Upstream handling:
 - Do not make automated OSM edits and do not treat a user report as sufficient evidence for an upstream change. A curator may separately correct OSM through a named human OSM account only when the fact is verifiable under OSM's contributor rules and compatible sources; never copy proprietary provider data into OSM.
 - Record the OSM changeset ID and affected element IDs on the local issue. Keep an urgent local override when product safety or correctness cannot wait for the next extract.
 - On import, compare changed OSM values with active overrides. If upstream now matches the verified correction, propose retiring the override after review. If it conflicts, keep the effective local decision and reopen the issue; never resolve the conflict silently.
+- Every override requires a structured reason and evidence reference suitable for its impact. Stable corrections do not expire automatically: assign a `review_at` and reconsider them when relevant upstream values change. Temporary closures may have an `expires_at`, but reaching it reopens review rather than silently restoring the place. Safety, legal, merge, and exceptional-removal states remain effective until an authorized explicit reversal. A single operator may perform both review steps during local/small beta operation, but grant/action identities and audit events remain distinct so a later two-person policy does not require a schema change.
 - Handle OSM deletion, retagging, split, or merge through stable application IDs and source-identity mappings. Reconcile redirects before replacing catalogue revisions, and invalidate affected ranking/recommendation caches or artifacts.
 
 Maintain an append-only `catalogue_change` audit entry for every report transition and effective mutation: action ID/type/status, actor and role, target and canonical/source identities, before/after diff, reason category, evidence references, linked report, upstream changeset where applicable, timestamps, importer revision, impact counts, and reversal/supersession linkage. Do not put secrets or unnecessary reporter personal data in the audit. Restrict audit access to curators/admins, retain it for the catalogue's operational life, and export it with backups so every effective record can answer what changed, why, by whom, from which source revision, and how it was reversed.
@@ -241,6 +250,7 @@ Finalize names and constraints with small algorithm prototypes before generating
 - `place_redirect`: losing place/source identity, canonical place, merge reason, status, reversible migration metadata, and timestamps. Resolve redirect chains to one canonical target and prevent cycles.
 - `catalogue_issue`: reporter when applicable, structured issue type, target place/source, private optional detail, status/assignee/resolution, upstream changeset reference, and timestamps. Reports never become public reviews.
 - `catalogue_change`: append-only actor/role/action, before/after diff, source/import revision, reason/evidence references, affected counts, linked issue/change/reversal, and timestamp.
+- `operator_role_assignment`: application user, role (`admin` or `catalogue_curator`), active/revoked lifecycle, grant source/grantor, created/revoked timestamps, and revocation reason. Enforce at most one active assignment per user/role, prevent ordinary removal of the last active administrator, keep assignments environment-local, and never derive authorization from mutable client-visible claims.
 - `place_translation` or localized provider fields only if catalogue names/descriptions require them; do not translate proper names by default.
 - `place_media`: provider URL/reference, attribution, sort order, dimensions, and lifecycle metadata. Avoid copying remote images without explicit rights.
 - `ranking_list`: durable owner/category identity, nullable `current_revision_id`, and timestamps. It has no workflow status or ranking-engine version of its own. Enforce one global list per `(owner, category)`; locality does not belong to list identity. Deleting a category ranking erases this aggregate and its evidence rather than transitioning it to a hidden lifecycle state.
@@ -489,6 +499,32 @@ Phase 1 decisions:
 
 ### Phase 2A — Core domain persistence and local catalogue
 
+**Status (2026-08-15): complete; real Italy import and loose coverage/search audit passed.** The reviewed
+first domain migration now persists owner/category lists without workflow status, immutable
+monotonic revisions with an atomic current pointer, tier membership, unresolved relations,
+session-only lifecycle, logical comparison evidence and supersession, owner/visited-place-scoped
+personal comments, processing restrictions, and effective-dated participation provenance.
+Repository and service boundaries keep raw domain queries out of routes. The mandatory product
+policy is enforced by the only database-backed recommendation-evidence source; optional behavior
+remains a pure automated-test fixture. PostgreSQL integration tests cover migration/reset,
+publication/reconstruction, immutable facts, owner scoping, comment isolation and cascades,
+restriction decisions, synthetic/real isolation, search, quarantine, and session supersession.
+
+The repeatable local TypeScript PBF pipeline imports restaurant nodes, ways, and relations, resolves
+complete OSM administrative boundaries at levels 4/6/8 through a bounded spatial index, records
+immutable source snapshots/checksums/processing versions, flags identity-breaking and likely
+duplicate records, and atomically promotes the effective locality/search projection. It resumes
+interrupted imports, creates a distinct lineage when processing versions change, and quarantines
+records missing from a later full extract without deleting referenced identities.
+On-demand commands, attribution/ODbL notes, the no-photo/licensed-media boundary, audit measures,
+and known operational limits are documented in
+[the Phase 2A catalogue runbook](docs/phase-2a-catalogue.md). Deterministic and database fixtures
+pass. The gitignored 2.22 GB Italy extract produced 77,007 restaurants, of which 72,507 are active;
+the remaining 4,500 are explicitly quarantined. No severe identity, geometry, duplication, or
+geographic-skew issue requires enrichment. Warm measured search plans were approximately 1.2–21 ms
+and the three-lineage development database occupied 344 MB; retain PostgreSQL GIN full-text search
+and B-tree locality/name indexes for current development, then remeasure at global/beta scale.
+
 - Replace the example schema with the domain tables, relations, constraints, and indexes.
 - Generate and review the first domain migration; add test-database setup and reset helpers.
 - Implement repositories/services so route code does not contain raw domain queries.
@@ -507,17 +543,17 @@ Phase 1 decisions:
 
 **Open questions to answer before Phase 2B:**
 
-- Did the Italy restaurant audit reveal a severe identity, duplication, naming, coordinate, category, or geographic-skew problem requiring enrichment or a changed normalization rule?
-- Which search/index strategy meets the measured local query targets, and what rebuild/versioning behavior does it require?
-- What is the minimum moderation workflow required before product development continues: quarantine only, or also correction, merge, reversal, and user issue intake?
-- Which imported facts may be locally overridden in the MVP, and what evidence, expiry, and review requirements apply to each?
-- How will the first `admin` and `catalogue_curator` identities be provisioned, rotated, and recovered in each environment without using public routes or mutable client claims?
+- **Answered 2026-08-15:** the loose Italy audit found no severe issue requiring an enrichment source. Missing names are quarantined; incomplete optional settlement/postcode tags and minor extract-edge membership are documented limitations.
+- **Answered 2026-08-15:** keep PostgreSQL `simple` GIN full-text prefix search with B-tree municipality and normalized-name indexes. Import identity includes normalizer and locality-index versions so a rebuild creates a new auditable lineage; remeasure before global scale or hosted beta thresholds.
+- **Answered 2026-08-15:** require service/API-testable structured issue intake, curator correction and quarantine, admin-approved merge/reversal/exceptional removal/category migration, and append-only audit before continuing. Defer the internal web UI and broader operational tooling.
+- **Answered 2026-08-15:** ordinary overrides are allowlisted to effective name, address, coordinate pair, locality, and visibility. They require structured reason/evidence and explicit review; stable corrections never auto-expire, temporary expiry reopens review, and identity/source/category/ranking facts cannot be arbitrary field overrides.
+- **Answered 2026-08-15:** use application-owned, server-resolved role assignments linked to verified Better Auth users. Bootstrap and break-glass recovery are environment-guarded operator commands with transactional audits; rotate by grant/verify/revoke/session-revoke, keep environments separate, and prevent ordinary removal of the last admin.
 
 ### Phase 2B — Catalogue governance and repair operations
 
 - Implement effective overlay resolution, field-level overrides, canonical redirects, cycle prevention, and transactional/reversible merge impact handling. Imports must surface rather than overwrite conflicts with active overrides.
 - Add protected curator/admin catalogue services and append-only audit records. Let authenticated users submit private, rate-limited structured issue reports without granting catalogue mutation rights; keep business claims out of scope.
-- Define and implement the bootstrap procedure for the first administrator and catalogue curator without granting roles through public routes or mutable client claims.
+- Define and implement the environment-guarded, transactionally audited bootstrap/rotation/recovery commands and application-owned role assignments for the first administrator and catalogue curator; do not grant roles through public routes, mutable client claims, or startup email allowlists.
 - Test that hidden records leave existing rankings intelligible while being excluded from new search/training/serving, and that duplicate merges preserve/supersede evidence and request targeted ranking repair without inventing preferences.
 - Keep moderation workflows service/API-testable locally; a minimal internal UI may be deferred until operationally needed, but every effective mutation must remain authorized, audited, and reversible.
 

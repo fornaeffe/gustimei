@@ -30,7 +30,11 @@
 		"db:push": "drizzle-kit push",
 		"db:generate": "drizzle-kit generate",
 		"db:migrate": "drizzle-kit migrate",
+		"db:test:reset": "node --env-file=.env.test scripts/reset-test-database.mjs",
 		"db:studio": "drizzle-kit studio",
+		"test:db": "npm run db:test:reset && node --env-file=.env.test node_modules/vitest/vitest.mjs --run --config vitest.database.config.ts",
+		"catalogue:import:restaurants": "vite-node scripts/import-osm.ts",
+		"catalogue:audit:restaurants": "vite-node scripts/audit-catalogue.ts",
 		"auth:schema": "better-auth generate --config src/lib/server/auth.ts --output src/lib/server/db/auth.schema.ts --yes"
 	},
 	"devDependencies": {
@@ -64,7 +68,11 @@
 		"typescript": "^6.0.3",
 		"typescript-eslint": "^8.60.1",
 		"vite": "^8.0.16",
+		"vite-node": "^6.0.0",
 		"vitest": "^4.1.8",
 		"vitest-browser-svelte": "^2.1.1"
+	},
+	"dependencies": {
+		"osm-pbf-parser": "^2.3.0"
 	}
 }
