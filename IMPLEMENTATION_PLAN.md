@@ -689,8 +689,8 @@ database tests exercise these contracts, including catalogue merge/reversal and 
 effects. No public review UI or genuine review/case data is enabled. See
 [ADR 0005](docs/adr/0005-public-review-foundation.md), the
 [compliance matrix](docs/phase-2c-compliance-matrix.md), and the
-[operations notes](docs/phase-2c-reviews.md). The open legal/pseudonym/moderation questions below
-remain explicit Phase 3/beta gates and are centralized as versioned policy rather than final copy.
+[operations notes](docs/phase-2c-reviews.md). The product decisions and remaining counsel gates below
+are centralized as versioned policy rather than hidden assumptions or final legal copy.
 
 This phase is placed after completed Phase 2B and before any product UI because the new public routes, author forms, optional post-ranking prompt, moderation states, and hotel reuse all depend on stable review/complaint contracts and migrations. It extends the existing stable-place, Better Auth user-ID, server-authorization, audit, provider, and catalogue-redirect boundaries without reopening Phase 2A/2B ranking or catalogue decisions. It is not placed in Phase 8 because deferring the legal lifecycle and moderation foundation until then would force restaurant screens to be rebuilt and would leave too little time to exercise expiry, redress, and retention before beta.
 
@@ -718,13 +718,93 @@ Current-state constraints discovered before planning:
 
 **Exit:** the local database and server services can create, version, substitute, withdraw, expire, report, restrict, decide, restore, redact, and audit a text review with bilateral case evidence and no ranking/recommendation effect; no public review UI is required yet, and all unresolved legal assumptions are explicit gates rather than hidden implementation choices.
 
-**Open questions to answer before Phase 3:**
+**Decisions recorded before Phase 3 (2026-08-15):**
 
-- What final application-owned pseudonym syntax, uniqueness, rename cadence, reserved-word/impersonation policy, and historical display behavior should review cards use without creating public profiles?
-- Which service-date arithmetic, month/year display, declaration-only initial publication, edit/substitution interpretation, public disputed state, and evidence/audit retention rules may remain changeable during local synthetic implementation, and which must counsel resolve before any genuine review or evidence is collected?
-- What same-author collision outcome should a catalogue merge expose to the author, and may either review remain public before the conflict is resolved?
-- Which moderation grounds and severity levels justify an interim restriction, second reviewer, law-enforcement escalation, or immediate action, and what measurable local decision targets should be tested before beta?
-- Should anonymous Article 16 notices be supported for the narrow DSA exception even though the initial general form requests notifier name/email, and how should that coexist with the user-requested owner/delegate flow?
+These are the recommended product defaults and implementation boundaries, not legal advice. They let
+Phase 3 proceed with synthetic data while preserving the legal gates below. The applicable Italian law,
+the [AGCM draft guidelines](https://www.agcm.it/dotcmsdoc/consultazioni/Schema_Linee_guida_recensioni_online.pdf),
+and any later final guidance remain authoritative; counsel must approve every item expressly marked as a
+gate before genuine review, notice, or evidence data is collected.
+
+1. **Public pseudonym.** Use one globally unique, application-owned pseudonym per account: 3–40
+   Unicode letters/digits with single normalized spaces and the characters `.`, `_`, `-`, and
+   `'`; it must begin with a letter or digit. Store NFC display text and compare uniqueness after NFC,
+   whitespace collapse, trim, and locale-independent case folding. Reserve GustiMei/platform, staff,
+   administrator, moderator, support, system, and confusingly similar variants; prohibit URLs/contact
+   details, slurs, impersonation, and names that falsely imply an official or business role. Reports of
+   confusables or impersonation receive human review rather than irreversible automatic rejection.
+   Permit one self-service rename every 90 days, with an audited safety/legal/operator override, and
+   reserve the previous normalized name to that account for 180 days. Review versions retain the
+   publication-time pseudonym snapshot: a rename neither rewrites old versions nor creates a public
+   rename history, public profile, or author link. A later edit/substitution captures the then-current
+   pseudonym. Phase 3 must add the cadence/reservation fields and tests before exposing settings.
+
+2. **Clock, publication, and retention boundary.** Keep the currently implemented rules as versioned,
+   synthetic defaults: compare PostgreSQL service dates as `Europe/Rome` calendar days, with the service
+   day as day zero and a 30-calendar-day inclusive publication window; disclose only service month/year;
+   publish initially from the verified-account declarations without calling the review “verified”;
+   permit edits only while that same service date remains eligible; represent a later qualifying visit as
+   a new substitution generation; expire symmetrically two calendar years after publication; and leave a
+   sufficiently reported review public with a neutral disputed state unless a proportionate interim
+   restriction is justified. Exact numbers, copy, and policy versions may remain configurable in local
+   synthetic work. Before any genuine data is collected, counsel must approve the applicability and exact
+   inclusive/exclusive interpretation of the statutory clock and expiry, month/year disclosure, whether
+   declaration-only initial publication plus risk-based challenge is a reasonable and proportionate
+   authenticity measure, edit/substitution and disputed-state semantics, evidence categories, and a
+   record-by-record retention/legal-hold schedule. The current 90-day evidence deletion and 180-day hold
+   values are test parameters only, not production policy. Architecture may retain exact private dates,
+   immutable versions/declarations, new generations for later visits, symmetric treatment of positive and
+   negative reviews, and policy-version/audit facts; it must not retain deleted evidence or allegation
+   content merely because an audit event exists.
+
+3. **Catalogue-merge collision.** Continue to enforce at most one active review generation per
+   author/canonical place because Phase 2C already supports it without excessive architectural burden.
+   If a merge creates a collision, restrict both reviews from public reads immediately and show the author
+   a conflict containing the former place names, visit months, and states. Offer three non-destructive
+   outcomes: choose one review to keep; identify a later genuine visit and substitute it under the normal
+   eligibility/declaration rules; or dispute the catalogue merge because the venues are distinct. Never
+   concatenate content, silently choose a winner, or delete either history. Neither review is public while
+   unresolved, because displaying both on the canonical place would misrepresent two reviews as
+   independent authors/experiences. Merge reversal restores the previous projections; moderator
+   resolution requires a reason and audit record.
+
+4. **Moderation severity and beta targets.** Use four levels: S0 insufficient/no apparent violation
+   (reject or request details, no restriction); S1 ordinary authenticity, policy, or civil/business dispute
+   (keep public and disputed during bilateral review); S2 a specific and credible claim of illegality,
+   privacy exposure, targeted harassment, impersonation, manipulated evidence, or comparable material
+   harm (human triage and proportionate exact-version interim restriction only when a label is inadequate);
+   and S3 an authority order or credible imminent threat to life/safety, child sexual-abuse material,
+   doxxing/highly sensitive personal data, or similarly urgent illegality (immediate exact-version
+   restriction, minimal evidence preservation, and specialist escalation). Require a second reviewer for
+   permanent removal/reinstatement on legally ambiguous S2 cases, account-level sanctions, conflicts of
+   interest, authority orders whose scope is unclear, and every law-enforcement referral; S3 restriction
+   need not wait for that review. Escalate to law enforcement under DSA Article 18 only when available
+   information creates the required suspicion of a criminal offence involving a threat to life or safety,
+   or when another approved legal duty/order applies—not for routine defamation or owner disputes.
+   Exercise locally before beta: synchronous receipt plus queued acknowledgement within 15 minutes; S3
+   triage within 1 hour, S2 within 24 hours, and S0/S1 sufficiency triage within 2 business days; reasoned
+   S2 decisions within 7 calendar days and standard decisions/appeals within 14 calendar days after the
+   record is sufficient or the response window closes; evidence deletion jobs within 24 hours of the
+   approved deadline; and 100% audit/reason coverage for restrictions, removals, restorations, account
+   sanctions, and referrals. These are initial operating targets, not promises of a legal outcome; overdue
+   cases must alert rather than auto-decide.
+
+5. **Anonymous Article 16 exception.** Support a separate, narrowly labelled anonymous path only for
+   information considered to involve offences in Articles 3–7 of Directive 2011/93/EU. DSA Article
+   16(2)(c) expressly makes notifier name/email optional for that category; the exact content locator,
+   explanation, and bona-fide accuracy/completeness statement remain required. Identity/contact fields
+   must therefore be nullable for this branch before its UI is enabled. Anonymous notifiers receive no
+   email acknowledgement, owner status, bilateral case access, or case token unless they voluntarily give
+   a contact channel. The general notice path continues to require name/email, and the owner/delegate
+   variant additionally requires its scoped authority assertion/evidence; an owner cannot claim priority
+   anonymously. Qualifying anonymous reports still receive S3 handling, rate limiting, deduplication, data
+   minimization, and the same reasoned decision controls. Counsel must approve the branch label, routing,
+   preservation/reporting protocol, and safeguarding procedure before Phase 4 enables it.
+
+Legal basis checked for these gates: [Law 11 March 2026 no. 34, Articles 18–21](https://www.agcm.it/competenze/tutela-del-consumatore/dettaglio?id=1604766e-ccbb-4bcd-8c8e-6dc43ec8a839&parent=Normativa+Primaria&parentUrl=%2Fcompetenze%2Ftutela-del-consumatore%2Fnormativa%2Findex),
+[DSA Articles 16 and 18](https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A32022R2065),
+and the Garante's application of GDPR storage limitation, including the requirement for a specific,
+proportionate retention purpose ([17 April 2026 decision](https://www.garanteprivacy.it/web/guest/home/docweb/-/docweb-display/docweb/10241537)).
 
 ### Phase 3 — Product shell, authentication, and onboarding
 
@@ -769,7 +849,7 @@ Current-state constraints discovered before planning:
 - Let users add, view, edit, and delete an optional personal comment from a selected visited-place item or detail surface. Keep the field secondary to selection, use the approved “only you / memory aid / not a review / no recommendation effect” copy, and define removal behavior so a place cannot leave an orphaned comment (confirm comment deletion when removing the visited place).
 - On the public place route, render review publication date, privacy-preserving service date, pseudonym snapshot, edited marker, and the full not-independently-verified disclosure. Public lists exclude expired, withdrawn, restricted, and removed text; show a privacy-preserving tombstone at a stable direct anchor only where policy/redress requires it, while author/case routes expose the fuller authorized lifecycle state. Cover empty/loading/pagination/disputed/restored behavior without exposing non-public text or case details; a report must not reorder other reviews.
 - Add the separate authenticated `/reviews` management surface and place-scoped create route. Allow an eligible verified user to compose a review later even when the place is absent from their ranking; require service date and all declaration acceptances, refuse future/stale dates, preview exactly what will be public, and commit review publication independently from visited-place/ranking writes.
-- Add the adjacent general “Report this review” action and prominent owner/delegate entry point. Both create the same exact-version Article 16 notice, collect the required allegation, substantiation, notifier name/email, good-faith declaration and optional evidence, acknowledge receipt, and expose a case-scoped status route after email challenge. Never require owner/delegate status for general reporting or treat an asserted status as verified authority.
+- Add the adjacent general “Report this review” action and prominent owner/delegate entry point. Both create the same exact-version Article 16 notice, collect the required allegation, substantiation, notifier name/email, good-faith declaration and optional evidence, acknowledge receipt, and expose a case-scoped status route after email challenge. Also provide the separately labelled narrow anonymous Article 16(2)(c) branch decided above; it omits identity/contact and therefore cannot provide email acknowledgement or case access unless contact is volunteered. Never require owner/delegate status for general reporting, permit an anonymous owner-priority claim, or treat an asserted status as verified authority.
 - Enable “Order your top list” at two places and explain that adding more visited places improves recommendation confidence.
 - Preserve unordered visited-place selections across navigation, refresh, and transient network failure. No anonymous authentication handoff is required.
 - Instrument search, add/remove, threshold reached, and ranking-start events.
