@@ -574,10 +574,10 @@ Phase 2A invariants. The internal curator UI remains deferred as planned. See
 
 **Open questions to answer before Phase 3:**
 
-- Who is the provisional controller/contact for local notices, and what identifiers/version fields must be stored for Terms acceptance, age declaration, Privacy Notice, and contribution-policy disclosure before auth tables are extended?
-- Which authentication and account fields are owned by Better Auth versus the application profile, and what migration boundary prevents provider integration in Phase 9 from changing product routes?
-- What local rate-limit implementation and trusted-proxy abstraction will Phase 3 use, and which behavior must remain portable to Phase 9 hosting?
-- What are the application-owned transactional-email and durable-job/outbox contracts? Phase 3 must implement only local/in-memory adapters; Brevo and hosted background delivery remain Phase 9 work.
+- **Answered 2026-08-15:** use Luca Fornasari, fornaeffe@gmail.com, via Picedi Benettini 6, 43123 Parma, Italia as the provisional controller/contact for local notices. Store immutable, application-owned registration attestations with server timestamp, locale, accepted Terms version, age-declaration version, and the Privacy Notice and contribution-disclosure versions presented; keep versioned document content hashes and never record Privacy Notice presentation as consent.
+- **Answered 2026-08-15:** Better Auth owns core identity, credentials/provider accounts, verification, and sessions. The application owns product profiles/preferences, locale, legal/disclosure records, rights records, and authorization. Product routes consume an application-owned account/session projection and application tables reference the stable Better Auth user ID, so Phase 9 provider integration does not alter route contracts.
+- **Answered 2026-08-15:** use a purpose-scoped application rate-limit contract with injectable time and a deterministic in-memory fixed-window adapter through Phase 8. Resolve client addresses behind a SvelteKit-aware abstraction, trust no forwarded headers locally, and preserve policy/result semantics when Phase 9 configures the known proxy topology and hosted storage.
+- **Answered 2026-08-15:** use typed, idempotent application-owned email/outbox jobs with stable IDs, retry metadata, a non-blocking enqueue boundary, and a deterministic local worker. Local/test adapters remain inspectable in memory and must fail closed in preview/production; complete action URLs never enter analytics or ordinary logs. Brevo and hosted durable delivery remain Phase 9 work. See [ADR 0004](docs/adr/0004-phase-3-auth-onboarding-boundaries.md) for the complete accepted boundary.
 
 ### Phase 3 — Product shell, authentication, and onboarding
 
