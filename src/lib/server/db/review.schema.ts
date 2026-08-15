@@ -112,7 +112,8 @@ export const publicProfile = pgTable(
 		normalizedPseudonym: text('normalized_pseudonym').notNull(),
 		lifecycle: publicProfileLifecycleEnum('lifecycle').notNull().default('active'),
 		createdAt: eventTimestamp('created_at').notNull(),
-		updatedAt: eventTimestamp('updated_at').notNull()
+		updatedAt: eventTimestamp('updated_at').notNull(),
+		lastChangedAt: eventTimestamp('last_changed_at').notNull()
 	},
 	(table) => [
 		uniqueIndex('public_profile_pseudonym_uq').on(table.normalizedPseudonym),

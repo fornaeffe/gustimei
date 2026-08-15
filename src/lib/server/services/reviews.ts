@@ -33,6 +33,7 @@ import {
 	reviewRateLimitPolicies,
 	type RateLimiter
 } from '$lib/server/security/rate-limit';
+import { AccountService } from './account';
 
 type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
 type ReviewDatabase = Database | Transaction;
@@ -54,21 +55,6 @@ const defaultPolicyConfiguration: PolicyConfiguration = {
 	...provisionalReviewClockPolicy,
 	publicServiceDatePrecision: 'month'
 };
-
-export function normalizePseudonym(value: string): { display: string; key: string } {
-	const display = value.normalize('NFC').replace(/\s+/g, ' ').trim();
-	if (display.length < 3 || display.length > 40) {
-		throw new DomainValidationError('Pseudonym must contain 3 to 40 characters');
-	}
-	if (!/^[\p{L}\p{N}][\p{L}\p{N} ._'-]*$/u.test(display)) {
-		throw new DomainValidationError('Pseudonym contains unsupported characters');
-	}
-	const key = display.toLocaleLowerCase('it-IT');
-	if (/^(admin|administrator|moderator|gustimei|support)$/i.test(key)) {
-		throw new DomainValidationError('Pseudonym is reserved');
-	}
-	return { display, key };
-}
 
 function hash(value: string): string {
 	return createHash('sha256').update(value).digest('hex');
@@ -127,29 +113,7 @@ export class ReviewService {
 	}
 
 	async setPseudonym(authorId: string, value: string) {
-		await this.requireVerifiedUser(authorId);
-		const normalized = normalizePseudonym(value);
-		const now = this.clock();
-		const [record] = await this.database
-			.insert(publicProfile)
-			.values({
-				userId: authorId,
-				pseudonym: normalized.display,
-				normalizedPseudonym: normalized.key,
-				createdAt: now,
-				updatedAt: now
-			})
-			.onConflictDoUpdate({
-				target: publicProfile.userId,
-				set: {
-					pseudonym: normalized.display,
-					normalizedPseudonym: normalized.key,
-					lifecycle: 'active',
-					updatedAt: now
-				}
-			})
-			.returning();
-		return record;
+		return new AccountService(this.database, this.clock, this.id).setPseudonym(authorId, value);
 	}
 
 	async create(authorId: string, input: ReviewPublicationInput) {

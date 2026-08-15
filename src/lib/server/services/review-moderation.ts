@@ -460,6 +460,44 @@ export class ReviewModerationService {
 		return record;
 	}
 
+	async deleteEvidence(input: {
+		evidenceId: string;
+		partyRole: PartyRole;
+		authorUserId?: string;
+		notifierToken?: string;
+	}) {
+		const [record] = await this.database
+			.select()
+			.from(reviewEvidenceObject)
+			.where(
+				and(eq(reviewEvidenceObject.id, input.evidenceId), isNull(reviewEvidenceObject.deletedAt))
+			)
+			.limit(1);
+		if (!record || record.uploaderRole !== input.partyRole) {
+			throw new NotFoundError('Evidence object was not found');
+		}
+		await this.authorizeParty({ noticeId: record.noticeId, ...input });
+		await this.evidence.delete(record.blobHandle);
+		const now = this.clock();
+		const [deleted] = await this.database
+			.update(reviewEvidenceObject)
+			.set({ deletedAt: now })
+			.where(
+				and(eq(reviewEvidenceObject.id, input.evidenceId), isNull(reviewEvidenceObject.deletedAt))
+			)
+			.returning();
+		if (!deleted) throw new ConflictError('Evidence was deleted concurrently');
+		await this.database.insert(reviewEvidenceAccess).values({
+			id: this.id(),
+			evidenceId: record.id,
+			actorType: input.partyRole,
+			actorReference: input.authorUserId ?? sha256(input.notifierToken ?? ''),
+			purpose: 'uploader-deletion',
+			accessedAt: now
+		});
+		return deleted;
+	}
+
 	async readEvidence(input: {
 		evidenceId: string;
 		actorType: 'author' | 'notifier' | 'review_moderator' | 'admin';

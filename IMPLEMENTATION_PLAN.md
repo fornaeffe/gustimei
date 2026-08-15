@@ -839,6 +839,52 @@ proportionate retention purpose ([17 April 2026 decision](https://www.garantepri
 - Did testing confirm that users can distinguish a private personal comment from a public review and understand the declaration, expiry, pseudonym, moderation, and not-independently-verified disclosures before publishing?
 - Are all Phase 2C legal gates required for UI implementation resolved or explicitly represented as changeable policy/configuration rather than hard-coded copy?
 
+**Implementation record (2026-08-16):**
+
+- Implemented the Phase 3 product shell and evidence-informed visual system. Semantic light/dark
+  tokens cover color, typography, spacing, focus, motion, cards, private/public/restricted content
+  boundaries, and reduced-motion behavior. Reusable Svelte components now cover shell/navigation,
+  buttons, form fields, dialogs, progress, empty/error states, Lucide icons, stable restaurant/hotel
+  non-photo cards, private comments, public review composition/presentation/disclosures,
+  declarations, service dates, notices, case timelines, restricted evidence, and reasoned decisions.
+  The proportionate research basis and its limitations are recorded in
+  [`docs/phase-3-design-research.md`](docs/phase-3-design-research.md).
+- Replaced the demo landing page with a localized no-ratings proposition, one primary restaurant
+  call to action, an explicit preference-sharing disclosure before registration, and a progressive
+  empty dashboard. The dashboard hierarchy is now: select visited restaurants first, personal
+  ranking second, support-gated recommendations third, and clearly separate optional public reviews.
+- Implemented server-action-based sign-up/sign-in, mandatory one-hour email verification,
+  verification resend, generic account-existence responses, one-hour password reset, session
+  revocation after reset, safe redirects, session-aware navigation, and purpose-scoped local auth
+  rate limits. Better Auth callbacks enqueue complete verification/reset URLs into the
+  application-owned transactional outbox; the deterministic local worker and development-only
+  mailbox use an in-memory transport that fails closed in preview/production.
+- Added immutable versioned document records, registration attestations, account locale preference,
+  and application-owned public pseudonym history. Pseudonyms are optional until review publication,
+  require a verified account, can change once per 30 days, reserve the previous normalized name to
+  its owner for 180 days, and do not rewrite old review-version snapshots.
+- Published aligned English/Italian provisional Terms, Privacy Notice, contribution disclosure,
+  review rules, and moderation/redress explanation. Review/public-identity UI remains separate from
+  ranking and recommendation routes. Genuine review submission remains gated on an approved active
+  review policy and the unresolved Phase 2C legal approvals; the UI does not present draft guidance
+  as final law.
+- Implemented canonical local JSON account export, uploader-authorized evidence deletion, privacy
+  request audit records, and the operator procedure for access, restriction, review withdrawal or
+  redaction, evidence deletion, category deletion, and account erasure in
+  [`docs/phase-3-rights-runbook.md`](docs/phase-3-rights-runbook.md).
+- Resolved list creation for Phase 4: create a category list atomically with the first selected place,
+  not on category-page visit and not through a separate empty-list action. This follows the selected
+  dashboard hierarchy and avoids durable empty aggregates while keeping the user's action explicit.
+- Verification completed: formatter, ESLint, Svelte diagnostics, Svelte autofixer, production build,
+  65 server unit tests, and 18 PostgreSQL integration tests pass. Direct SSR smoke checks returned
+  localized English and Italian landing pages. The host's Playwright `chromium.launch()` currently
+  hangs before browser tests start, so the new component tests and Playwright landing checks remain
+  unexecuted locally; this is a tooling/environment issue, not a passing test claim.
+- The rate-limit/outbox/document boundaries are sufficient for local work through Phase 8. Human
+  comprehension testing is still required before claiming that users reliably distinguish private
+  comments from public reviews or understand declarations, expiry, pseudonyms, moderation, and the
+  unverified-experience label. All remaining legal assumptions stay versioned/configurable gates.
+
 ### Phase 4 — Visited-restaurant selection bucket
 
 - Load or create the authenticated user's single global restaurant list.

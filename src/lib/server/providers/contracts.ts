@@ -40,6 +40,8 @@ export interface AppProviders {
 }
 
 export type ReviewOutboxPurpose =
+	| 'email-verification'
+	| 'password-reset'
 	| 'review-acknowledgement'
 	| 'review-author-notice'
 	| 'review-evidence-window'

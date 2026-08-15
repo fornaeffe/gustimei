@@ -13,6 +13,12 @@ import type { RuntimeConfig } from '$lib/server/config/environment';
 export class LocalEmailProvider implements EmailProvider {
 	readonly outbox: TransactionalEmail[] = [];
 
+	constructor(private readonly environment: RuntimeConfig['appEnvironment'] = 'test') {
+		if (!['development', 'test'].includes(environment)) {
+			throw new Error('The local email transport is forbidden outside development and test');
+		}
+	}
+
 	async send(message: TransactionalEmail) {
 		this.outbox.push(structuredClone(message));
 	}
@@ -58,7 +64,7 @@ export class LocalErrorReporter implements ErrorReporter {
 export function createLocalProviders(config: RuntimeConfig): AppProviders {
 	return {
 		config,
-		email: new LocalEmailProvider(),
+		email: new LocalEmailProvider(config.appEnvironment),
 		jobs: new LocalBackgroundJobProvider(),
 		artifacts: new MemoryArtifactStore(),
 		errors: new LocalErrorReporter()
