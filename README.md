@@ -51,3 +51,10 @@ applying reviewed migrations. See [catalogue operations and compliance](docs/pha
 for the on-demand Italy restaurant import, coverage audit, locality rules, and OSM attribution.
 The first domain migration is compatible with the earlier `db:push` auth schema and preserves its
 accounts; it removes only the obsolete starter `task` table.
+
+Phase 2B adds server-only catalogue governance: private structured issue intake, application-owned
+curator/admin assignments, reversible overlays and canonical merges, targeted ranking repair, and
+append-only audits. See [the Phase 2B governance runbook](docs/phase-2b-governance.md) for the local
+role bootstrap/rotation commands and moderation invariants. The migration copies the current
+effective catalogue into a provider-derived base projection, so existing Phase 2A imports are
+preserved and later local overrides can be reconciled safely.

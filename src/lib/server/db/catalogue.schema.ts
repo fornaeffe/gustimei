@@ -192,6 +192,61 @@ export const effectivePlace = pgTable(
 	]
 );
 
+/**
+ * The latest provider-derived projection before local governance overlays are applied. Keeping it
+ * separate makes overrides reversible and lets later imports be reconciled without losing source
+ * truth. `effective_place` remains the only search/serving projection.
+ */
+export const catalogueBasePlace = pgTable(
+	'catalogue_base_place',
+	{
+		placeId: text('place_id')
+			.primaryKey()
+			.references(() => place.id, { onDelete: 'cascade' }),
+		sourceSnapshotId: text('source_snapshot_id')
+			.notNull()
+			.references(() => catalogueSourceSnapshot.id, { onDelete: 'restrict' }),
+		importId: text('import_id')
+			.notNull()
+			.references(() => catalogueImport.id, { onDelete: 'restrict' }),
+		status: catalogueRecordStatusEnum('status').notNull().default('active'),
+		quarantineReason: text('quarantine_reason'),
+		name: text('name').notNull(),
+		normalizedName: text('normalized_name').notNull(),
+		category: rankingCategoryEnum('category').notNull(),
+		countryCode: text('country_code').notNull().default('IT'),
+		latitude: doublePrecision('latitude').notNull(),
+		longitude: doublePrecision('longitude').notNull(),
+		addressLabel: text('address_label'),
+		postalCode: text('postal_code'),
+		settlementName: text('settlement_name'),
+		regionBoundaryKey: text('region_boundary_key'),
+		regionName: text('region_name'),
+		provinceBoundaryKey: text('province_boundary_key'),
+		provinceName: text('province_name'),
+		municipalityBoundaryKey: text('municipality_boundary_key'),
+		municipalityName: text('municipality_name'),
+		displayLocality: text('display_locality').notNull(),
+		searchText: text('search_text').notNull(),
+		localityIndexVersion: text('locality_index_version').notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow()
+	},
+	(table) => [
+		index('catalogue_base_place_category_status_idx').on(table.category, table.status),
+		check(
+			'catalogue_base_place_name_ck',
+			sql`${table.status} = 'quarantined' or char_length(trim(${table.name})) > 0`
+		),
+		check('catalogue_base_place_search_text_ck', sql`char_length(trim(${table.searchText})) > 0`),
+		check('catalogue_base_place_latitude_ck', sql`${table.latitude} between -90 and 90`),
+		check('catalogue_base_place_longitude_ck', sql`${table.longitude} between -180 and 180`),
+		check(
+			'catalogue_base_place_quarantine_reason_ck',
+			sql`(${table.status} = 'quarantined' and ${table.quarantineReason} is not null) or (${table.status} <> 'quarantined')`
+		)
+	]
+);
+
 export const catalogueImportElement = pgTable(
 	'catalogue_import_element',
 	{

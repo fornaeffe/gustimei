@@ -8,6 +8,7 @@ export default defineConfig({
 	test: {
 		expect: { requireAssertions: true },
 		environment: 'node',
+		fileParallelism: false,
 		include: ['src/**/*.integration.spec.ts'],
 		sequence: { concurrent: false }
 	}

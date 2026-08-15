@@ -35,6 +35,7 @@
 		"test:db": "npm run db:test:reset && node --env-file=.env.test node_modules/vitest/vitest.mjs --run --config vitest.database.config.ts",
 		"catalogue:import:restaurants": "vite-node scripts/import-osm.ts",
 		"catalogue:audit:restaurants": "vite-node scripts/audit-catalogue.ts",
+		"catalogue:roles": "vite-node scripts/catalogue-roles.ts",
 		"auth:schema": "better-auth generate --config src/lib/server/auth.ts --output src/lib/server/db/auth.schema.ts --yes"
 	},
 	"devDependencies": {

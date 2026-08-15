@@ -64,3 +64,65 @@ export const contributionPurposeEnum = pgEnum('contribution_purpose', [
 	'community-model-training',
 	'current-user-personalization'
 ]);
+
+export const catalogueRoleEnum = pgEnum('catalogue_role', ['admin', 'catalogue_curator']);
+export const catalogueRoleGrantSourceEnum = pgEnum('catalogue_role_grant_source', [
+	'bootstrap',
+	'admin-grant',
+	'rotation',
+	'break-glass'
+]);
+export const catalogueAuditActorRoleEnum = pgEnum('catalogue_audit_actor_role', [
+	'user',
+	'catalogue_curator',
+	'admin',
+	'operator',
+	'system'
+]);
+export const catalogueIssueTypeEnum = pgEnum('catalogue_issue_type', [
+	'wrong-name',
+	'wrong-location',
+	'wrong-category',
+	'duplicate',
+	'closed-or-missing',
+	'unsafe-content',
+	'other'
+]);
+export const catalogueIssueStatusEnum = pgEnum('catalogue_issue_status', [
+	'submitted',
+	'triaged',
+	'resolved',
+	'rejected'
+]);
+export const catalogueOverrideReviewStatusEnum = pgEnum('catalogue_override_review_status', [
+	'approved',
+	'review-required',
+	'upstream-match',
+	'conflict',
+	'retired'
+]);
+export const catalogueChangeActionEnum = pgEnum('catalogue_change_action', [
+	'issue-submitted',
+	'issue-triaged',
+	'issue-resolved',
+	'issue-rejected',
+	'override-applied',
+	'override-retired',
+	'place-quarantined',
+	'place-unquarantined',
+	'merge-applied',
+	'merge-reversed',
+	'exceptional-removal',
+	'exceptional-removal-reversed',
+	'category-migrated',
+	'role-granted',
+	'role-revoked',
+	'role-rotated',
+	'role-break-glass',
+	'import-conflict'
+]);
+export const catalogueRepairStatusEnum = pgEnum('catalogue_repair_status', [
+	'pending',
+	'completed',
+	'cancelled'
+]);

@@ -551,6 +551,19 @@ and B-tree locality/name indexes for current development, then remeasure at glob
 
 ### Phase 2B — Catalogue governance and repair operations
 
+**Status (2026-08-15): complete.** The reviewed Phase 2B migrations preserve existing Phase 2A
+catalogue data while separating the latest provider-derived base projection from the governed
+effective projection. Server-only services now provide private rate-limited structured issue intake;
+database-resolved, environment-specific curator/admin assignments; allowlisted reviewed field
+overrides and quarantine; import conflict/upstream-match reconciliation; admin-only category
+migration and exceptional tombstoning; reversible, cycle-checked canonical merges; active visited
+membership supersession; targeted ranking repairs; artifact invalidation requests; and append-only
+audits with source identities and impact lineage. Local/test-only operator commands bootstrap, grant,
+rotate, revoke, and break-glass verified Better Auth identities, revoke predecessor sessions, and
+protect the last administrator. Service/API-level database tests cover these workflows and the
+Phase 2A invariants. The internal curator UI remains deferred as planned. See
+[the Phase 2B governance runbook](docs/phase-2b-governance.md).
+
 - Implement effective overlay resolution, field-level overrides, canonical redirects, cycle prevention, and transactional/reversible merge impact handling. Imports must surface rather than overwrite conflicts with active overrides.
 - Add protected curator/admin catalogue services and append-only audit records. Let authenticated users submit private, rate-limited structured issue reports without granting catalogue mutation rights; keep business claims out of scope.
 - Define and implement the environment-guarded, transactionally audited bootstrap/rotation/recovery commands and application-owned role assignments for the first administrator and catalogue curator; do not grant roles through public routes, mutable client claims, or startup email allowlists.

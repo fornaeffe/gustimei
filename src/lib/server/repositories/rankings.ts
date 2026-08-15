@@ -10,6 +10,7 @@ import { RankingSession } from '$lib/domain/ranking/session';
 import type { Database } from '$lib/server/db';
 import {
 	comparisonEvidence,
+	catalogueListPlaceSupersession,
 	effectivePlace,
 	place,
 	rankingList,
@@ -138,7 +139,17 @@ export class RankingRepository {
 		const rows = await this.database
 			.select({ placeId: rankingListPlace.placeId })
 			.from(rankingListPlace)
-			.where(eq(rankingListPlace.listId, listId))
+			.where(
+				and(
+					eq(rankingListPlace.listId, listId),
+					sql`not exists (
+						select 1 from ${catalogueListPlaceSupersession} supersession
+						where supersession.list_id = ${rankingListPlace.listId}
+							and supersession.source_place_id = ${rankingListPlace.placeId}
+							and supersession.reversed_at is null
+					)`
+				)
+			)
 			.orderBy(asc(rankingListPlace.addedAt), asc(rankingListPlace.placeId));
 		return rows.map((row) => row.placeId);
 	}

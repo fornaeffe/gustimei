@@ -1,4 +1,5 @@
-import { and, asc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
+import { and, asc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
 import type {
 	CatalogueSearchQuery,
 	CatalogueSearchResult,
@@ -6,11 +7,23 @@ import type {
 	NormalizedPlaceInput
 } from '$lib/domain/catalogue/contracts';
 import { boundaryKey } from '$lib/domain/catalogue/contracts';
+import {
+	applyCatalogueOverride,
+	classifyOverrideReconciliation,
+	type EffectivePlaceValues
+} from '$lib/domain/catalogue/governance';
 import { normalizeSearchText } from '$lib/domain/catalogue/normalization';
+import type { AppEnvironment } from '$lib/server/config/environment';
 import type { Database } from '$lib/server/db';
 import {
+	catalogueBasePlace,
+	catalogueCategoryMigration,
+	catalogueChange,
 	catalogueImport,
 	catalogueImportElement,
+	cataloguePlaceOverride,
+	cataloguePlaceRedirect,
+	cataloguePlaceTombstone,
 	catalogueSourceMapping,
 	catalogueSourceSnapshot,
 	effectivePlace,
@@ -27,6 +40,106 @@ function batches<T>(items: readonly T[], size = BATCH_SIZE) {
 		result.push(items.slice(index, index + size));
 	}
 	return result;
+}
+
+type BaseProjectionRow = typeof catalogueBasePlace.$inferInsert;
+
+function inputToBaseRow(
+	input: NormalizedPlaceInput,
+	importId: string,
+	now: Date
+): BaseProjectionRow {
+	return {
+		placeId: placeIdForOsm(input),
+		sourceSnapshotId: snapshotIdForOsm(input),
+		importId,
+		status: input.quarantineReason ? 'quarantined' : 'active',
+		quarantineReason: input.quarantineReason,
+		name: input.name,
+		normalizedName: input.normalizedName,
+		category: input.category,
+		countryCode: input.locality.countryCode,
+		latitude: input.latitude,
+		longitude: input.longitude,
+		addressLabel: input.addressLabel,
+		postalCode: input.locality.postalCode,
+		settlementName: input.locality.settlementName,
+		regionBoundaryKey: boundaryKey(input.locality.region),
+		regionName: input.locality.region?.name,
+		provinceBoundaryKey: boundaryKey(input.locality.province),
+		provinceName: input.locality.province?.name,
+		municipalityBoundaryKey: boundaryKey(input.locality.municipality),
+		municipalityName: input.locality.municipality?.name,
+		displayLocality: input.locality.displayLabel,
+		searchText: `${input.normalizedName} ${input.locality.searchText}`.trim(),
+		localityIndexVersion: input.locality.indexVersion,
+		updatedAt: now
+	};
+}
+
+export function projectionValues(row: BaseProjectionRow): EffectivePlaceValues {
+	return {
+		name: row.name,
+		addressLabel: row.addressLabel ?? null,
+		latitude: row.latitude,
+		longitude: row.longitude,
+		locality: {
+			countryCode: row.countryCode ?? 'IT',
+			postalCode: row.postalCode ?? null,
+			settlementName: row.settlementName ?? null,
+			regionBoundaryKey: row.regionBoundaryKey ?? null,
+			regionName: row.regionName ?? null,
+			provinceBoundaryKey: row.provinceBoundaryKey ?? null,
+			provinceName: row.provinceName ?? null,
+			municipalityBoundaryKey: row.municipalityBoundaryKey ?? null,
+			municipalityName: row.municipalityName ?? null,
+			displayLocality: row.displayLocality
+		},
+		visibility: { status: row.status ?? 'active', reason: row.quarantineReason ?? null }
+	};
+}
+
+export function resolvedProjectionRow(
+	base: BaseProjectionRow,
+	values: EffectivePlaceValues,
+	category: 'restaurant' | 'hotel'
+): typeof effectivePlace.$inferInsert {
+	const searchText = normalizeSearchText(
+		[
+			values.name,
+			values.addressLabel,
+			values.locality.displayLocality,
+			values.locality.settlementName,
+			values.locality.postalCode,
+			values.locality.regionName,
+			values.locality.provinceName,
+			values.locality.municipalityName
+		]
+			.filter(Boolean)
+			.join(' ')
+	);
+	return {
+		...base,
+		category,
+		status: values.visibility.status,
+		quarantineReason: values.visibility.reason,
+		name: values.name,
+		normalizedName: normalizeSearchText(values.name),
+		latitude: values.latitude,
+		longitude: values.longitude,
+		addressLabel: values.addressLabel,
+		countryCode: values.locality.countryCode,
+		postalCode: values.locality.postalCode,
+		settlementName: values.locality.settlementName,
+		regionBoundaryKey: values.locality.regionBoundaryKey,
+		regionName: values.locality.regionName,
+		provinceBoundaryKey: values.locality.provinceBoundaryKey,
+		provinceName: values.locality.provinceName,
+		municipalityBoundaryKey: values.locality.municipalityBoundaryKey,
+		municipalityName: values.locality.municipalityName,
+		displayLocality: values.locality.displayLocality,
+		searchText
+	};
 }
 
 export function placeIdForOsm(input: Pick<NormalizedPlaceInput, 'elementType' | 'elementId'>) {
@@ -56,7 +169,10 @@ export interface CatalogueImportStart {
 }
 
 export class CatalogueRepository {
-	constructor(private readonly database: Database) {}
+	constructor(
+		private readonly database: Database,
+		private readonly environment: AppEnvironment = 'development'
+	) {}
 
 	async startImport(input: CatalogueImportStart) {
 		const inserted = await this.database
@@ -231,6 +347,8 @@ export class CatalogueRepository {
 			}
 
 			for (const batch of batches(inputs)) {
+				const baseRows = batch.map((input) => inputToBaseRow(input, importId, now));
+				const placeIds = baseRows.map((item) => item.placeId);
 				await transaction
 					.insert(catalogueSourceMapping)
 					.values(
@@ -253,37 +371,10 @@ export class CatalogueRepository {
 					});
 
 				await transaction
-					.insert(effectivePlace)
-					.values(
-						batch.map((input) => ({
-							placeId: placeIdForOsm(input),
-							sourceSnapshotId: snapshotIdForOsm(input),
-							importId,
-							status: input.quarantineReason ? ('quarantined' as const) : ('active' as const),
-							quarantineReason: input.quarantineReason,
-							name: input.name,
-							normalizedName: input.normalizedName,
-							category: input.category,
-							countryCode: input.locality.countryCode,
-							latitude: input.latitude,
-							longitude: input.longitude,
-							addressLabel: input.addressLabel,
-							postalCode: input.locality.postalCode,
-							settlementName: input.locality.settlementName,
-							regionBoundaryKey: boundaryKey(input.locality.region),
-							regionName: input.locality.region?.name,
-							provinceBoundaryKey: boundaryKey(input.locality.province),
-							provinceName: input.locality.province?.name,
-							municipalityBoundaryKey: boundaryKey(input.locality.municipality),
-							municipalityName: input.locality.municipality?.name,
-							displayLocality: input.locality.displayLabel,
-							searchText: `${input.normalizedName} ${input.locality.searchText}`.trim(),
-							localityIndexVersion: input.locality.indexVersion,
-							updatedAt: now
-						}))
-					)
+					.insert(catalogueBasePlace)
+					.values(baseRows)
 					.onConflictDoUpdate({
-						target: effectivePlace.placeId,
+						target: catalogueBasePlace.placeId,
 						set: {
 							sourceSnapshotId: sql`excluded.source_snapshot_id`,
 							importId,
@@ -291,6 +382,7 @@ export class CatalogueRepository {
 							quarantineReason: sql`excluded.quarantine_reason`,
 							name: sql`excluded.name`,
 							normalizedName: sql`excluded.normalized_name`,
+							category: sql`excluded.category`,
 							countryCode: sql`excluded.country_code`,
 							latitude: sql`excluded.latitude`,
 							longitude: sql`excluded.longitude`,
@@ -309,8 +401,226 @@ export class CatalogueRepository {
 							updatedAt: now
 						}
 					});
+
+				const [overrides, redirects, migrations, tombstones] = await Promise.all([
+					transaction
+						.select()
+						.from(cataloguePlaceOverride)
+						.where(
+							and(
+								inArray(cataloguePlaceOverride.placeId, placeIds),
+								isNull(cataloguePlaceOverride.retiredAt)
+							)
+						),
+					transaction
+						.select()
+						.from(cataloguePlaceRedirect)
+						.where(
+							and(
+								inArray(cataloguePlaceRedirect.sourcePlaceId, placeIds),
+								isNull(cataloguePlaceRedirect.reversedAt)
+							)
+						),
+					transaction
+						.select()
+						.from(catalogueCategoryMigration)
+						.where(
+							and(
+								inArray(catalogueCategoryMigration.placeId, placeIds),
+								isNull(catalogueCategoryMigration.reversedAt)
+							)
+						),
+					transaction
+						.select()
+						.from(cataloguePlaceTombstone)
+						.where(
+							and(
+								inArray(cataloguePlaceTombstone.placeId, placeIds),
+								isNull(cataloguePlaceTombstone.reversedAt)
+							)
+						)
+				]);
+				const overridesByPlace = new Map(overrides.map((item) => [item.placeId, item]));
+				const redirectsByPlace = new Map(redirects.map((item) => [item.sourcePlaceId, item]));
+				const migrationsByPlace = new Map(migrations.map((item) => [item.placeId, item]));
+				const tombstonesByPlace = new Map(tombstones.map((item) => [item.placeId, item]));
+				const effectiveRows = baseRows.map((base) => {
+					const baseValues = projectionValues(base);
+					const override = overridesByPlace.get(base.placeId);
+					const values = override ? applyCatalogueOverride(baseValues, override.patch) : baseValues;
+					const redirect = redirectsByPlace.get(base.placeId);
+					if (redirect) {
+						values.visibility = {
+							status: 'hidden',
+							reason: `merged-into:${redirect.canonicalPlaceId}`
+						};
+					}
+					const tombstone = tombstonesByPlace.get(base.placeId);
+					if (tombstone) {
+						values.visibility = {
+							status: 'hidden',
+							reason: `exceptional-removal:${tombstone.reason}`
+						};
+					}
+					return resolvedProjectionRow(
+						base,
+						values,
+						migrationsByPlace.get(base.placeId)?.toCategory ?? base.category
+					);
+				});
+
+				await transaction
+					.insert(effectivePlace)
+					.values(effectiveRows)
+					.onConflictDoUpdate({
+						target: effectivePlace.placeId,
+						set: {
+							sourceSnapshotId: sql`excluded.source_snapshot_id`,
+							importId,
+							status: sql`excluded.status`,
+							quarantineReason: sql`excluded.quarantine_reason`,
+							name: sql`excluded.name`,
+							normalizedName: sql`excluded.normalized_name`,
+							category: sql`excluded.category`,
+							countryCode: sql`excluded.country_code`,
+							latitude: sql`excluded.latitude`,
+							longitude: sql`excluded.longitude`,
+							addressLabel: sql`excluded.address_label`,
+							postalCode: sql`excluded.postal_code`,
+							settlementName: sql`excluded.settlement_name`,
+							regionBoundaryKey: sql`excluded.region_boundary_key`,
+							regionName: sql`excluded.region_name`,
+							provinceBoundaryKey: sql`excluded.province_boundary_key`,
+							provinceName: sql`excluded.province_name`,
+							municipalityBoundaryKey: sql`excluded.municipality_boundary_key`,
+							municipalityName: sql`excluded.municipality_name`,
+							displayLocality: sql`excluded.display_locality`,
+							searchText: sql`excluded.search_text`,
+							localityIndexVersion: sql`excluded.locality_index_version`,
+							updatedAt: now
+						}
+					});
+
+				for (const override of overrides) {
+					const base = baseRows.find((item) => item.placeId === override.placeId)!;
+					const reviewStatus = classifyOverrideReconciliation(
+						projectionValues(base),
+						override.patch,
+						override.baseValues,
+						now,
+						override.expiresAt
+					);
+					if (reviewStatus === override.reviewStatus) continue;
+					await transaction
+						.update(cataloguePlaceOverride)
+						.set({ reviewStatus })
+						.where(eq(cataloguePlaceOverride.id, override.id));
+					await transaction.insert(catalogueChange).values({
+						id: randomUUID(),
+						action: 'import-conflict',
+						actorRole: 'system',
+						environment: this.environment,
+						targetPlaceId: override.placeId,
+						sourceIdentities: batch
+							.filter((item) => placeIdForOsm(item) === override.placeId)
+							.map((item) => ({
+								placeId: override.placeId,
+								provider: item.provider,
+								elementType: item.elementType,
+								elementId: item.elementId
+							})),
+						before: { reviewStatus: override.reviewStatus },
+						after: { reviewStatus },
+						reasonCategory: 'upstream-reconciliation',
+						evidenceReferences: [override.evidenceReference],
+						linkedReportId: override.linkedReportId,
+						importId,
+						impact: {},
+						createdAt: now
+					});
+				}
 			}
 
+			const missingFilter = (projection: typeof effectivePlace | typeof catalogueBasePlace) =>
+				and(
+					eq(projection.category, record.category),
+					sql`exists (
+						select 1 from ${place} catalogue_place
+						where catalogue_place.id = ${projection.placeId}
+							and catalogue_place.data_class = ${record.dataClass}
+					)`,
+					sql`not exists (
+						select 1
+						from ${catalogueSourceMapping} source_mapping
+						join ${catalogueImportElement} import_element
+							on import_element.snapshot_id = source_mapping.current_snapshot_id
+						where source_mapping.place_id = ${projection.placeId}
+							and import_element.import_id = ${importId}
+					)`
+				);
+			await transaction
+				.update(catalogueBasePlace)
+				.set({
+					status: 'quarantined',
+					quarantineReason: 'missing-from-latest-source',
+					updatedAt: now
+				})
+				.where(missingFilter(catalogueBasePlace));
+			const missingOverrides = await transaction
+				.select({
+					override: cataloguePlaceOverride,
+					mapping: catalogueSourceMapping
+				})
+				.from(cataloguePlaceOverride)
+				.innerJoin(
+					catalogueBasePlace,
+					eq(catalogueBasePlace.placeId, cataloguePlaceOverride.placeId)
+				)
+				.innerJoin(place, eq(place.id, catalogueBasePlace.placeId))
+				.leftJoin(
+					catalogueSourceMapping,
+					eq(catalogueSourceMapping.placeId, cataloguePlaceOverride.placeId)
+				)
+				.where(
+					and(
+						eq(catalogueBasePlace.category, record.category),
+						eq(place.dataClass, record.dataClass),
+						eq(catalogueBasePlace.quarantineReason, 'missing-from-latest-source'),
+						isNull(cataloguePlaceOverride.retiredAt),
+						sql`${cataloguePlaceOverride.reviewStatus} <> 'conflict'`
+					)
+				);
+			for (const { override, mapping } of missingOverrides) {
+				await transaction
+					.update(cataloguePlaceOverride)
+					.set({ reviewStatus: 'conflict' })
+					.where(eq(cataloguePlaceOverride.id, override.id));
+				await transaction.insert(catalogueChange).values({
+					id: randomUUID(),
+					action: 'import-conflict',
+					actorRole: 'system',
+					environment: this.environment,
+					targetPlaceId: override.placeId,
+					sourceIdentities: mapping
+						? [
+								{
+									placeId: mapping.placeId,
+									provider: mapping.provider,
+									elementType: mapping.elementType,
+									elementId: mapping.elementId
+								}
+							]
+						: [],
+					before: { reviewStatus: override.reviewStatus },
+					after: { reviewStatus: 'conflict', missingFromLatestSource: true },
+					reasonCategory: 'upstream-reconciliation',
+					evidenceReferences: [override.evidenceReference],
+					linkedReportId: override.linkedReportId,
+					importId,
+					impact: {},
+					createdAt: now
+				});
+			}
 			await transaction
 				.update(effectivePlace)
 				.set({
@@ -320,19 +630,21 @@ export class CatalogueRepository {
 				})
 				.where(
 					and(
-						eq(effectivePlace.category, record.category),
-						sql`exists (
-							select 1 from ${place} catalogue_place
-							where catalogue_place.id = ${effectivePlace.placeId}
-								and catalogue_place.data_class = ${record.dataClass}
+						missingFilter(effectivePlace),
+						sql`not exists (
+							select 1 from ${cataloguePlaceOverride} local_override
+							where local_override.place_id = ${effectivePlace.placeId}
+								and local_override.retired_at is null
 						)`,
 						sql`not exists (
-							select 1
-							from ${catalogueSourceMapping} source_mapping
-							join ${catalogueImportElement} import_element
-								on import_element.snapshot_id = source_mapping.current_snapshot_id
-							where source_mapping.place_id = ${effectivePlace.placeId}
-								and import_element.import_id = ${importId}
+							select 1 from ${cataloguePlaceRedirect} active_redirect
+							where active_redirect.source_place_id = ${effectivePlace.placeId}
+								and active_redirect.reversed_at is null
+						)`,
+						sql`not exists (
+							select 1 from ${cataloguePlaceTombstone} active_tombstone
+							where active_tombstone.place_id = ${effectivePlace.placeId}
+								and active_tombstone.reversed_at is null
 						)`
 					)
 				);
