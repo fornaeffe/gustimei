@@ -17,6 +17,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run test:e2e:install
       - run: npm run ci
 
   focused-e2e:
@@ -47,6 +48,6 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e:install
       - run: npm run db:push -- --force
       - run: npm run test:e2e

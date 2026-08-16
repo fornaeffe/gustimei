@@ -24,7 +24,7 @@
 		"benchmark:phase1": "vitest --run --config vitest.phase1.config.ts",
 		"test": "npm run test:unit && npm run test:e2e",
 		"test:e2e": "npm run build && node scripts/run-e2e.mjs",
-		"test:e2e:install": "playwright install chromium",
+		"test:e2e:install": "playwright install --with-deps chromium",
 		"ci": "npm run lint && npm run check && npm run test:unit && npm run build",
 		"db:start": "docker compose up",
 		"db:push": "drizzle-kit push",

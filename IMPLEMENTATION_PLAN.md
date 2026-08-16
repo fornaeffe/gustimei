@@ -883,6 +883,10 @@ proportionate retention purpose ([17 April 2026 decision](https://www.garantepri
   768 ms, and `npm run test:e2e` built the production app and passed both English and Italian landing
   checks. The launch failure is therefore specific to the laptop environment and is not reproduced
   on the desktop.
+- Corrected the GitHub Actions browser setup after the Phase 3 push exposed that the quality job ran
+  Vitest's Playwright-backed Svelte component tests without first installing Chromium. Both the
+  quality and focused end-to-end jobs now use the repository's browser-install script with Linux
+  system dependencies before launching their browser suites.
 - The rate-limit/outbox/document boundaries are sufficient for local work through Phase 8. Human
   comprehension testing is still required before claiming that users reliably distinguish private
   comments from public reviews or understand declarations, expiry, pseudonyms, moderation, and the
