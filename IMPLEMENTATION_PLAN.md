@@ -892,6 +892,11 @@ proportionate retention purpose ([17 April 2026 decision](https://www.garantepri
 - Corrected the Phase 3 content-boundary component tests to resolve their accessible labels and copy
   through the active Paraglide catalogue. The tests had hard-coded English even though Italian is the
   configured base locale, causing every locator to wait for text that was not rendered.
+- Corrected server-side auth localization after manual onboarding testing exposed that Paraglide
+  rewrites request URLs before SvelteKit actions run. Shared redirect and callback helpers now use
+  Paraglide's request-scoped locale instead of attempting to recover it from the rewritten URL;
+  regression tests cover the unprefixed Italian and prefixed English routes, and a live local signup
+  verifies the redirect, registration attestation, locale preference, and verification outbox job.
 - The rate-limit/outbox/document boundaries are sufficient for local work through Phase 8. Human
   comprehension testing is still required before claiming that users reliably distinguish private
   comments from public reviews or understand declarations, expiry, pseudonyms, moderation, and the

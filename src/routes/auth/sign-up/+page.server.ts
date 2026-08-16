@@ -6,11 +6,11 @@ import { user } from '$lib/server/db/schema';
 import { AccountService } from '$lib/server/services/account';
 import { consumeAuthRateLimit } from '$lib/server/security/auth-rate-limit';
 import { authFormRateLimiter, stringField, validEmail } from '$lib/server/security/auth-forms';
-import { localeFromUrl, localizedAbsoluteUrl, localizedPath } from '$lib/server/http/locale';
+import { currentLocale, localizedAbsoluteUrl, localizedPath } from '$lib/server/http/locale';
 import type { Actions, PageServerLoad } from './$types';
 
-export const load: PageServerLoad = ({ locals, url }) => {
-	if (locals.user) redirect(303, localizedPath(url, '/dashboard'));
+export const load: PageServerLoad = ({ locals }) => {
+	if (locals.user) redirect(303, localizedPath('/dashboard'));
 };
 
 export const actions = {
@@ -50,12 +50,11 @@ export const actions = {
 				.from(user)
 				.where(andUserIdentity(result.user.id, email))
 				.limit(1);
-			if (persisted)
-				await new AccountService(db).recordRegistration(persisted.id, localeFromUrl(event.url));
+			if (persisted) await new AccountService(db).recordRegistration(persisted.id, currentLocale());
 		} catch {
 			return fail(400, { values, error: 'generic' });
 		}
-		redirect(303, localizedPath(event.url, '/auth/check-email'));
+		redirect(303, localizedPath('/auth/check-email'));
 	}
 } satisfies Actions;
 

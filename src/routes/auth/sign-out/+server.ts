@@ -5,5 +5,5 @@ import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async (event) => {
 	await auth.api.signOut({ headers: event.request.headers });
-	redirect(303, localizedPath(event.url, '/'));
+	redirect(303, localizedPath('/'));
 };

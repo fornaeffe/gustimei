@@ -7,12 +7,12 @@ export function requireUser(
 	options: { verified?: boolean } = {}
 ) {
 	if (!event.locals.user) {
-		const signIn = new URL(localizedPath(event.url, '/auth/sign-in'), event.url.origin);
+		const signIn = new URL(localizedPath('/auth/sign-in'), event.url.origin);
 		signIn.searchParams.set('redirectTo', event.url.pathname + event.url.search);
 		redirect(303, `${signIn.pathname}${signIn.search}`);
 	}
 	if (options.verified && !event.locals.user.emailVerified) {
-		redirect(303, localizedPath(event.url, '/auth/check-email'));
+		redirect(303, localizedPath('/auth/check-email'));
 	}
 	return event.locals.user;
 }
