@@ -877,9 +877,12 @@ proportionate retention purpose ([17 April 2026 decision](https://www.garantepri
   dashboard hierarchy and avoids durable empty aggregates while keeping the user's action explicit.
 - Verification completed: formatter, ESLint, Svelte diagnostics, Svelte autofixer, production build,
   65 server unit tests, and 18 PostgreSQL integration tests pass. Direct SSR smoke checks returned
-  localized English and Italian landing pages. The host's Playwright `chromium.launch()` currently
-  hangs before browser tests start, so the new component tests and Playwright landing checks remain
-  unexecuted locally; this is a tooling/environment issue, not a passing test claim.
+  localized English and Italian landing pages. On the original laptop host, Playwright's
+  `chromium.launch()` hung before browser tests started. A clean desktop clone was retested on
+  2026-08-16 with Node 22.17.1 and Playwright 1.61.1: an isolated Chromium smoke launch completed in
+  768 ms, and `npm run test:e2e` built the production app and passed both English and Italian landing
+  checks. The launch failure is therefore specific to the laptop environment and is not reproduced
+  on the desktop.
 - The rate-limit/outbox/document boundaries are sufficient for local work through Phase 8. Human
   comprehension testing is still required before claiming that users reliably distinguish private
   comments from public reviews or understand declarations, expiry, pseudonyms, moderation, and the
