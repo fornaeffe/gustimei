@@ -33,6 +33,13 @@ GustiMei targets Node.js 22 and PostgreSQL 17.
    only for explicitly disposable schema experiments.
 5. Start SvelteKit with `npm run dev`.
 
+Transactional email is captured locally instead of being sent. After signing up or requesting a
+password reset, open the development mailbox at
+[`http://localhost:5173/dev/mailbox`](http://localhost:5173/dev/mailbox). Loading the page drains
+pending email jobs and displays an **Open action URL** link for each message. If no message appears,
+request a resend and reopen the mailbox. Delivered messages are held in memory, so restarting the
+development server can clear messages that were already displayed.
+
 Run the fast baseline with `npm run ci`. Browser tests use the isolated test database on port
 5433; install Chromium once with `npm run test:e2e:install`, apply the test schema with
 `$env:DATABASE_URL = 'postgres://gustimei:gustimei-test@localhost:5433/gustimei_test'; npm run db:push`,
