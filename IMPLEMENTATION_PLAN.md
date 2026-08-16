@@ -508,6 +508,8 @@ local-only provider contracts, and runs branch quality plus focused browser chec
 Actions. No hosted Phase 9 service is provisioned or called.
 The focused E2E harness owns the production server process directly and explicitly cleans up the
 Playwright/server process trees after completion, including on Windows.
+Tracked text files use LF working-tree line endings through `.gitattributes`, keeping Prettier and
+CI formatting checks deterministic across Windows and Linux checkouts.
 
 Phase 0 decisions:
 
