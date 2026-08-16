@@ -737,6 +737,53 @@ export class CatalogueRepository {
 		}));
 	}
 
+	async resolveCanonicalPlaceId(placeId: string) {
+		let current = placeId;
+		const seen = new Set<string>();
+		while (!seen.has(current)) {
+			seen.add(current);
+			const [redirect] = await this.database
+				.select({ canonicalPlaceId: cataloguePlaceRedirect.canonicalPlaceId })
+				.from(cataloguePlaceRedirect)
+				.where(
+					and(
+						eq(cataloguePlaceRedirect.sourcePlaceId, current),
+						isNull(cataloguePlaceRedirect.reversedAt)
+					)
+				)
+				.limit(1);
+			if (!redirect) return current;
+			current = redirect.canonicalPlaceId;
+		}
+		throw new ConflictError('Catalogue redirect cycle detected');
+	}
+
+	async getPublicPlace(placeId: string) {
+		const canonicalPlaceId = await this.resolveCanonicalPlaceId(placeId);
+		const [record] = await this.database
+			.select({ effective: effectivePlace, mapping: catalogueSourceMapping })
+			.from(effectivePlace)
+			.innerJoin(catalogueSourceMapping, eq(catalogueSourceMapping.placeId, effectivePlace.placeId))
+			.where(and(eq(effectivePlace.placeId, canonicalPlaceId), eq(effectivePlace.status, 'active')))
+			.limit(1);
+		if (!record) throw new NotFoundError('The place was not found');
+		return {
+			placeId: record.effective.placeId,
+			name: record.effective.name,
+			category: record.effective.category,
+			displayLocality: record.effective.displayLocality,
+			addressLabel: record.effective.addressLabel,
+			latitude: record.effective.latitude,
+			longitude: record.effective.longitude,
+			source: {
+				provider: 'openstreetmap' as const,
+				elementType: record.mapping.elementType,
+				elementId: record.mapping.elementId
+			},
+			redirected: canonicalPlaceId !== placeId
+		};
+	}
+
 	async auditLatest(category: 'restaurant' | 'hotel', dataClass: 'real' | 'synthetic' = 'real') {
 		const filter = and(eq(effectivePlace.category, category), eq(place.dataClass, dataClass));
 		const quarantineReasonGroup = sql<string>`case

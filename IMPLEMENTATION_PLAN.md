@@ -933,6 +933,61 @@ proportionate retention purpose ([17 April 2026 decision](https://www.garantepri
 - Does the separate review-management route remain discoverable after “Not now,” and can users clearly predict which service-date/declaration/pseudonym fields will become public or remain private?
 - Are notice acknowledgement, owner/delegate assertion, case-token recovery, and accessible hidden/removed states usable without exposing notifier identity or the review author's private account data?
 
+**Implementation record (2026-08-16):**
+
+- Implemented the authenticated restaurant selection route as a persistent global-category bucket.
+  The first successful selection atomically creates the list and membership; visiting the empty route
+  still creates no list. Name and locality are separate debounced GET controls over the Phase 2A
+  server-side search contract, and locality changes only the current result set. Search includes
+  loading, prompt, empty, duplicate, attribution, and error-safe server boundaries. Selected places
+  remain available after refresh/navigation, and the two-place threshold enables the ranking CTA
+  without imposing a list-size cap.
+- Added owner-scoped selected-place projections and optional personal-note create/update/delete.
+  Before a ranking revision or open session exists, accidental-place removal is transactional and
+  the visited-place foreign key cascades its note after explicit confirmation. Once a revision or
+  open session exists, this Phase 4 surface refuses removal and leaves existing-list maintenance to
+  Phase 6. Starting ranking serializes the selected place snapshot in the server-owned initial
+  session before redirecting to the Phase 5 session boundary, so later catalogue/search navigation
+  cannot silently rewrite that snapshot.
+- Added canonical public place routes with redirect resolution, effective catalogue facts, OSM
+  attribution, SEO metadata, and cursor-paginated public reviews. Public review ordering is neutral
+  and stable: descending immutable publication time, then publication ID, ten at a time. Query-time
+  lifecycle/expiry/restriction/collision filters prevent non-public text from being served; open
+  reports add a non-dispositive disputed marker without reordering. Review cards expose pseudonym
+  snapshots, privacy-preserving service month/year, publication date, edited state, the complete
+  not-independently-verified disclosure, and an exact-version report anchor.
+- Implemented verified-user place-scoped review publication with the existing policy, service-date,
+  declaration, pseudonym, and idempotency boundaries plus a live public preview. The separate review
+  management surface now lists lifecycle state and supports ordinary immutable-version edits,
+  later-visit substitution generations, and withdrawal without ranking writes. The dashboard and
+  public place routes retain independent entry points after a user declines or postpones reviewing.
+  The route remains fail-closed until an approved review policy is installed, preserving the Phase 3
+  legal-approval gate rather than presenting draft policy as operative.
+- Implemented adjacent exact-version general/owner-delegate reporting, restricted optional evidence
+  upload, acknowledgement/case-token links, notifier case status/submissions, and the narrow anonymous
+  Article 16(2)(c) branch. Anonymous notices cannot assert owner priority and receive no notifier
+  acknowledgement or case access without volunteered contact. Reports do not change public ordering
+  or automatically hide review text; existing moderator decisions remain the only visibility-change
+  path. The current stable-anchor policy does not emit public tombstones because no approved
+  policy/redress condition yet requires one; authorized case/author projections retain lifecycle
+  history.
+- Added an application-owned `product_analytics_event` migration and allowlisted collector for
+  catalogue search, add/remove, threshold reached, and ranking start. Only coarse result/selection
+  counts, locality-filter presence, and duplicate state are accepted; search text, place identity,
+  comments, reviews, notices, pseudonyms, and case identifiers are dropped at the service boundary.
+- Resolved the Phase 5 input questions provisionally for implementation: two explicit search fields
+  (name and optional locality) with filter removal as scope expansion; removal only before a session
+  or revision; CTA at two places with no cap; immutable session membership snapshot at start; public
+  review pages of ten in publication-time/publication-ID order; persistent management/detail review
+  entry points; and case access only through the scoped emailed token. Manual comprehension,
+  accessibility, catalogue-coverage, and internal-tester usability sessions are still required before
+  treating these choices as validated research findings.
+- Verification completed: Prettier, ESLint, Svelte diagnostics, repeated Svelte autofixer passes,
+  production build, 70 server/unit tests, 22 PostgreSQL integration tests, and all three localized
+  production-build Playwright checks pass. The database suite used an isolated temporary PostgreSQL
+  listener because another local project occupied port 5433; no external container or data was
+  stopped or modified.
+
 ### Phase 5 — Pairwise ranking experience
 
 - Start/resume a server-owned ranking session and request one comparison at a time.

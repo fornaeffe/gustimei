@@ -3,7 +3,7 @@ import type { ComparisonOutcome, RankingCategory } from '$lib/domain/ranking/con
 import { createRankingRevision } from '$lib/domain/ranking/revision';
 import { RankingSession } from '$lib/domain/ranking/session';
 import type { AppEnvironment } from '$lib/server/config/environment';
-import { ConflictError, DomainValidationError } from '$lib/server/domain/errors';
+import { ConflictError, DomainValidationError, NotFoundError } from '$lib/server/domain/errors';
 import type { ParticipationRepository } from '$lib/server/repositories/participation';
 import type { CaptureContext, RankingRepository } from '$lib/server/repositories/rankings';
 
@@ -17,7 +17,38 @@ export class RankingService {
 	) {}
 
 	async captureContext(ownerId: string, at = this.clock()): Promise<CaptureContext> {
-		const { assignment, cohort } = await this.participation.effectiveAssignment(ownerId, at);
+		let result;
+		try {
+			result = await this.participation.effectiveAssignment(ownerId, at);
+		} catch (error) {
+			if (!(error instanceof NotFoundError)) throw error;
+			const provenance =
+				this.environment === 'test'
+					? 'synthetic'
+					: this.environment === 'development'
+						? 'internal-testing'
+						: this.environment === 'preview'
+							? 'private-beta'
+							: 'general-release';
+			const cohort = await this.participation.defineCohort(
+				{
+					id: this.createId(),
+					slug: `${this.environment}-default`,
+					provenance,
+					environment: this.environment,
+					description: `Default ${this.environment} product cohort`
+				},
+				at
+			);
+			await this.participation.assign({
+				id: this.createId(),
+				userId: ownerId,
+				cohortId: cohort.id,
+				effectiveFrom: at
+			});
+			result = await this.participation.effectiveAssignment(ownerId, at);
+		}
+		const { assignment, cohort } = result;
 		if (cohort.environment !== this.environment) {
 			throw new DomainValidationError('Participation cohorts cannot cross environments');
 		}
@@ -26,6 +57,10 @@ export class RankingService {
 			provenance: cohort.provenance,
 			environment: this.environment
 		};
+	}
+
+	async catalogueDataClass(ownerId: string) {
+		return (await this.captureContext(ownerId)).provenance === 'synthetic' ? 'synthetic' : 'real';
 	}
 
 	async getOrCreateList(ownerId: string, category: RankingCategory) {
@@ -46,6 +81,26 @@ export class RankingService {
 			capture: await this.captureContext(ownerId, now),
 			now
 		});
+	}
+
+	async selectVisitedPlace(ownerId: string, category: RankingCategory, placeId: string) {
+		const now = this.clock();
+		return this.rankings.createListWithFirstPlace({
+			id: this.createId(),
+			ownerId,
+			category,
+			placeId,
+			capture: await this.captureContext(ownerId, now),
+			now
+		});
+	}
+
+	async listVisitedPlaces(ownerId: string, category: RankingCategory) {
+		return this.rankings.listVisitedPlaces(ownerId, category);
+	}
+
+	async removeUnrankedVisitedPlace(ownerId: string, category: RankingCategory, placeId: string) {
+		return this.rankings.removeUnrankedVisitedPlace(ownerId, category, placeId);
 	}
 
 	async startInitialSession(ownerId: string, listId: string) {

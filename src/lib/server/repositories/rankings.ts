@@ -12,6 +12,7 @@ import {
 	comparisonEvidence,
 	catalogueListPlaceSupersession,
 	effectivePlace,
+	personalPlaceComment,
 	place,
 	rankingList,
 	rankingListPlace,
@@ -128,6 +129,136 @@ export class RankingRepository {
 			.onConflictDoNothing()
 			.returning();
 		return membership;
+	}
+
+	async createListWithFirstPlace(input: {
+		id: string;
+		ownerId: string;
+		category: RankingCategory;
+		placeId: string;
+		capture: CaptureContext;
+		now: Date;
+	}) {
+		return this.database.transaction(async (transaction) => {
+			const [target] = await transaction
+				.select({
+					category: place.category,
+					dataClass: place.dataClass,
+					status: effectivePlace.status
+				})
+				.from(place)
+				.leftJoin(effectivePlace, eq(effectivePlace.placeId, place.id))
+				.where(eq(place.id, input.placeId))
+				.limit(1);
+			if (!target || target.category !== input.category || target.status !== 'active') {
+				throw new DomainValidationError('The place is not eligible for this list');
+			}
+			if (!permitsDataClass(input.capture, target.dataClass)) {
+				throw new DomainValidationError(
+					'The capture provenance cannot use this catalogue data class'
+				);
+			}
+
+			const [created] = await transaction
+				.insert(rankingList)
+				.values({
+					id: input.id,
+					ownerId: input.ownerId,
+					category: input.category,
+					createdAt: input.now,
+					updatedAt: input.now
+				})
+				.onConflictDoNothing({ target: [rankingList.ownerId, rankingList.category] })
+				.returning();
+			const [list] = created
+				? [created]
+				: await transaction
+						.select()
+						.from(rankingList)
+						.where(
+							and(eq(rankingList.ownerId, input.ownerId), eq(rankingList.category, input.category))
+						)
+						.limit(1);
+			if (!list) throw new ConflictError('The ranking list could not be created');
+
+			const [membership] = await transaction
+				.insert(rankingListPlace)
+				.values({
+					listId: list.id,
+					ownerId: input.ownerId,
+					placeId: input.placeId,
+					addedAt: input.now
+				})
+				.onConflictDoNothing()
+				.returning();
+			return { list, membership, added: Boolean(membership) };
+		});
+	}
+
+	async findList(ownerId: string, category: RankingCategory) {
+		const [list] = await this.database
+			.select()
+			.from(rankingList)
+			.where(and(eq(rankingList.ownerId, ownerId), eq(rankingList.category, category)))
+			.limit(1);
+		return list;
+	}
+
+	async listVisitedPlaces(ownerId: string, category: RankingCategory) {
+		return this.database
+			.select({
+				listId: rankingList.id,
+				placeId: rankingListPlace.placeId,
+				name: effectivePlace.name,
+				category: effectivePlace.category,
+				displayLocality: effectivePlace.displayLocality,
+				addressLabel: effectivePlace.addressLabel,
+				addedAt: rankingListPlace.addedAt,
+				commentBody: personalPlaceComment.body
+			})
+			.from(rankingList)
+			.innerJoin(rankingListPlace, eq(rankingListPlace.listId, rankingList.id))
+			.innerJoin(effectivePlace, eq(effectivePlace.placeId, rankingListPlace.placeId))
+			.leftJoin(
+				personalPlaceComment,
+				and(
+					eq(personalPlaceComment.ownerId, ownerId),
+					eq(personalPlaceComment.placeId, rankingListPlace.placeId)
+				)
+			)
+			.where(and(eq(rankingList.ownerId, ownerId), eq(rankingList.category, category)))
+			.orderBy(asc(rankingListPlace.addedAt), asc(rankingListPlace.placeId));
+	}
+
+	async removeUnrankedVisitedPlace(ownerId: string, category: RankingCategory, placeId: string) {
+		return this.database.transaction(async (transaction) => {
+			const [list] = await transaction
+				.select({ id: rankingList.id, currentRevisionId: rankingList.currentRevisionId })
+				.from(rankingList)
+				.where(and(eq(rankingList.ownerId, ownerId), eq(rankingList.category, category)))
+				.limit(1);
+			if (!list) return false;
+			if (list.currentRevisionId) {
+				throw new ConflictError('Ranked places are maintained from the ranking flow');
+			}
+			const [openSession] = await transaction
+				.select({ id: rankingSession.id })
+				.from(rankingSession)
+				.where(and(eq(rankingSession.listId, list.id), eq(rankingSession.lifecycle, 'open')))
+				.limit(1);
+			if (openSession) throw new ConflictError('A ranking session is already using this selection');
+			const deleted = await transaction
+				.delete(rankingListPlace)
+				.where(and(eq(rankingListPlace.listId, list.id), eq(rankingListPlace.placeId, placeId)))
+				.returning({ placeId: rankingListPlace.placeId });
+			if (deleted.length === 0) return false;
+			const [{ count }] = await transaction
+				.select({ count: sql<number>`count(*)::int` })
+				.from(rankingListPlace)
+				.where(eq(rankingListPlace.listId, list.id));
+			if (count === 0) await transaction.delete(rankingList).where(eq(rankingList.id, list.id));
+			return true;
+		});
 	}
 
 	async listVisitedPlaceIds(ownerId: string, listId: string) {

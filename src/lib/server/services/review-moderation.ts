@@ -73,6 +73,7 @@ export interface NoticeInput {
 	explanation: string;
 	notifierName: string;
 	notifierEmail: string;
+	anonymous?: boolean;
 	ownerOrDelegate: boolean;
 	goodFaithAccepted: boolean;
 	idempotencyKey: string;
@@ -222,16 +223,15 @@ export class ReviewModerationService {
 		if (!input.goodFaithAccepted) {
 			throw new DomainValidationError('The good-faith declaration is required');
 		}
-		const email = required(
-			input.notifierEmail.toLocaleLowerCase('en-US'),
-			'Notifier email',
-			3,
-			320
-		);
-		if (!/^\S+@\S+\.\S+$/.test(email)) throw new DomainValidationError('Notifier email is invalid');
+		const anonymous = input.anonymous === true;
+		const suppliedEmail = input.notifierEmail.trim().toLocaleLowerCase('en-US');
+		const email =
+			anonymous && !suppliedEmail ? '' : required(suppliedEmail, 'Notifier email', 3, 320);
+		if (email && !/^\S+@\S+\.\S+$/.test(email))
+			throw new DomainValidationError('Notifier email is invalid');
 		const rate = await this.limiter.consume({
 			purpose: 'review-notice',
-			key: `${this.environment}:${sha256(email)}`,
+			key: `${this.environment}:${email ? sha256(email) : `anonymous:${input.versionId}`}`,
 			policy: reviewRateLimitPolicies['review-notice']
 		});
 		if (!rate.allowed) throw new ConflictError('Too many notices; try again later');
@@ -279,16 +279,18 @@ export class ReviewModerationService {
 				kind: input.kind,
 				allegedGround: required(input.allegedGround, 'Alleged ground', 3, 500),
 				explanation,
-				notifierName: required(input.notifierName, 'Notifier name', 2, 200),
+				notifierName: anonymous
+					? 'anonymous'
+					: required(input.notifierName, 'Notifier name', 2, 200),
 				notifierEmail: email,
-				notifierEmailHash: sha256(email),
-				ownerAssertion: input.ownerOrDelegate ? 'asserted' : 'none',
+				notifierEmailHash: email ? sha256(email) : sha256(`anonymous:${noticeId}`),
+				ownerAssertion: !anonymous && input.ownerOrDelegate ? 'asserted' : 'none',
 				goodFaithAccepted: true,
 				status: 'awaiting-submissions',
-				priority: input.ownerOrDelegate ? 10 : 0,
+				priority: !anonymous && input.ownerOrDelegate ? 10 : 0,
 				idempotencyKey: input.idempotencyKey,
 				deduplicationKey: sha256(
-					`${input.versionId}:${input.kind}:${input.allegedGround}:${email}`
+					`${input.versionId}:${input.kind}:${input.allegedGround}:${email || 'anonymous'}`
 				),
 				acknowledgedAt: now,
 				submissionDeadline: addDays(now, provisionalReviewClockPolicy.partySubmissionWindowDays),
@@ -296,32 +298,36 @@ export class ReviewModerationService {
 				createdAt: now,
 				updatedAt: now
 			});
-			await transaction.insert(reviewCaseAccessToken).values({
-				id: this.id(),
-				noticeId,
-				partyRole: 'notifier',
-				tokenHash: sha256(rawToken),
-				expiresAt: addDays(now, 7),
-				createdAt: now
-			});
+			if (email) {
+				await transaction.insert(reviewCaseAccessToken).values({
+					id: this.id(),
+					noticeId,
+					partyRole: 'notifier',
+					tokenHash: sha256(rawToken),
+					expiresAt: addDays(now, 7),
+					createdAt: now
+				});
+			}
 			await this.event(transaction, {
 				noticeId,
 				reviewId: target.reviewId,
 				publicationId: target.publicationId,
 				versionId: target.versionId,
 				actorType: 'notifier',
-				actorReference: sha256(email),
+				actorReference: email ? sha256(email) : 'anonymous',
 				action: 'notice-received',
 				reasonCode: input.kind
 			});
-			await this.queueNotification(transaction, {
-				noticeId,
-				reviewId: target.reviewId,
-				recipientRole: 'notifier',
-				recipientReference: email,
-				purpose: 'review-acknowledgement',
-				variables: { caseReference: noticeId, caseToken: rawToken }
-			});
+			if (email) {
+				await this.queueNotification(transaction, {
+					noticeId,
+					reviewId: target.reviewId,
+					recipientRole: 'notifier',
+					recipientReference: email,
+					purpose: 'review-acknowledgement',
+					variables: { caseReference: noticeId, caseToken: rawToken }
+				});
+			}
 			await this.queueNotification(transaction, {
 				noticeId,
 				reviewId: target.reviewId,
@@ -330,7 +336,7 @@ export class ReviewModerationService {
 				purpose: 'review-author-notice',
 				variables: { caseReference: noticeId }
 			});
-			return { noticeId, caseToken: rawToken, duplicate: false };
+			return { noticeId, caseToken: email ? rawToken : undefined, duplicate: false };
 		});
 	}
 

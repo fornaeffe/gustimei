@@ -7,8 +7,9 @@
 
 	let {
 		body = $bindable(''),
-		serviceDate = '',
+		serviceDate = $bindable(''),
 		action = '?/publish',
+		idempotencyKey,
 		ondismiss,
 		errors = {},
 		maxLength = 5000
@@ -16,6 +17,7 @@
 		body?: string;
 		serviceDate?: string;
 		action?: string;
+		idempotencyKey?: string;
 		ondismiss?: () => void;
 		errors?: { body?: string; serviceDate?: string; declarations?: string[] };
 		maxLength?: number;
@@ -24,6 +26,7 @@
 </script>
 
 <form method="POST" {action} class="review-composer">
+	{#if idempotencyKey}<input type="hidden" name="idempotencyKey" value={idempotencyKey} />{/if}
 	<ReviewDisclosure />
 	<div class="field" class:field--invalid={Boolean(errors.body)}>
 		<label for="review-body">{m.review_body_label()}</label>
@@ -42,7 +45,7 @@
 			{m.characters_remaining({ count: remaining })}
 		</p>
 	</div>
-	<ServiceDateInput value={serviceDate} error={errors.serviceDate} />
+	<ServiceDateInput bind:value={serviceDate} error={errors.serviceDate} />
 	<DeclarationGroup errors={errors.declarations} />
 	<div class="form-footer form-footer--end">
 		<Button variant="quiet" type="button" onclick={ondismiss}>{m.not_now()}</Button>

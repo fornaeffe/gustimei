@@ -9,6 +9,8 @@ import {
 	catalogueSourceSnapshot,
 	localityBoundary,
 	personalPlaceComment,
+	productAnalyticsEvent,
+	rankingList,
 	rankingSession,
 	rankingRevision,
 	user
@@ -22,6 +24,7 @@ import { PersonalCommentRepository } from '$lib/server/repositories/personal-com
 import { RankingRepository, type CaptureContext } from '$lib/server/repositories/rankings';
 import { DatabaseRecommendationEvidenceSource } from '$lib/server/repositories/recommendation-evidence';
 import { PersonalCommentService } from '$lib/server/services/personal-comments';
+import { ProductAnalyticsService } from '$lib/server/services/product-analytics';
 
 const now = new Date('2026-08-14T12:00:00.000Z');
 const connection = createDatabase(process.env.DATABASE_URL!);
@@ -194,6 +197,51 @@ describe('catalogue persistence and local search', () => {
 });
 
 describe('ranking, comments, provenance, and policy-enforced evidence', () => {
+	it('creates the list with its first place atomically and cascades a pre-ranking removal', async () => {
+		await seedCatalogue('synthetic', [fixturePlace(1, 'One')]);
+		await seedParticipation();
+		const rankings = new RankingRepository(db);
+		const selected = await rankings.createListWithFirstPlace({
+			id: 'list-atomic',
+			ownerId: 'user-1',
+			category: 'restaurant',
+			placeId: 'osm:node:1',
+			capture,
+			now
+		});
+		expect(selected.added).toBe(true);
+		expect((await rankings.listVisitedPlaces('user-1', 'restaurant'))[0]).toMatchObject({
+			placeId: 'osm:node:1',
+			name: 'One'
+		});
+
+		const comments = new PersonalCommentService(new PersonalCommentRepository(db), () => now);
+		await comments.save('user-1', 'osm:node:1', 'Only the owner sees this');
+		expect(await rankings.removeUnrankedVisitedPlace('user-1', 'restaurant', 'osm:node:1')).toBe(
+			true
+		);
+		expect(await comments.get('user-1', 'osm:node:1')).toBeUndefined();
+		expect(await db.select().from(rankingList)).toEqual([]);
+	});
+
+	it('stores only allowlisted coarse Phase 4 analytics metadata', async () => {
+		await seedParticipation();
+		const analytics = new ProductAnalyticsService(
+			db,
+			() => now,
+			() => 'event-1'
+		);
+		await analytics.record({
+			userId: 'user-1',
+			cohortAssignmentId: capture.cohortAssignmentId,
+			name: 'catalogue-search',
+			category: 'restaurant',
+			metadata: { resultCount: 4, localityFiltered: true, searchText: 'forbidden' }
+		});
+		const [event] = await db.select().from(productAnalyticsEvent);
+		expect(event.metadata).toEqual({ resultCount: 4, localityFiltered: true });
+	});
+
 	it('persists and reconstructs an immutable current revision without comment coupling', async () => {
 		await seedCatalogue('synthetic', [fixturePlace(1, 'One'), fixturePlace(2, 'Two')]);
 		await seedParticipation();

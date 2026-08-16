@@ -64,6 +64,13 @@ export const contributionPurposeEnum = pgEnum('contribution_purpose', [
 	'community-model-training',
 	'current-user-personalization'
 ]);
+export const productEventNameEnum = pgEnum('product_event_name', [
+	'catalogue-search',
+	'visited-place-added',
+	'visited-place-removed',
+	'ranking-threshold-reached',
+	'ranking-started'
+]);
 
 export const catalogueRoleEnum = pgEnum('catalogue_role', ['admin', 'catalogue_curator']);
 export const catalogueRoleGrantSourceEnum = pgEnum('catalogue_role_grant_source', [

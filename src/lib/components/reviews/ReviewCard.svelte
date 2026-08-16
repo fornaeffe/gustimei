@@ -10,12 +10,16 @@
 		pseudonym,
 		body,
 		serviceMonth,
+		publishedLabel,
+		presentation = 'visible',
 		edited = false,
 		reportHref
 	}: {
 		pseudonym: string;
 		body: string;
 		serviceMonth: string;
+		publishedLabel?: string;
+		presentation?: 'visible' | 'edited' | 'disputed';
 		edited?: boolean;
 		reportHref?: string;
 	} = $props();
@@ -25,9 +29,12 @@
 	<header>
 		<div>
 			<strong>{pseudonym}</strong>{#if edited}<span class="status-chip">{m.edited()}</span>{/if}
+			{#if presentation === 'disputed'}<span class="status-chip">{m.review_report_pending()}</span
+				>{/if}
 		</div>
 		<span><Icon icon={CalendarDays} size={16} />{serviceMonth}</span>
 	</header>
+	{#if publishedLabel}<small>{publishedLabel}</small>{/if}
 	<p class="review-card__body">{body}</p>
 	<footer>
 		<ReviewDisclosure compact />

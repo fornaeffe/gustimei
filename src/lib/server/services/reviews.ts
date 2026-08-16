@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { and, desc, eq, gt, inArray, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNull, lt, lte, or, sql } from 'drizzle-orm';
 import {
 	assertServiceDateEligible,
 	deriveExpiresAt,
@@ -415,6 +415,130 @@ export class ReviewService {
 				? [{ ...row, ...visibility, serviceMonth: publicServiceMonth(row.serviceDate, locale) }]
 				: [];
 		});
+	}
+
+	async listPublicPage(
+		placeId: string,
+		locale: 'en' | 'it' = 'it',
+		options: { cursor?: string; limit?: number } = {}
+	) {
+		const now = this.clock();
+		const canonicalPlaceId = await this.resolveCanonicalPlace(placeId);
+		const [effective] = await this.database
+			.select({ id: effectivePlace.placeId })
+			.from(effectivePlace)
+			.where(and(eq(effectivePlace.placeId, canonicalPlaceId), eq(effectivePlace.status, 'active')))
+			.limit(1);
+		if (!effective) return { items: [], nextCursor: undefined };
+		const targetIds = await this.redirectSources(canonicalPlaceId);
+		const limit = Math.min(Math.max(options.limit ?? 10, 1), 30);
+		let cursor: { publishedAt: string; publicationId: string } | undefined;
+		if (options.cursor) {
+			try {
+				cursor = JSON.parse(Buffer.from(options.cursor, 'base64url').toString('utf8'));
+				if (!cursor?.publishedAt || !cursor.publicationId) throw new Error('invalid');
+			} catch {
+				throw new DomainValidationError('Invalid review cursor');
+			}
+		}
+		const filters = [
+			inArray(placeReview.placeId, targetIds),
+			eq(reviewPublication.lifecycle, 'published' as const),
+			gt(reviewPublication.expiresAt, now),
+			isNull(reviewPublication.interimRestrictedAt),
+			isNull(placeReview.collisionRestrictedAt)
+		];
+		if (cursor) {
+			const at = new Date(cursor.publishedAt);
+			if (Number.isNaN(at.valueOf())) throw new DomainValidationError('Invalid review cursor');
+			filters.push(
+				or(
+					lt(reviewPublication.publishedAt, at),
+					and(eq(reviewPublication.publishedAt, at), lt(reviewPublication.id, cursor.publicationId))
+				)!
+			);
+		}
+		const rows = await this.database
+			.select({
+				reviewId: placeReview.id,
+				publicationId: reviewPublication.id,
+				versionId: reviewVersion.id,
+				body: reviewVersion.body,
+				pseudonym: reviewVersion.pseudonymSnapshot,
+				serviceDate: reviewPublication.serviceDate,
+				publishedAt: reviewPublication.publishedAt,
+				editedAt: reviewPublication.editedAt
+			})
+			.from(placeReview)
+			.innerJoin(reviewPublication, eq(reviewPublication.id, placeReview.currentPublicationId))
+			.innerJoin(reviewVersion, eq(reviewVersion.id, reviewPublication.currentVersionId))
+			.where(and(...filters))
+			.orderBy(desc(reviewPublication.publishedAt), desc(reviewPublication.id))
+			.limit(limit + 1);
+		const visibleRows = rows.slice(0, limit);
+		const openNotices = visibleRows.length
+			? await this.database
+					.select({ publicationId: reviewNotice.publicationId, count: sql<number>`count(*)::int` })
+					.from(reviewNotice)
+					.where(
+						and(
+							inArray(
+								reviewNotice.publicationId,
+								visibleRows.map((row) => row.publicationId)
+							),
+							inArray(reviewNotice.status, ['received', 'awaiting-submissions', 'under-review'])
+						)
+					)
+					.groupBy(reviewNotice.publicationId)
+			: [];
+		const disputed = new Set(openNotices.map((notice) => notice.publicationId));
+		const page = visibleRows.map((row) => ({
+			...row,
+			serviceMonth: publicServiceMonth(row.serviceDate, locale),
+			edited: Boolean(row.editedAt),
+			presentation: disputed.has(row.publicationId)
+				? ('disputed' as const)
+				: row.editedAt
+					? ('edited' as const)
+					: ('visible' as const)
+		}));
+		const last = page.at(-1);
+		return {
+			items: page,
+			nextCursor:
+				rows.length > limit && last
+					? Buffer.from(
+							JSON.stringify({
+								publishedAt: last.publishedAt.toISOString(),
+								publicationId: last.publicationId
+							})
+						).toString('base64url')
+					: undefined
+		};
+	}
+
+	async listAuthorProjection(authorId: string) {
+		return this.database
+			.select({
+				reviewId: placeReview.id,
+				placeId: placeReview.placeId,
+				placeName: effectivePlace.name,
+				publicationId: reviewPublication.id,
+				versionId: reviewVersion.id,
+				version: reviewVersion.version,
+				body: reviewVersion.body,
+				serviceDate: reviewPublication.serviceDate,
+				publishedAt: reviewPublication.publishedAt,
+				expiresAt: reviewPublication.expiresAt,
+				editedAt: reviewPublication.editedAt,
+				lifecycle: reviewPublication.lifecycle
+			})
+			.from(placeReview)
+			.innerJoin(reviewPublication, eq(reviewPublication.id, placeReview.currentPublicationId))
+			.innerJoin(reviewVersion, eq(reviewVersion.id, reviewPublication.currentVersionId))
+			.leftJoin(effectivePlace, eq(effectivePlace.placeId, placeReview.placeId))
+			.where(eq(placeReview.authorId, authorId))
+			.orderBy(desc(placeReview.updatedAt), desc(placeReview.id));
 	}
 
 	private async consumeAuthorLimit(authorId: string) {

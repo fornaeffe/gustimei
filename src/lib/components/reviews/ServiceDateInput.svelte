@@ -1,6 +1,6 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages';
-	let { value = '', error }: { value?: string; error?: string } = $props();
+	let { value = $bindable(''), error }: { value?: string; error?: string } = $props();
 </script>
 
 <div class="field" class:field--invalid={Boolean(error)}>
@@ -10,7 +10,7 @@
 		id="service-date"
 		name="serviceDate"
 		type="date"
-		{value}
+		bind:value
 		required
 		aria-describedby="service-date-help"
 		aria-invalid={error ? 'true' : undefined}

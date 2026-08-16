@@ -6,6 +6,10 @@
 
 <form method="POST" {action} class="stack-form">
 	<input type="hidden" name="versionId" value={versionId} />
+	<label class="check-row"
+		><input type="checkbox" name="anonymous" value="true" />
+		{m.anonymous_notice()}</label
+	>
 	<div class="field">
 		<label for="notice-kind">{m.notice_kind()}</label>
 		<select id="notice-kind" name="kind" required>
@@ -16,8 +20,16 @@
 		</select>
 	</div>
 	<div class="field">
+		<label for="notice-name">{m.notice_name()}</label>
+		<input id="notice-name" name="name" autocomplete="name" />
+	</div>
+	<div class="field">
 		<label for="notice-email">{m.contact_email()}</label>
-		<input id="notice-email" name="email" type="email" autocomplete="email" required />
+		<input id="notice-email" name="email" type="email" autocomplete="email" />
+	</div>
+	<div class="field">
+		<label for="notice-ground">{m.notice_ground()}</label>
+		<input id="notice-ground" name="ground" minlength="3" maxlength="500" required />
 	</div>
 	<div class="field">
 		<label for="notice-explanation">{m.notice_explanation()}</label>
@@ -27,5 +39,19 @@
 		><input type="checkbox" name="ownerDelegate" value="true" />
 		{m.owner_delegate_assertion()}</label
 	>
+	<label class="check-row"
+		><input type="checkbox" name="goodFaith" value="true" required />
+		{m.good_faith_declaration()}</label
+	>
+	<div class="field">
+		<label for="notice-evidence">{m.choose_evidence()}</label>
+		<input
+			id="notice-evidence"
+			name="evidence"
+			type="file"
+			accept="application/pdf,image/jpeg,image/png,image/webp,text/plain"
+		/>
+		<p class="field__hint">{m.evidence_file_help()}</p>
+	</div>
 	<Button type="submit">{m.submit_notice()}</Button>
 </form>

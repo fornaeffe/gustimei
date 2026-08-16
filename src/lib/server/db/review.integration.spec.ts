@@ -11,6 +11,7 @@ import {
 	reviewDeclarationAcceptance,
 	reviewModerationDecision,
 	reviewModerationEvent,
+	reviewNotice,
 	reviewPublication,
 	reviewRedressRequest,
 	reviewRetentionHold,
@@ -205,9 +206,55 @@ describe('review author lifecycle and isolation', () => {
 		await publish(reviews, 'osm:node:2');
 		expect(await reviews.listForAuthor('author')).toHaveLength(2);
 	});
+
+	it('paginates public reviews with an opaque stable cursor', async () => {
+		const { reviews } = await setup();
+		await publish(reviews, 'osm:node:1', 'author');
+		await publish(reviews, 'osm:node:1', 'other');
+		const first = await reviews.listPublicPage('osm:node:1', 'en', { limit: 1 });
+		expect(first.items).toHaveLength(1);
+		expect(first.nextCursor).toBeTruthy();
+		const second = await reviews.listPublicPage('osm:node:1', 'en', {
+			limit: 1,
+			cursor: first.nextCursor
+		});
+		expect(second.items).toHaveLength(1);
+		expect(second.items[0].reviewId).not.toBe(first.items[0].reviewId);
+		expect(second.nextCursor).toBeUndefined();
+	});
 });
 
 describe('notice, moderation, evidence, expiry, and erasure', () => {
+	it('accepts the narrow anonymous notice branch without case access or owner priority', async () => {
+		const { reviews } = await setup();
+		const created = await publish(reviews);
+		const moderation = new ReviewModerationService(db, 'test', evidence, clock);
+		const notice = await moderation.submitNotice({
+			publicationId: created.publicationId!,
+			versionId: created.versionId!,
+			exactPublicUrl: `https://example.test/places/1#review-${created.versionId}`,
+			kind: 'alleged-illegality',
+			allegedGround: 'Synthetic anonymous legal ground',
+			explanation: 'A sufficiently detailed anonymous synthetic legal notice explanation.',
+			notifierName: '',
+			notifierEmail: '',
+			anonymous: true,
+			ownerOrDelegate: true,
+			goodFaithAccepted: true,
+			idempotencyKey: 'anonymous-notice'
+		});
+		expect(notice.caseToken).toBeUndefined();
+		expect((await db.select().from(reviewNotice))[0]).toMatchObject({
+			notifierName: 'anonymous',
+			notifierEmail: '',
+			ownerAssertion: 'none',
+			priority: 0
+		});
+		const email = new LocalEmailProvider();
+		expect(await new ReviewOutboxWorker(db, email, clock).runBatch()).toBe(1);
+		expect(email.outbox.map((message) => message.template)).toEqual(['review-author-notice:v1']);
+	});
+
 	it('keeps reports non-dispositive, isolates party evidence, and supports human redress', async () => {
 		const { reviews } = await setup();
 		const created = await publish(reviews);

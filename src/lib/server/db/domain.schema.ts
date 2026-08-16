@@ -21,6 +21,7 @@ import {
 	comparisonReasonEnum,
 	contributionPurposeEnum,
 	evidenceExclusionReasonEnum,
+	productEventNameEnum,
 	rankingCategoryEnum,
 	rankingSessionLifecycleEnum,
 	rankingSessionPurposeEnum,
@@ -74,6 +75,25 @@ export const participationAssignment = pgTable(
 			sql`${table.effectiveTo} is null or ${table.effectiveTo} > ${table.effectiveFrom}`
 		)
 	]
+);
+
+export const productAnalyticsEvent = pgTable(
+	'product_analytics_event',
+	{
+		id: text('id').primaryKey(),
+		userId: text('user_id').references(() => user.id, { onDelete: 'set null' }),
+		cohortAssignmentId: text('cohort_assignment_id').references(() => participationAssignment.id, {
+			onDelete: 'set null'
+		}),
+		name: productEventNameEnum('name').notNull(),
+		category: rankingCategoryEnum('category').notNull(),
+		metadata: jsonb('metadata')
+			.$type<Record<string, number | boolean | string>>()
+			.notNull()
+			.default({}),
+		occurredAt: timestamp('occurred_at', { withTimezone: true, mode: 'date' }).notNull()
+	},
+	(table) => [index('product_analytics_event_name_time_idx').on(table.name, table.occurredAt)]
 );
 
 export const rankingList = pgTable(
