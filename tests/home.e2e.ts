@@ -17,3 +17,19 @@ test('keeps the landing experience and navigation localized in Italian', async (
 		'/auth/sign-up'
 	);
 });
+
+test('switches the current page between English and Italian', async ({ page }) => {
+	await page.goto('/en');
+
+	const italianSwitch = page.getByRole('link', { name: 'IT', exact: true });
+	await expect(italianSwitch).toHaveAttribute('href', '/');
+	await italianSwitch.click();
+	await expect(page).toHaveURL('/');
+	await expect(page.getByRole('heading', { level: 1 })).toContainText('preferenze, non i punteggi');
+
+	const englishSwitch = page.getByRole('link', { name: 'EN', exact: true });
+	await expect(englishSwitch).toHaveAttribute('href', '/en/');
+	await englishSwitch.click();
+	await expect(page).toHaveURL(/\/en\/?$/);
+	await expect(page.getByRole('heading', { level: 1 })).toContainText('preferences, not ratings');
+});

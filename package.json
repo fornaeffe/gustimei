@@ -13,7 +13,7 @@
 		"start": "node build",
 		"start:test": "node --env-file=.env.test build",
 		"prepare": "npm run i18n:compile && svelte-kit sync || echo ''",
-		"i18n:compile": "paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide",
+		"i18n:compile": "paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide --strategy url",
 		"check": "npm run i18n:compile && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"format:check": "prettier --check .",

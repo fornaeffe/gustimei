@@ -897,6 +897,10 @@ proportionate retention purpose ([17 April 2026 decision](https://www.garantepri
   Paraglide's request-scoped locale instead of attempting to recover it from the rewritten URL;
   regression tests cover the unprefixed Italian and prefixed English routes, and a live local signup
   verifies the redirect, registration attestation, locale preference, and verification outbox job.
+- Corrected the locale-switch build pipeline after UI testing exposed that the standalone Paraglide
+  compile command overwrote the established URL strategy with its cookie-first default. All generated
+  runtimes now consistently use URL locale detection, and an end-to-end regression test switches the
+  same landing page from English to Italian and back while checking both localized URLs and content.
 - The rate-limit/outbox/document boundaries are sufficient for local work through Phase 8. Human
   comprehension testing is still required before claiming that users reliably distinguish private
   comments from public reviews or understand declarations, expiry, pseudonyms, moderation, and the

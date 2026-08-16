@@ -49,7 +49,13 @@
 					<Icon icon={LogIn} size={18} />{m.sign_in()}
 				</a>
 			{/if}
-			<a class="language-switch" href={languageHref} hreflang={otherLocale} lang={otherLocale}>
+			<a
+				class="language-switch"
+				href={languageHref}
+				hreflang={otherLocale}
+				lang={otherLocale}
+				data-sveltekit-reload
+			>
 				{otherLocale.toUpperCase()}
 			</a>
 		</nav>
