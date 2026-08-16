@@ -889,6 +889,9 @@ proportionate retention purpose ([17 April 2026 decision](https://www.garantepri
   Vitest's Playwright-backed Svelte component tests without first installing Chromium. Both the
   quality and focused end-to-end jobs now use the repository's browser-install script with Linux
   system dependencies before launching their browser suites.
+- Corrected the Phase 3 content-boundary component tests to resolve their accessible labels and copy
+  through the active Paraglide catalogue. The tests had hard-coded English even though Italian is the
+  configured base locale, causing every locator to wait for text that was not rendered.
 - The rate-limit/outbox/document boundaries are sufficient for local work through Phase 8. Human
   comprehension testing is still required before claiming that users reliably distinguish private
   comments from public reviews or understand declarations, expiry, pseudonyms, moderation, and the
