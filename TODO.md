@@ -1,0 +1,4 @@
+- A user should not be able to write a review for a place not yet added to his/her visited places
+- If a user has not yet a public pseudonym but an approved review policy is in place, the message appearing to the user when he/she tries to write a review should cite only the pseudonym as a prerequisite to write the review, not the presence of approved review policy.
+- There should be a UI component that should display the name or e-mail or (in future) avatar for the current logged user, discreet but easily findable/retrievable.
+- In reviews/cases the case dates should be formatted in a easily readable format.

@@ -27,3 +27,4 @@ vite.config.ts.timestamp-*
 test-results
 
 /downloaded_data
+/notes
