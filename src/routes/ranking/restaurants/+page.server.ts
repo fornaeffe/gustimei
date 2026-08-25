@@ -1,4 +1,5 @@
 import { fail, isRedirect, redirect } from '@sveltejs/kit';
+import { deriveRankingProjection } from '$lib/domain/ranking/revision';
 import { runtimeConfig } from '$lib/server/config';
 import { db } from '$lib/server/db';
 import { ConflictError, DomainValidationError, NotFoundError } from '$lib/server/domain/errors';
@@ -57,12 +58,25 @@ export const load: PageServerLoad = async (event) => {
 		});
 	}
 	const selectedIds = new Set(selected.map((item) => item.placeId));
+	const list = selected[0] ? await rankingRepository.findList(user.id, 'restaurant') : undefined;
+	const currentRevision = list
+		? await rankingRepository.loadCurrentRevision(user.id, list.id)
+		: undefined;
 	const openSession = selected[0]
 		? await rankingRepository.findOpenSession(user.id, selected[0].listId)
 		: undefined;
 	return {
 		query: { name, locality },
 		selected,
+		list: list
+			? {
+					id: list.id,
+					currentRevisionId: currentRevision?.id,
+					projection: currentRevision
+						? deriveRankingProjection(currentRevision, openSession?.summary())
+						: undefined
+				}
+			: undefined,
 		openSession: openSession?.summary(),
 		results: results.map((result) => ({ ...result, selected: selectedIds.has(result.placeId) }))
 	};
@@ -73,6 +87,7 @@ export const actions = {
 		const user = requireUser(event);
 		const form = await event.request.formData();
 		try {
+			const existingList = await rankingRepository.findList(user.id, 'restaurant');
 			const result = await rankings.selectVisitedPlace(
 				user.id,
 				'restaurant',
@@ -96,8 +111,17 @@ export const actions = {
 					metadata: { selectedCount: selected.length }
 				});
 			}
+			if (result.added && existingList?.currentRevisionId) {
+				const session = await rankings.startInsertionSession(
+					user.id,
+					existingList.id,
+					stringField(form, 'placeId')
+				);
+				redirect(303, localizedPath(`/ranking/restaurants/session/${session.id}`));
+			}
 			return { section: 'selection', added: result.added };
 		} catch (error) {
+			if (isRedirect(error)) throw error;
 			return fail(400, { section: 'selection', error: safeError(error) });
 		}
 	},
@@ -162,6 +186,27 @@ export const actions = {
 		} catch (error) {
 			if (isRedirect(error)) throw error;
 			return fail(400, { section: 'ranking', error: safeError(error) });
+		}
+	},
+	repair: async (event) => {
+		const user = requireUser(event);
+		try {
+			const list = await rankingRepository.findList(user.id, 'restaurant');
+			if (!list) throw new NotFoundError('The ranking list was not found');
+			const session = await rankings.startRepairSession(user.id, list.id);
+			redirect(303, localizedPath(`/ranking/restaurants/session/${session.id}`));
+		} catch (error) {
+			if (isRedirect(error)) throw error;
+			return fail(409, { section: 'ranking', error: safeError(error) });
+		}
+	},
+	deleteCategory: async (event) => {
+		const user = requireUser(event);
+		try {
+			await rankingRepository.deleteCategory(user.id, 'restaurant');
+			return { section: 'ranking', deleted: true };
+		} catch (error) {
+			return fail(409, { section: 'ranking', error: safeError(error) });
 		}
 	}
 } satisfies Actions;

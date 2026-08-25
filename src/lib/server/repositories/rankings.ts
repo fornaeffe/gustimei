@@ -264,6 +264,43 @@ export class RankingRepository {
 		});
 	}
 
+	async removeRankedVisitedPlace(
+		ownerId: string,
+		listId: string,
+		placeId: string,
+		expectedRevisionId: string
+	) {
+		return this.database.transaction(async (transaction) => {
+			const [list] = await transaction
+				.select({ ownerId: rankingList.ownerId, currentRevisionId: rankingList.currentRevisionId })
+				.from(rankingList)
+				.where(eq(rankingList.id, listId))
+				.limit(1);
+			if (!list || list.ownerId !== ownerId)
+				throw new NotFoundError('The ranking list was not found');
+			if (list.currentRevisionId !== expectedRevisionId) {
+				throw new ConflictError('The ranking changed while the place was being removed');
+			}
+			const [stillRanked] = await transaction
+				.select({ placeId: rankingRevisionPlace.placeId })
+				.from(rankingRevisionPlace)
+				.where(
+					and(
+						eq(rankingRevisionPlace.revisionId, expectedRevisionId),
+						eq(rankingRevisionPlace.placeId, placeId)
+					)
+				)
+				.limit(1);
+			if (stillRanked)
+				throw new ConflictError('Publish the removal revision before deleting membership');
+			const deleted = await transaction
+				.delete(rankingListPlace)
+				.where(and(eq(rankingListPlace.listId, listId), eq(rankingListPlace.placeId, placeId)))
+				.returning({ placeId: rankingListPlace.placeId });
+			return deleted.length > 0;
+		});
+	}
+
 	async listVisitedPlaceIds(ownerId: string, listId: string) {
 		const [owned] = await this.database
 			.select({ id: rankingList.id })

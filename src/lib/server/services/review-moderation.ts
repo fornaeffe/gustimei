@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { and, asc, count, eq, gt, inArray, isNull, lte, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, inArray, isNull, lte, sql } from 'drizzle-orm';
 import {
 	addDays,
 	evidenceDeletionDeadline,
@@ -88,6 +88,109 @@ export class ReviewModerationService {
 		private readonly id: () => string = randomUUID,
 		private readonly limiter: RateLimiter = new MemoryFixedWindowRateLimiter(clock)
 	) {}
+
+	async listModeratorQueue(actorUserId: string) {
+		await this.requireModerator(actorUserId);
+		const now = this.clock();
+		const rows = await this.database
+			.select({
+				id: reviewNotice.id,
+				status: reviewNotice.status,
+				kind: reviewNotice.kind,
+				allegedGround: reviewNotice.allegedGround,
+				ownerAssertion: reviewNotice.ownerAssertion,
+				priority: reviewNotice.priority,
+				assignedModeratorId: reviewNotice.assignedModeratorId,
+				submissionDeadline: reviewNotice.submissionDeadline,
+				decisionDueAt: reviewNotice.decisionDueAt,
+				createdAt: reviewNotice.createdAt,
+				versionId: reviewNotice.versionId
+			})
+			.from(reviewNotice)
+			.where(
+				inArray(reviewNotice.status, [
+					'received',
+					'awaiting-submissions',
+					'under-review',
+					'decided'
+				])
+			)
+			.orderBy(desc(reviewNotice.priority), asc(reviewNotice.createdAt));
+		return rows.map((row) => ({
+			...row,
+			overdue: Boolean(
+				(row.status === 'awaiting-submissions' &&
+					row.submissionDeadline &&
+					row.submissionDeadline <= now) ||
+				(row.status === 'under-review' && row.decisionDueAt && row.decisionDueAt <= now)
+			)
+		}));
+	}
+
+	async getCaseForModerator(actorUserId: string, noticeId: string) {
+		await this.requireModerator(actorUserId);
+		const [record] = await this.database
+			.select({
+				id: reviewNotice.id,
+				status: reviewNotice.status,
+				kind: reviewNotice.kind,
+				allegedGround: reviewNotice.allegedGround,
+				explanation: reviewNotice.explanation,
+				notifierName: reviewNotice.notifierName,
+				notifierEmail: reviewNotice.notifierEmail,
+				ownerAssertion: reviewNotice.ownerAssertion,
+				assignedModeratorId: reviewNotice.assignedModeratorId,
+				submissionDeadline: reviewNotice.submissionDeadline,
+				decisionDueAt: reviewNotice.decisionDueAt,
+				createdAt: reviewNotice.createdAt,
+				versionId: reviewNotice.versionId,
+				versionBody: reviewVersion.body,
+				pseudonym: reviewVersion.pseudonymSnapshot
+			})
+			.from(reviewNotice)
+			.innerJoin(reviewVersion, eq(reviewVersion.id, reviewNotice.versionId))
+			.where(eq(reviewNotice.id, noticeId))
+			.limit(1);
+		if (!record) throw new NotFoundError('Review case was not found');
+		const [submissions, evidence, decisions, redress, events] = await Promise.all([
+			this.database
+				.select()
+				.from(reviewCasePartySubmission)
+				.where(eq(reviewCasePartySubmission.noticeId, noticeId))
+				.orderBy(asc(reviewCasePartySubmission.createdAt)),
+			this.database
+				.select({
+					id: reviewEvidenceObject.id,
+					uploaderRole: reviewEvidenceObject.uploaderRole,
+					originalFilename: reviewEvidenceObject.originalFilename,
+					mediaType: reviewEvidenceObject.mediaType,
+					sizeBytes: reviewEvidenceObject.sizeBytes,
+					scanState: reviewEvidenceObject.scanState,
+					expiresAt: reviewEvidenceObject.expiresAt,
+					deletedAt: reviewEvidenceObject.deletedAt,
+					createdAt: reviewEvidenceObject.createdAt
+				})
+				.from(reviewEvidenceObject)
+				.where(eq(reviewEvidenceObject.noticeId, noticeId))
+				.orderBy(asc(reviewEvidenceObject.createdAt)),
+			this.database
+				.select()
+				.from(reviewModerationDecision)
+				.where(eq(reviewModerationDecision.noticeId, noticeId))
+				.orderBy(asc(reviewModerationDecision.decisionVersion)),
+			this.database
+				.select()
+				.from(reviewRedressRequest)
+				.where(eq(reviewRedressRequest.noticeId, noticeId))
+				.orderBy(asc(reviewRedressRequest.createdAt)),
+			this.database
+				.select()
+				.from(reviewModerationEvent)
+				.where(eq(reviewModerationEvent.noticeId, noticeId))
+				.orderBy(asc(reviewModerationEvent.createdAt))
+		]);
+		return { ...record, submissions, evidence, decisions, redress, events };
+	}
 
 	async bootstrapModerator(input: {
 		userId: string;
@@ -344,6 +447,21 @@ export class ReviewModerationService {
 		const record = await this.caseTarget(noticeId);
 		if (record.authorId !== authorId) throw new NotFoundError('Review case was not found');
 		return this.caseProjection(record, 'author');
+	}
+
+	async listCasesForAuthor(authorId: string) {
+		return this.database
+			.select({
+				id: reviewNotice.id,
+				status: reviewNotice.status,
+				kind: reviewNotice.kind,
+				createdAt: reviewNotice.createdAt
+			})
+			.from(reviewNotice)
+			.innerJoin(reviewPublication, eq(reviewPublication.id, reviewNotice.publicationId))
+			.innerJoin(placeReview, eq(placeReview.id, reviewPublication.reviewId))
+			.where(eq(placeReview.authorId, authorId))
+			.orderBy(desc(reviewNotice.createdAt));
 	}
 
 	async getCaseForNotifier(noticeId: string, rawToken: string) {
@@ -738,7 +856,11 @@ export class ReviewModerationService {
 					recipientRole: role,
 					recipientReference: role === 'author' ? target.authorId! : target.notifierEmail,
 					purpose: input.outcome === 'restore' ? 'review-reinstatement' : 'review-decision',
-					variables: { caseReference: input.noticeId, outcome: input.outcome }
+					variables: {
+						caseReference: input.noticeId,
+						outcome: input.outcome,
+						decisionReference: decisionId
+					}
 				});
 			}
 			return { decisionId };
@@ -975,20 +1097,48 @@ export class ReviewModerationService {
 		record: Awaited<ReturnType<ReviewModerationService['caseTarget']>>,
 		party: PartyRole
 	) {
-		const submissions = await this.database
-			.select({
-				id: reviewCasePartySubmission.id,
-				statement: reviewCasePartySubmission.statement,
-				createdAt: reviewCasePartySubmission.createdAt
-			})
-			.from(reviewCasePartySubmission)
-			.where(
-				and(
-					eq(reviewCasePartySubmission.noticeId, record.id),
-					eq(reviewCasePartySubmission.partyRole, party)
+		const [submissions, decisions, redress] = await Promise.all([
+			this.database
+				.select({
+					id: reviewCasePartySubmission.id,
+					statement: reviewCasePartySubmission.statement,
+					createdAt: reviewCasePartySubmission.createdAt
+				})
+				.from(reviewCasePartySubmission)
+				.where(
+					and(
+						eq(reviewCasePartySubmission.noticeId, record.id),
+						eq(reviewCasePartySubmission.partyRole, party)
+					)
 				)
-			)
-			.orderBy(asc(reviewCasePartySubmission.createdAt));
+				.orderBy(asc(reviewCasePartySubmission.createdAt)),
+			this.database
+				.select({
+					id: reviewModerationDecision.id,
+					outcome: reviewModerationDecision.outcome,
+					reasonedExplanation: reviewModerationDecision.reasonedExplanation,
+					decidedAt: reviewModerationDecision.decidedAt
+				})
+				.from(reviewModerationDecision)
+				.where(eq(reviewModerationDecision.noticeId, record.id))
+				.orderBy(asc(reviewModerationDecision.decisionVersion)),
+			this.database
+				.select({
+					id: reviewRedressRequest.id,
+					decisionId: reviewRedressRequest.decisionId,
+					statement: reviewRedressRequest.statement,
+					status: reviewRedressRequest.status,
+					createdAt: reviewRedressRequest.createdAt
+				})
+				.from(reviewRedressRequest)
+				.where(
+					and(
+						eq(reviewRedressRequest.noticeId, record.id),
+						eq(reviewRedressRequest.partyRole, party)
+					)
+				)
+				.orderBy(asc(reviewRedressRequest.createdAt))
+		]);
 		return {
 			id: record.id,
 			status: record.status,
@@ -996,7 +1146,9 @@ export class ReviewModerationService {
 			allegedGround: record.allegedGround,
 			createdAt: record.createdAt,
 			submissionDeadline: record.submissionDeadline,
-			submissions
+			submissions,
+			decisions,
+			redress
 		};
 	}
 
@@ -1013,7 +1165,10 @@ export class ReviewModerationService {
 	) {
 		const now = this.clock();
 		const outboxId = this.id();
-		const idempotencyKey = `${input.noticeId}:${input.recipientRole}:${input.purpose}`;
+		const decisionSuffix = input.variables.decisionReference
+			? `:${input.variables.decisionReference}`
+			: '';
+		const idempotencyKey = `${input.noticeId}:${input.recipientRole}:${input.purpose}${decisionSuffix}`;
 		await transaction
 			.insert(transactionalOutbox)
 			.values({

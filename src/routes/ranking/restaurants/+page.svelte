@@ -110,6 +110,9 @@
 		{#if form?.error}
 			<p class="form-status form-status--error" role="alert">{form.error}</p>
 		{/if}
+		{#if form?.deleted}
+			<p class="form-status" role="status">{m.ranking_deleted()}</p>
+		{/if}
 		{#if data.selected.length === 0}
 			<StatePanel
 				title={m.dashboard_empty_ranking()}
@@ -188,6 +191,32 @@
 					{data.openSession ? m.resume_ranking() : m.start_ranking()}
 				</Button>
 			</form>
+			{#if data.list?.projection?.nextAction.type === 'repair'}
+				<p>{m.repair_ranking_body()}</p>
+				<form method="POST" action="?/repair">
+					<Button type="submit" variant="secondary">{m.repair_ranking()}</Button>
+				</form>
+			{/if}
 		</div>
+
+		{#if data.list?.currentRevisionId}
+			<div class="surface-card stack">
+				<h2>{m.rebuild_ranking()}</h2>
+				<p>{m.rebuild_ranking_body()}</p>
+				<form method="POST" action="?/start">
+					<Button type="submit" variant="secondary">{m.rebuild_ranking()}</Button>
+				</form>
+				<p>{m.delete_ranking_body()}</p>
+				<form
+					method="POST"
+					action="?/deleteCategory"
+					onsubmit={(event) => {
+						if (!confirm(m.delete_ranking_confirm())) event.preventDefault();
+					}}
+				>
+					<Button type="submit" variant="danger">{m.delete_ranking()}</Button>
+				</form>
+			</div>
+		{/if}
 	</aside>
 </div>

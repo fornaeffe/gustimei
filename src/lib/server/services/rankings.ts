@@ -125,6 +125,89 @@ export class RankingService {
 		return session;
 	}
 
+	async startInsertionSession(ownerId: string, listId: string, newPlaceId: string) {
+		const now = this.clock();
+		const existing = await this.rankings.findOpenSession(ownerId, listId, now);
+		if (existing) return existing;
+		const baseRevision = await this.rankings.loadCurrentRevision(ownerId, listId);
+		if (!baseRevision || baseRevision.unresolvedRelations.length > 0) {
+			return this.startInitialSession(ownerId, listId);
+		}
+		const session = RankingSession.insertion({
+			id: this.createId(),
+			listId,
+			baseRevision,
+			newPlaceId
+		});
+		await this.rankings.saveSession(ownerId, session, await this.captureContext(ownerId, now), now);
+		return session;
+	}
+
+	async startRepairSession(ownerId: string, listId: string) {
+		const now = this.clock();
+		const existing = await this.rankings.findOpenSession(ownerId, listId, now);
+		if (existing) return existing;
+		const baseRevision = await this.rankings.loadCurrentRevision(ownerId, listId);
+		if (!baseRevision) throw new DomainValidationError('Publish a ranking before repairing it');
+		const session = RankingSession.repair({ id: this.createId(), listId, baseRevision });
+		await this.rankings.saveSession(ownerId, session, await this.captureContext(ownerId, now), now);
+		return session;
+	}
+
+	async startReconsiderSession(ownerId: string, listId: string, evidenceId: string) {
+		const now = this.clock();
+		const existing = await this.rankings.findOpenSession(ownerId, listId, now);
+		if (existing) return existing;
+		const baseRevision = await this.rankings.loadCurrentRevision(ownerId, listId);
+		if (!baseRevision)
+			throw new DomainValidationError('Publish a ranking before changing an answer');
+		const session = RankingSession.reconsider({
+			id: this.createId(),
+			listId,
+			baseRevision,
+			evidenceId
+		});
+		await this.rankings.saveSession(ownerId, session, await this.captureContext(ownerId, now), now);
+		return session;
+	}
+
+	async removeRankedPlace(
+		ownerId: string,
+		listId: string,
+		category: RankingCategory,
+		placeId: string
+	) {
+		const now = this.clock();
+		const open = await this.rankings.findOpenSession(ownerId, listId, now);
+		if (open) throw new ConflictError('Finish or supersede the open ranking session first');
+		const base = await this.rankings.loadCurrentRevision(ownerId, listId);
+		if (!base || !base.activePlaceIds.includes(placeId)) {
+			throw new NotFoundError('The ranked place was not found');
+		}
+		const activePlaceIds = base.activePlaceIds.filter((item) => item !== placeId);
+		if (activePlaceIds.length === 0) {
+			throw new DomainValidationError('Delete the list instead of removing its final place');
+		}
+		const evidence = [
+			...base.activeEvidence,
+			...base.excludedEvidence.map((item) => item.evidence)
+		].filter((item) => item.leftPlaceId !== placeId && item.rightPlaceId !== placeId);
+		const capture = await this.captureContext(ownerId, now);
+		const revision = createRankingRevision({
+			id: this.createId(),
+			listId,
+			category,
+			revision: base.revision + 1,
+			activePlaceIds,
+			evidence,
+			provenance: capture.provenance,
+			publishedAt: now.toISOString()
+		});
+		const published = await this.rankings.publishRevision(ownerId, revision, capture);
+		await this.rankings.removeRankedVisitedPlace(ownerId, listId, placeId, published.id);
+		return published;
+	}
+
 	async submit(
 		ownerId: string,
 		sessionId: string,

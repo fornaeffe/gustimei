@@ -179,14 +179,30 @@
 			<h1 id="ranking-title">{m.ranking_complete_title()}</h1>
 			<p class="lede">{m.ranking_complete_body()}</p>
 		</header>
+		{#if form?.section === 'maintenance' && form.error}
+			<p class="form-status form-status--error" role="alert">{form.error}</p>
+		{/if}
+		<form method="GET" class="surface-card cluster">
+			<label for="ranking-locality">{m.locality_filter()}</label>
+			<input
+				id="ranking-locality"
+				name="locality"
+				value={data.localityFilter}
+				autocomplete="address-level2"
+			/>
+			<Button type="submit" variant="secondary">{m.search_action()}</Button>
+		</form>
+		{#if data.localityFilter}<p class="field__hint">{m.filtered_ranking_help()}</p>{/if}
 
 		<ol class="ranking-tiers">
 			{#each data.ranking.tiers as tier (tier.position)}
 				<li class="surface-card ranking-tier">
 					<span class="ranking-tier__position">
-						{tier.places.length > 1
-							? m.ranking_tied_position({ position: tier.position })
-							: m.ranking_position({ position: tier.position })}
+						{data.localityFilter
+							? m.filtered_position({ position: tier.position })
+							: tier.places.length > 1
+								? m.ranking_tied_position({ position: tier.position })
+								: m.ranking_position({ position: tier.position })}
 					</span>
 					{#each tier.places as place (place.placeId)}
 						<article class="ranked-place">
@@ -214,6 +230,16 @@
 									fieldId={`ranking-comment-${place.placeId.replaceAll(':', '-')}`}
 								/>
 							</details>
+							<form
+								method="POST"
+								action="?/removePlace"
+								onsubmit={(event) => {
+									if (!confirm(m.remove_ranked_place_confirm())) event.preventDefault();
+								}}
+							>
+								<input type="hidden" name="placeId" value={place.placeId} />
+								<Button type="submit" variant="danger">{m.remove_ranked_place()}</Button>
+							</form>
 						</article>
 					{/each}
 				</li>
@@ -232,6 +258,21 @@
 					</ul>
 				{/each}
 			</section>
+		{/if}
+
+		{#if data.ranking.answers.length > 0}
+			<details class="surface-card">
+				<summary>{m.reconsider_answer()}</summary>
+				<div class="stack">
+					{#each data.ranking.answers as answer (answer.id)}
+						<form method="POST" action="?/reconsider" class="cluster">
+							<input type="hidden" name="evidenceId" value={answer.id} />
+							<span>{answer.leftName} / {answer.rightName}</span>
+							<Button type="submit" variant="quiet">{m.reconsider_answer()}</Button>
+						</form>
+					{/each}
+				</div>
+			</details>
 		{/if}
 
 		{#if data.reviewPrompt && form?.section !== 'reviewPrompt'}

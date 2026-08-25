@@ -325,6 +325,34 @@ describe('binary tier insertion', () => {
 });
 
 describe('contradiction recovery and projections', () => {
+	it('changes one answer by superseding only its evidence', () => {
+		const base = revision(
+			['a', 'b', 'c'],
+			[evidence('a-over-b', 1, 'a', 'b', 'left'), evidence('b-over-c', 2, 'b', 'c', 'left')]
+		);
+		const session = RankingSession.reconsider({
+			id: 'reconsider',
+			listId: 'list-1',
+			baseRevision: base,
+			evidenceId: 'a-over-b'
+		});
+		const request = session.nextComparison();
+		if (!request) throw new Error('Expected a reconsideration comparison');
+		session.submit(preferPlace(request, 'b'));
+		const result = revision(['a', 'b', 'c'], session.evidenceForNextRevision(base), {
+			id: 'revision-2',
+			revision: 2
+		});
+
+		expect(session.evidence[0].supersedesEvidenceId).toBe('a-over-b');
+		expect(result.activeEvidence.map((item) => item.id)).toContain('b-over-c');
+		expect(result.excludedEvidence).toContainEqual({
+			evidence: base.activeEvidence[0],
+			reason: 'superseded',
+			conflictingEvidenceIds: [session.evidence[0].id]
+		});
+	});
+
 	it('replaces edited evidence explicitly and retains supersession provenance', () => {
 		const original = evidence('original', 1, 'a', 'b', 'left');
 		const edited = {

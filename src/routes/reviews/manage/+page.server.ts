@@ -5,13 +5,18 @@ import { db } from '$lib/server/db';
 import { requireUser } from '$lib/server/http/auth-guard';
 import { stringField } from '$lib/server/security/auth-forms';
 import { ReviewService } from '$lib/server/services/reviews';
+import { reviewModeration } from '$lib/server/services/review-moderation-runtime';
 import type { Actions, PageServerLoad } from './$types';
 
 const reviews = new ReviewService(db, runtimeConfig.appEnvironment);
 
 export const load: PageServerLoad = async (event) => {
 	const user = requireUser(event);
-	return { reviews: await reviews.listAuthorProjection(user.id) };
+	const [authorReviews, cases] = await Promise.all([
+		reviews.listAuthorProjection(user.id),
+		reviewModeration.listCasesForAuthor(user.id)
+	]);
+	return { reviews: authorReviews, cases };
 };
 
 export const actions = {

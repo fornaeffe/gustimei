@@ -1080,6 +1080,16 @@ proportionate retention purpose ([17 April 2026 decision](https://www.garantepri
 
 ### Phase 6 — Existing-list maintenance
 
+**Status (2026-08-25): complete.** Internal use validated the Phase 5 question count,
+approximate progress, tie/skip language, and recovery behavior. Retain the current unresolved-order
+presentation and 30-day session expiry/resume/supersession UX. The internal participation and rights
+procedures are ready for continued controlled testing, and the optional review prompt remains a
+separate low-friction transaction. The Phase 6 prompt policy offers at most one neutral unreviewed
+place after a successful initial-order or insertion publication, caps displays to once per 30 days in
+the current browser, and suppresses the prompt for 90 days after “Not now.” Existing review
+aggregates—including withdrawn publications or reviews with moderation history—are ineligible; the
+composer remains responsible for the independently entered 30-day service-date eligibility check.
+
 - Add a new visited place to a current total-order revision using binary insertion while continuing to serve the previous revision's unaffected resolved evidence until the insertion publishes its successor.
 - Implement targeted local repair when later transitive evidence contradicts an explicit tied tier; never split a tie silently.
 - Detect preference cycles and ask a clarifying comparison. Pending clarification, retain the newest answer, temporarily exclude the oldest conflicting evidence, and prompt a focused reranking of the involved places.
@@ -1097,6 +1107,38 @@ proportionate retention purpose ([17 April 2026 decision](https://www.garantepri
 - Continue controlled internal use through insertion, contradiction, repair, removal, and rebuild flows. Record qualitative defects and privacy-safe aggregate diagnostics; do not promote individual ranking examples into fixtures, documentation, or bug reports unless they have been deliberately minimized or replaced with synthetic reproductions.
 
 **Exit:** rankings remain maintainable over time rather than being one-use onboarding artifacts, while authors can maintain or substitute public reviews under the time/declaration rules and authorized staff can run the complete local notice, evidence, reasoned-decision, redress, reinstatement, expiry, and retention workflows without touching ranking evidence.
+
+**Implementation record (2026-08-25):**
+
+- Connected the existing tier-aware insertion and contradiction-repair algorithms to authenticated
+  restaurant-list actions. Adding a place to a published total order now opens a binary insertion
+  session while the previous revision remains current; partial orders fall back to a revision-bound
+  rebuild. Repair sessions supersede only conflicting evidence, and users can explicitly reconsider a
+  single prior answer without discarding unrelated comparisons.
+- Added ranked-place removal through a published successor revision. Evidence involving the removed
+  place is omitted while unaffected evidence remains active; membership and its private comment are
+  then deleted. Rebuild preserves memberships/comments, while category deletion clearly deletes the
+  list, comparison history, and private comments without changing independent public reviews.
+- Added locality filtering to the completed personal ranking with dense, explicitly filtered ordinal
+  labels; the persisted global tiers and revision are unchanged. Successful initial/insertion
+  publications use the approved 30-day display and 90-day dismissal prompt caps described above.
+- Retained the already implemented review edit, later-visit substitution, withdrawal, immutable
+  generation/version history, expiry, evidence retention, outbox retry, collision restriction, and
+  ranking isolation. Added author case discovery, dual author/notifier timelines, party-isolated
+  statements and redress, restricted evidence upload, and decision visibility.
+- Added a least-privilege internal moderation queue and case workspace for exact reported versions,
+  priority/deadline visibility, assignment, owner/delegate verification, evidence scan disposition,
+  interim restriction, human reasoned decisions, reversal/restoration, redress visibility, audited
+  timeline, and closure. Access is enforced by the separate review-moderator/admin permission; a
+  catalogue curator receives no access merely by holding catalogue permissions.
+- Recommendation artifacts do not exist before Phase 7. Phase 6 mutations publish a new immutable
+  current revision atomically; Phase 7 consumers must key artifacts to that revision, so any previous
+  result is invalid by construction rather than through a ranking-list lifecycle status.
+- Verification completed with Prettier, ESLint, zero-warning Svelte diagnostics, repeated Svelte
+  autofixer passes, production build, 79 unit/component tests, 23 PostgreSQL integration tests, and
+  all three localized production-build Playwright checks. The database suite ran against a temporary
+  isolated PostgreSQL 18 listener on port 55434 because the configured test endpoint was occupied by
+  a server with different credentials; the temporary server and data directory were removed.
 
 **Open questions to answer before Phase 7:**
 

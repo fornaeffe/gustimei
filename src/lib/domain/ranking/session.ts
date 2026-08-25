@@ -257,6 +257,42 @@ export class RankingSession {
 		});
 	}
 
+	static reconsider(input: {
+		id: string;
+		listId: string;
+		baseRevision: RankingRevision;
+		evidenceId: string;
+	}) {
+		const evidence = input.baseRevision.activeEvidence.find(
+			(item) => item.id === input.evidenceId && item.outcome !== 'skip'
+		);
+		if (!evidence) throw new Error('The selected ranking answer cannot be reconsidered');
+		return new RankingSession({
+			version: 1,
+			id: input.id,
+			listId: input.listId,
+			baseRevisionId: input.baseRevision.id,
+			purpose: 'repair',
+			lifecycle: 'open',
+			placeIdsSnapshot: [...input.baseRevision.activePlaceIds],
+			algorithm: {
+				kind: 'repair',
+				requests: [
+					{
+						leftPlaceId: evidence.leftPlaceId,
+						rightPlaceId: evidence.rightPlaceId,
+						supersedesEvidenceId: evidence.id
+					}
+				],
+				requestIndex: 0
+			},
+			evidence: [],
+			nextSequence: 1,
+			history: [],
+			estimatedTotal: 1
+		});
+	}
+
 	static resume(serialized: string) {
 		const state = JSON.parse(serialized) as SerializedRankingSession;
 		if (state.version !== 1) throw new Error('Unsupported ranking session version');

@@ -61,28 +61,51 @@ export const load: PageServerLoad = async (event) => {
 			? currentRevision
 			: undefined;
 	const display = revision ? deriveRankingDisplay(revision) : undefined;
+	const localityFilter =
+		event.url.searchParams.get('locality')?.trim().toLocaleLowerCase().slice(0, 120) ?? '';
+	const displayedTiers = display?.orderedTiers
+		.map((tier) => ({
+			places: tier.placeIds.flatMap((placeId) => {
+				const place = placeById.get(placeId);
+				return place &&
+					(!localityFilter || place.displayLocality.toLocaleLowerCase().includes(localityFilter))
+					? [place]
+					: [];
+			})
+		}))
+		.filter((tier) => tier.places.length > 0)
+		.map((tier, index) => ({ ...tier, position: index + 1 }));
 	const ranking = revision
 		? {
 				projection: deriveRankingProjection(revision),
-				tiers: display!.orderedTiers
-					.map((tier, index) => ({
-						position: index + 1,
-						places: tier.placeIds
-							.map((placeId) => placeById.get(placeId))
-							.filter((place) => place !== undefined)
-					}))
-					.filter((tier) => tier.places.length > 0),
+				tiers: displayedTiers ?? [],
 				unresolvedGroups: display!.unresolvedPlaceGroups.map((group) =>
 					group.map((placeId) => placeById.get(placeId)).filter((place) => place !== undefined)
-				)
+				),
+				answers: revision.activeEvidence
+					.filter((item) => item.outcome !== 'skip')
+					.map((item) => ({
+						id: item.id,
+						leftName: placeById.get(item.leftPlaceId)?.name ?? item.leftPlaceId,
+						rightName: placeById.get(item.rightPlaceId)?.name ?? item.rightPlaceId
+					}))
 			}
 		: undefined;
 
 	let reviewPrompt;
+	const promptShownAt = Number(event.cookies.get('ranking_review_prompt_shown_at') ?? 0);
+	const promptDismissedAt = Number(event.cookies.get('ranking_review_prompt_dismissed_at') ?? 0);
+	const now = Date.now();
+	const showCapElapsed =
+		!Number.isFinite(promptShownAt) || now - promptShownAt >= 30 * 24 * 60 * 60 * 1_000;
+	const dismissalCapElapsed =
+		!Number.isFinite(promptDismissedAt) || now - promptDismissedAt >= 90 * 24 * 60 * 60 * 1_000;
 	if (
 		revision &&
 		user.emailVerified &&
-		event.cookies.get('ranking_review_prompt_dismissed') !== session.id
+		['initial-order', 'insertion'].includes(session.purpose) &&
+		showCapElapsed &&
+		dismissalCapElapsed
 	) {
 		const reviewed = await db
 			.select({ placeId: placeReview.placeId })
@@ -97,7 +120,7 @@ export const load: PageServerLoad = async (event) => {
 		reviewPrompt = places.find(
 			(place) => revision.activePlaceIds.includes(place.placeId) && !reviewedIds.has(place.placeId)
 		);
-		if (reviewPrompt && event.cookies.get('ranking_review_prompt_shown') !== session.id) {
+		if (reviewPrompt) {
 			const capture = await rankings.captureContext(user.id);
 			await analytics.record({
 				userId: user.id,
@@ -105,7 +128,7 @@ export const load: PageServerLoad = async (event) => {
 				name: 'review-prompt-shown',
 				category: 'restaurant'
 			});
-			event.cookies.set('ranking_review_prompt_shown', session.id, {
+			event.cookies.set('ranking_review_prompt_shown_at', String(now), {
 				path: '/',
 				httpOnly: true,
 				sameSite: 'lax',
@@ -126,6 +149,7 @@ export const load: PageServerLoad = async (event) => {
 			: undefined,
 		latestEvidenceId: session.latestActiveEvidence()?.id,
 		ranking,
+		localityFilter,
 		reviewPrompt
 	};
 };
@@ -220,12 +244,12 @@ export const actions = {
 	},
 	dismissReviewPrompt: async (event) => {
 		const user = requireUser(event);
-		event.cookies.set('ranking_review_prompt_dismissed', event.params.sessionId, {
+		event.cookies.set('ranking_review_prompt_dismissed_at', String(Date.now()), {
 			path: '/',
 			httpOnly: true,
 			sameSite: 'lax',
 			secure: runtimeConfig.appEnvironment === 'production',
-			maxAge: 60 * 60 * 24 * 30
+			maxAge: 60 * 60 * 24 * 90
 		});
 		const capture = await rankings.captureContext(user.id);
 		await analytics.record({
@@ -252,5 +276,38 @@ export const actions = {
 		const form = await event.request.formData();
 		await comments.delete(user.id, stringField(form, 'placeId'));
 		return { section: 'comment', deleted: true };
+	},
+	reconsider: async (event) => {
+		const user = requireUser(event);
+		const form = await event.request.formData();
+		try {
+			const current = await rankingRepository.loadSession(user.id, event.params.sessionId);
+			const next = await rankings.startReconsiderSession(
+				user.id,
+				current.listId,
+				stringField(form, 'evidenceId')
+			);
+			redirect(303, localizedPath(`/ranking/restaurants/session/${next.id}`));
+		} catch (error) {
+			if (isRedirect(error)) throw error;
+			return fail(409, { section: 'maintenance', error: safeError(error) });
+		}
+	},
+	removePlace: async (event) => {
+		const user = requireUser(event);
+		const form = await event.request.formData();
+		try {
+			const current = await rankingRepository.loadSession(user.id, event.params.sessionId);
+			await rankings.removeRankedPlace(
+				user.id,
+				current.listId,
+				'restaurant',
+				stringField(form, 'placeId')
+			);
+			redirect(303, localizedPath('/ranking/restaurants'));
+		} catch (error) {
+			if (isRedirect(error)) throw error;
+			return fail(409, { section: 'maintenance', error: safeError(error) });
+		}
 	}
 } satisfies Actions;

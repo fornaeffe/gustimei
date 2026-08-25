@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { resolve } from '$app/paths';
+	import type { Pathname } from '$app/types';
 	import { getLocale, localizeHref } from '$lib/paraglide/runtime';
 	import Button from '$lib/components/ui/Button.svelte';
 	import ReviewDisclosure from '$lib/components/reviews/ReviewDisclosure.svelte';
@@ -49,6 +51,19 @@
 				</article>
 			{/each}
 		</div>
+	{/if}
+	{#if data.cases.length > 0}
+		<section class="stack" aria-labelledby="review-cases-title">
+			<h2 id="review-cases-title">{m.case_status()}</h2>
+			{#each data.cases as item (item.id)}
+				<a
+					class="surface-card"
+					href={resolve(localizeHref(`/reviews/cases/${item.id}`, { locale }) as Pathname)}
+				>
+					{item.id} · {item.status}
+				</a>
+			{/each}
+		</section>
 	{/if}
 	<Button href={localizeHref('/legal/review-rules', { locale })} variant="secondary">
 		{m.review_rules()}
