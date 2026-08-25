@@ -1163,6 +1163,13 @@ composer remains responsible for the independently entered 30-day service-date e
   case-scoped notifier token without duplicating notifications, and the mailbox renders repeated
   messages without assuming that presentation fields form a unique identity. Existing case/audit
   rows are preserved rather than rewritten or deleted.
+- Human owner-notice testing without evidence exposed a validation/error-boundary defect rather than
+  an evidence requirement: the domain accepted a non-empty explanation shorter than the database's
+  20-character constraint, then the form action returned the raw PostgreSQL/Drizzle query and
+  parameters. Notice explanations now share explicit 20–5,000-character domain, form, and database
+  limits; evidence is labelled and remains optional; invalid notice kinds fail in the domain; and a
+  reusable action-error boundary exposes expected validation/conflict messages while replacing
+  unexpected infrastructure errors with a safe actionable fallback.
 
 **Open questions to answer before Phase 7:**
 

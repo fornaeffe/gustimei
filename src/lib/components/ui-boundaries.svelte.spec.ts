@@ -4,6 +4,7 @@ import * as m from '$lib/paraglide/messages';
 import PersonalCommentField from './comments/PersonalCommentField.svelte';
 import ComparisonPlaceCard from './ranking/ComparisonPlaceCard.svelte';
 import ReviewDisclosure from './reviews/ReviewDisclosure.svelte';
+import NoticeForm from './reviews/NoticeForm.svelte';
 import PlaceCard from './ui/PlaceCard.svelte';
 
 describe('Phase 3 content boundaries', () => {
@@ -32,6 +33,14 @@ describe('Phase 3 content boundaries', () => {
 		const screen = await render(ReviewDisclosure);
 		await expect.element(screen.getByText(m.public_review_title())).toBeVisible();
 		await expect.element(screen.getByText(m.public_review_explanation())).toBeVisible();
+	});
+
+	it('matches notice explanation limits and makes evidence explicitly optional', async () => {
+		const screen = await render(NoticeForm, { versionId: 'version-1' });
+		const explanation = screen.getByRole('textbox', { name: m.notice_explanation() });
+		await expect.element(explanation).toHaveAttribute('minlength', '20');
+		await expect.element(explanation).toHaveAttribute('maxlength', '5000');
+		await expect.element(screen.getByText(m.evidence_optional_file_help())).toBeVisible();
 	});
 
 	it('offers a balanced explicit comparison choice with a collapsed owner-only note', async () => {

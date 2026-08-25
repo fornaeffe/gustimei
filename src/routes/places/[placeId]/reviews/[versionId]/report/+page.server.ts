@@ -4,6 +4,7 @@ import { error, fail } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
 import { placeReview, reviewPublication, reviewVersion } from '$lib/server/db/schema';
 import { localizedAbsoluteUrl, localizedPath } from '$lib/server/http/locale';
+import { safeActionError } from '$lib/server/http/action-errors';
 import { CatalogueRepository } from '$lib/server/repositories/catalogue';
 import { runtimeConfig } from '$lib/server/config';
 import { stringField } from '$lib/server/security/auth-forms';
@@ -73,7 +74,10 @@ export const actions = {
 							purpose: 'Initial notice substantiation'
 						});
 					} catch (cause) {
-						evidenceError = cause instanceof Error ? cause.message : 'Evidence upload failed';
+						evidenceError = safeActionError(
+							cause,
+							"The notice was submitted, but we couldn't upload the optional evidence. You can add it from the case page."
+						);
 					}
 				}
 			}
@@ -87,7 +91,12 @@ export const actions = {
 					: undefined
 			};
 		} catch (cause) {
-			return fail(400, { error: cause instanceof Error ? cause.message : 'Notice failed' });
+			return fail(400, {
+				error: safeActionError(
+					cause,
+					"We couldn't submit the notice. Please check the form and try again."
+				)
+			});
 		}
 	}
 } satisfies Actions;

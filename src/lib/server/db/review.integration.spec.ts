@@ -225,6 +225,28 @@ describe('review author lifecycle and isolation', () => {
 });
 
 describe('notice, moderation, evidence, expiry, and erasure', () => {
+	it('rejects a short notice explanation before persistence with a useful domain error', async () => {
+		const { reviews } = await setup();
+		const created = await publish(reviews);
+		const moderation = new ReviewModerationService(db, 'test', evidence, clock);
+		await expect(
+			moderation.submitNotice({
+				publicationId: created.publicationId!,
+				versionId: created.versionId!,
+				exactPublicUrl: 'https://example.test/places/1#review',
+				kind: 'authenticity',
+				allegedGround: 'Synthetic authenticity concern',
+				explanation: 'fake review',
+				notifierName: 'Owner',
+				notifierEmail: 'owner@example.test',
+				ownerOrDelegate: true,
+				goodFaithAccepted: true,
+				idempotencyKey: 'short-notice-explanation'
+			})
+		).rejects.toThrow('Notice explanation must be at least 20 characters');
+		expect(await db.select().from(reviewNotice)).toEqual([]);
+	});
+
 	it('accepts the narrow anonymous notice branch without case access or owner priority', async () => {
 		const { reviews } = await setup();
 		const created = await publish(reviews);

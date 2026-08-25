@@ -1,6 +1,10 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages';
 	import Button from '$lib/components/ui/Button.svelte';
+	import {
+		NOTICE_EXPLANATION_MAX_LENGTH,
+		NOTICE_EXPLANATION_MIN_LENGTH
+	} from '$lib/domain/reviews/policy';
 	let { versionId, action = '?/notice' }: { versionId: string; action?: string } = $props();
 </script>
 
@@ -33,7 +37,19 @@
 	</div>
 	<div class="field">
 		<label for="notice-explanation">{m.notice_explanation()}</label>
-		<textarea id="notice-explanation" name="explanation" rows="6" required></textarea>
+		<textarea
+			id="notice-explanation"
+			name="explanation"
+			rows="6"
+			minlength={NOTICE_EXPLANATION_MIN_LENGTH}
+			maxlength={NOTICE_EXPLANATION_MAX_LENGTH}
+			required></textarea>
+		<p class="field__hint">
+			{m.notice_explanation_help({
+				minimum: NOTICE_EXPLANATION_MIN_LENGTH,
+				maximum: NOTICE_EXPLANATION_MAX_LENGTH
+			})}
+		</p>
 	</div>
 	<label class="check-row"
 		><input type="checkbox" name="ownerDelegate" value="true" />
@@ -51,7 +67,7 @@
 			type="file"
 			accept="application/pdf,image/jpeg,image/png,image/webp,text/plain"
 		/>
-		<p class="field__hint">{m.evidence_file_help()}</p>
+		<p class="field__hint">{m.evidence_optional_file_help()}</p>
 	</div>
 	<Button type="submit">{m.submit_notice()}</Button>
 </form>

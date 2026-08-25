@@ -4,6 +4,7 @@ import {
 	addDays,
 	evidenceDeletionDeadline,
 	normalizeCaseText,
+	normalizeNoticeExplanation,
 	provisionalReviewClockPolicy
 } from '$lib/domain/reviews/policy';
 import type { AppEnvironment } from '$lib/server/config/environment';
@@ -326,6 +327,9 @@ export class ReviewModerationService {
 		if (!input.goodFaithAccepted) {
 			throw new DomainValidationError('The good-faith declaration is required');
 		}
+		if (!['alleged-illegality', 'terms-or-policy', 'authenticity'].includes(input.kind)) {
+			throw new DomainValidationError('Notice kind is invalid');
+		}
 		const anonymous = input.anonymous === true;
 		const suppliedEmail = input.notifierEmail.trim().toLocaleLowerCase('en-US');
 		const email =
@@ -364,7 +368,14 @@ export class ReviewModerationService {
 			}
 			if (!target.authorId) throw new ConflictError('The review author account has been erased');
 			const allegedGround = required(input.allegedGround, 'Alleged ground', 3, 500);
-			const explanation = normalizeCaseText(input.explanation, 'Notice explanation');
+			let explanation: string;
+			try {
+				explanation = normalizeNoticeExplanation(input.explanation);
+			} catch (cause) {
+				throw new DomainValidationError(
+					cause instanceof Error ? cause.message : 'Notice explanation is invalid'
+				);
+			}
 			const notifierName = anonymous
 				? 'anonymous'
 				: required(input.notifierName, 'Notifier name', 2, 200);

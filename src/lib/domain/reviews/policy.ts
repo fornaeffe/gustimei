@@ -1,4 +1,5 @@
 export const REVIEW_BODY_MAX_LENGTH = 2_000;
+export const NOTICE_EXPLANATION_MIN_LENGTH = 20;
 export const NOTICE_EXPLANATION_MAX_LENGTH = 5_000;
 export const CASE_SUBMISSION_MAX_LENGTH = 5_000;
 
@@ -66,6 +67,24 @@ export function normalizeCaseText(value: string, label = 'Statement'): string {
 	}
 	if (normalized.includes(String.fromCharCode(0)))
 		throw new Error(`${label} contains an invalid character`);
+	return normalized;
+}
+
+export function normalizeNoticeExplanation(value: string): string {
+	const normalized = value.normalize('NFC').replace(/\r\n?/g, '\n').trim();
+	if (normalized.length < NOTICE_EXPLANATION_MIN_LENGTH) {
+		throw new Error(
+			`Notice explanation must be at least ${NOTICE_EXPLANATION_MIN_LENGTH} characters`
+		);
+	}
+	if (normalized.length > NOTICE_EXPLANATION_MAX_LENGTH) {
+		throw new Error(
+			`Notice explanation must be at most ${NOTICE_EXPLANATION_MAX_LENGTH} characters`
+		);
+	}
+	if (normalized.includes(String.fromCharCode(0))) {
+		throw new Error('Notice explanation contains an invalid character');
+	}
 	return normalized;
 }
 
