@@ -1008,6 +1008,50 @@ proportionate retention purpose ([17 April 2026 decision](https://www.garantepri
 
 **Exit:** the core flow is accessible, resumable, concurrency-safe, and produces a reproducible persisted ranking; its optional post-completion review prompt is demonstrably a separate, dismissible transaction with no ranking or recommendation side effect.
 
+**Implementation record (2026-08-25):**
+
+- Implemented the authenticated restaurant comparison session from the immutable Phase 4 membership
+  snapshot through atomic revision publication. The selection route resumes the one effective open
+  session, while a provisional 30-day idle limit supersedes abandoned sessions without deleting their
+  evidence. Completed-session publication is retryable and idempotent, and a previously published
+  revision is returned safely after duplicate final submissions.
+- Added deterministic per-request left/right randomization that remains independent of the canonical
+  logical pair and request reason. Outcomes are interpreted against the presented place IDs, so the
+  ordering algorithm and persisted evidence remain correct regardless of side. Database row locking,
+  expected comparison/evidence IDs, and outcome checks serialize double taps and concurrent tabs:
+  identical retries are no-ops, conflicting retries fail, and stale undo requests cannot undo a newer
+  answer.
+- Built the localized, responsive comparison UI with balanced Lucide restaurant fallbacks, card
+  click/tap, redundant explicit preference controls, keyboard shortcuts, horizontal swipe enhancement,
+  tie, skip, undo, reduced-motion behavior, saving feedback, and an explicitly approximate progress
+  indicator. Owner-only comments remain collapsed by default and never enter ranking evidence or
+  analytics metadata.
+- Preserved skips as preference-free evidence. The merge session continues with another useful merge
+  comparison when one is available; completion publishes a partial revision when necessary. The
+  completed view removes affected places from potentially misleading numbered tiers and presents
+  connected unresolved groups in a separate, explicitly non-tied section. Resolved ties share one
+  displayed dense ordinal position.
+- Added the private completed-ranking surface with tier groups, private-note indicators, and owner-only
+  note viewing/editing/deletion. Successful final answers publish before the optional review prompt is
+  offered. The prompt chooses at most one neutral unreviewed place, is limited to one display/dismissal
+  per completed session for 30 days in the current browser, stores no place identity in analytics, and
+  deep-links to the existing composer with an allowlisted return path. Publishing, dismissing, or
+  failing a review never changes or rolls back the ranking.
+- Added minimized Phase 5 analytics events for coarse outcome/progress, undo, completion coverage, and
+  review-prompt display/dismissal, plus migration `0006_damp_robin_chapel.sql`. No comparison pair,
+  place identity, comment/review content, service date, or declaration value is collected.
+- Verification completed: Prettier, ESLint, zero-warning Svelte diagnostics, repeated Svelte autofixer
+  passes, production build, 73 server/component unit tests, 23 PostgreSQL integration tests, and all
+  three localized production-build Playwright checks pass. The database suite used a temporary isolated
+  PostgreSQL 18 listener on port 55433 because Docker/WSL processes reserved the configured port 5433;
+  the temporary server was stopped after the suite. The E2E runner now accepts an `E2E_PORT` override
+  because another local process occupied its default port 3000.
+- Post-implementation developer testing found that an unapplied analytics-enum migration could return
+  a 500 after the comparison evidence had already been saved. Migration `0006_damp_robin_chapel.sql`
+  was applied to the local development database, and the analytics service is now explicitly
+  best-effort: it reports a generic operational failure but never fails the ranking, catalogue, or
+  review-prompt action that emitted the event.
+
 **Open questions to answer before Phase 6:**
 
 - Did internal use validate the selected ranking algorithm's question count, progress estimate, tie/skip language, and recovery behavior at the measured list sizes?

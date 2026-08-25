@@ -11,6 +11,8 @@
 		action = '?/publish',
 		idempotencyKey,
 		ondismiss,
+		dismissHref,
+		returnTo,
 		errors = {},
 		maxLength = 5000
 	}: {
@@ -19,6 +21,8 @@
 		action?: string;
 		idempotencyKey?: string;
 		ondismiss?: () => void;
+		dismissHref?: string;
+		returnTo?: string;
 		errors?: { body?: string; serviceDate?: string; declarations?: string[] };
 		maxLength?: number;
 	} = $props();
@@ -27,6 +31,7 @@
 
 <form method="POST" {action} class="review-composer">
 	{#if idempotencyKey}<input type="hidden" name="idempotencyKey" value={idempotencyKey} />{/if}
+	{#if returnTo}<input type="hidden" name="returnTo" value={returnTo} />{/if}
 	<ReviewDisclosure />
 	<div class="field" class:field--invalid={Boolean(errors.body)}>
 		<label for="review-body">{m.review_body_label()}</label>
@@ -48,7 +53,11 @@
 	<ServiceDateInput bind:value={serviceDate} error={errors.serviceDate} />
 	<DeclarationGroup errors={errors.declarations} />
 	<div class="form-footer form-footer--end">
-		<Button variant="quiet" type="button" onclick={ondismiss}>{m.not_now()}</Button>
+		{#if dismissHref}
+			<Button variant="quiet" href={dismissHref}>{m.not_now()}</Button>
+		{:else}
+			<Button variant="quiet" type="button" onclick={ondismiss}>{m.not_now()}</Button>
+		{/if}
 		<Button type="submit">{m.publish_review()}</Button>
 	</div>
 </form>

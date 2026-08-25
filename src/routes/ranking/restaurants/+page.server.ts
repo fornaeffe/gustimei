@@ -57,9 +57,13 @@ export const load: PageServerLoad = async (event) => {
 		});
 	}
 	const selectedIds = new Set(selected.map((item) => item.placeId));
+	const openSession = selected[0]
+		? await rankingRepository.findOpenSession(user.id, selected[0].listId)
+		: undefined;
 	return {
 		query: { name, locality },
 		selected,
+		openSession: openSession?.summary(),
 		results: results.map((result) => ({ ...result, selected: selectedIds.has(result.placeId) }))
 	};
 };

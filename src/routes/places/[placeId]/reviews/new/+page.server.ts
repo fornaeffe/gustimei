@@ -14,13 +14,19 @@ const catalogue = new CatalogueRepository(db, runtimeConfig.appEnvironment);
 const reviews = new ReviewService(db, runtimeConfig.appEnvironment);
 const accounts = new AccountService(db);
 
+function safeReturnTo(value: string | null) {
+	if (!value) return undefined;
+	return /^\/ranking\/restaurants\/session\/[A-Za-z0-9_-]+$/.test(value) ? value : undefined;
+}
+
 export const load: PageServerLoad = async (event) => {
 	const user = requireUser(event, { verified: true });
 	const place = await catalogue.getPublicPlace(decodeURIComponent(event.params.placeId));
 	return {
 		place,
 		profile: (await accounts.getAccountProjection(user.id)).publicProfile,
-		idempotencyKey: randomUUID()
+		idempotencyKey: randomUUID(),
+		returnTo: safeReturnTo(event.url.searchParams.get('returnTo'))
 	};
 };
 
@@ -29,6 +35,7 @@ export const actions = {
 		const user = requireUser(event, { verified: true });
 		const form = await event.request.formData();
 		const place = await catalogue.getPublicPlace(decodeURIComponent(event.params.placeId));
+		const returnTo = safeReturnTo(String(form.get('returnTo') ?? ''));
 		try {
 			const receipt = await reviews.create(user.id, {
 				placeId: place.placeId,
@@ -44,7 +51,9 @@ export const actions = {
 			});
 			redirect(
 				303,
-				`${localizedPath(`/places/${encodeURIComponent(place.placeId)}`)}#review-${receipt.versionId}`
+				returnTo
+					? localizedPath(returnTo)
+					: `${localizedPath(`/places/${encodeURIComponent(place.placeId)}`)}#review-${receipt.versionId}`
 			);
 		} catch (error) {
 			if (error && typeof error === 'object' && 'status' in error) throw error;

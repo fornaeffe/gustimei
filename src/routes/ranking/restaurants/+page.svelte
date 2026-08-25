@@ -167,10 +167,26 @@
 		{/if}
 
 		<div class="surface-card ranking-cta">
-			<h2>{data.selected.length >= 2 ? m.ranking_ready() : m.start_ranking()}</h2>
-			<p>{data.selected.length >= 2 ? m.ranking_ready_body() : m.ranking_not_ready()}</p>
+			<h2>
+				{data.openSession
+					? m.resume_ranking()
+					: data.selected.length >= 2
+						? m.ranking_ready()
+						: m.start_ranking()}
+			</h2>
+			<p>
+				{data.openSession
+					? m.resume_ranking_body({
+							remaining: data.openSession.progress.estimatedRemaining
+						})
+					: data.selected.length >= 2
+						? m.ranking_ready_body()
+						: m.ranking_not_ready()}
+			</p>
 			<form method="POST" action="?/start">
-				<Button type="submit" disabled={data.selected.length < 2}>{m.start_ranking()}</Button>
+				<Button type="submit" disabled={data.selected.length < 2}>
+					{data.openSession ? m.resume_ranking() : m.start_ranking()}
+				</Button>
 			</form>
 		</div>
 	</aside>

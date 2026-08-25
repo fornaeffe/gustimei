@@ -47,6 +47,13 @@ function numericPreference(left: string, right: string): ComparisonOutcome {
 	return leftValue < rightValue ? 'left' : 'right';
 }
 
+function preferPlace(
+	request: NonNullable<ReturnType<RankingSession['nextComparison']>>,
+	placeId: string
+): ComparisonOutcome {
+	return request.leftPlaceId === placeId ? 'left' : 'right';
+}
+
 function complete(
 	placeIds: readonly string[],
 	preference: (left: string, right: string) => ComparisonOutcome = numericPreference
@@ -74,6 +81,26 @@ function permutations(items: readonly string[]): string[][] {
 }
 
 describe('tier-aware stable merge ranking session', () => {
+	it('varies left/right presentation without changing the recorded preference', () => {
+		const presentedLeft = new Set<string>();
+		for (let index = 0; index < 20; index += 1) {
+			const session = RankingSession.initial({
+				id: `presentation-${index}`,
+				listId: 'list-1',
+				placeIds: ['a', 'b']
+			});
+			const request = session.nextComparison();
+			if (!request) throw new Error('Expected a comparison');
+			presentedLeft.add(request.leftPlaceId);
+			session.submit(preferPlace(request, 'a'));
+			expect(revision(['a', 'b'], session.evidence).orderedTiers).toEqual([
+				{ placeIds: ['a'] },
+				{ placeIds: ['b'] }
+			]);
+		}
+		expect(presentedLeft).toEqual(new Set(['a', 'b']));
+	});
+
 	it('orders every permutation of two through five places', () => {
 		for (let size = 2; size <= 5; size += 1) {
 			const expected = Array.from({ length: size }, (_, index) => `p${index}`);
@@ -160,6 +187,7 @@ describe('tier-aware stable merge ranking session', () => {
 		const resumed = RankingSession.resume(serialized);
 
 		expect(resumed.serialize()).toBe(serialized);
+		expect(resumed.placeIdsSnapshot).toEqual(['p2', 'p0', 'p1']);
 		expect(resumed.undo()).toBe(true);
 		expect(resumed.evidence.at(-1)?.active).toBe(false);
 		expect(resumed.nextComparison()?.leftPlaceId).toBe(first.leftPlaceId);
@@ -203,7 +231,7 @@ describe('binary tier insertion', () => {
 		while (session.nextComparison()) {
 			const request = session.nextComparison();
 			if (!request) break;
-			const outcome = request.rightPlaceId === 'c' ? 'left' : 'tie';
+			const outcome = request.logicalPair.includes('c') ? preferPlace(request, 'new') : 'tie';
 			session.submit(outcome);
 		}
 
@@ -228,9 +256,13 @@ describe('binary tier insertion', () => {
 			baseRevision: base,
 			newPlaceId: 'new'
 		});
-		conflicting.submit('left');
+		const first = conflicting.nextComparison();
+		if (!first) throw new Error('Expected an insertion comparison');
+		conflicting.submit(preferPlace(first, 'new'));
 		conflicting.submit('tie');
-		conflicting.submit('right');
+		const confirmation = conflicting.nextComparison();
+		if (!confirmation) throw new Error('Expected a tie confirmation');
+		conflicting.submit(preferPlace(confirmation, 'b'));
 		expect(conflicting.insertionResult()?.type).toBe('repair');
 	});
 
@@ -304,7 +336,9 @@ describe('contradiction recovery and projections', () => {
 			baseRevision: conflicted
 		});
 		expect(repair.nextComparison()?.reason).toBe('contradiction-repair');
-		repair.submit('right');
+		const request = repair.nextComparison();
+		if (!request) throw new Error('Expected a repair comparison');
+		repair.submit(preferPlace(request, 'b'));
 		const repaired = createRankingRevision({
 			id: 'revision-2',
 			listId: 'list-1',

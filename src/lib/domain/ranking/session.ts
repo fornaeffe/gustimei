@@ -67,6 +67,7 @@ interface SerializedRankingSession {
 	baseRevisionId?: string;
 	purpose: RankingSessionPurpose;
 	lifecycle: RankingSessionLifecycle;
+	placeIdsSnapshot?: PlaceId[];
 	algorithm: AlgorithmState;
 	pendingRequest?: ComparisonRequest;
 	evidence: ComparisonEvidence[];
@@ -93,11 +94,18 @@ function compareRequest(
 	reason: ComparisonReason
 ): ComparisonRequest {
 	const logicalPair = [leftPlaceId, rightPlaceId].sort() as [PlaceId, PlaceId];
+	// Presentation is deterministic for a persisted request, but independent from the
+	// algorithm's preferred/other operand ordering. This avoids leaking a stable
+	// "better place is usually on the left" pattern into the UI or evidence.
+	const presentationSeed = `${sessionId}:${sequence}`;
+	let hash = 0;
+	for (const character of presentationSeed) hash = (hash * 31 + character.charCodeAt(0)) | 0;
+	const swapPresentation = Math.abs(hash) % 2 === 1;
 	return {
 		id: `${sessionId}:comparison:${sequence}`,
 		logicalPair,
-		leftPlaceId,
-		rightPlaceId,
+		leftPlaceId: swapPresentation ? rightPlaceId : leftPlaceId,
+		rightPlaceId: swapPresentation ? leftPlaceId : rightPlaceId,
 		reason
 	};
 }
@@ -112,6 +120,7 @@ export class RankingSession {
 	readonly baseRevisionId?: string;
 	readonly purpose: RankingSessionPurpose;
 	#lifecycle: RankingSessionLifecycle;
+	#placeIdsSnapshot: PlaceId[];
 	#algorithm: AlgorithmState;
 	#pendingRequest?: ComparisonRequest;
 	#evidence: ComparisonEvidence[];
@@ -125,6 +134,9 @@ export class RankingSession {
 		this.baseRevisionId = state.baseRevisionId;
 		this.purpose = state.purpose;
 		this.#lifecycle = state.lifecycle;
+		this.#placeIdsSnapshot = clone(
+			state.placeIdsSnapshot ?? RankingSession.#recoverPlaceIdsSnapshot(state)
+		);
 		this.#algorithm = clone(state.algorithm);
 		this.#pendingRequest = clone(state.pendingRequest);
 		this.#evidence = clone(state.evidence);
@@ -143,6 +155,7 @@ export class RankingSession {
 			listId: input.listId,
 			purpose: 'initial-order',
 			lifecycle: 'open',
+			placeIdsSnapshot: [...placeIds],
 			algorithm: {
 				kind: 'initial',
 				runs: placeIds.map((placeId) => [[placeId]]),
@@ -176,6 +189,7 @@ export class RankingSession {
 			baseRevisionId: input.baseRevision.id,
 			purpose: 'insertion',
 			lifecycle: 'open',
+			placeIdsSnapshot: [...input.baseRevision.activePlaceIds, input.newPlaceId],
 			algorithm: {
 				kind: 'insertion',
 				newPlaceId: input.newPlaceId,
@@ -207,6 +221,7 @@ export class RankingSession {
 			baseRevisionId: input.baseRevision.id,
 			purpose: 'repair',
 			lifecycle: 'open',
+			placeIdsSnapshot: [...input.baseRevision.activePlaceIds],
 			algorithm: { kind: 'repair', requests: conflicts, requestIndex: 0 },
 			evidence: [],
 			nextSequence: 1,
@@ -227,6 +242,14 @@ export class RankingSession {
 
 	get evidence(): readonly ComparisonEvidence[] {
 		return clone(this.#evidence);
+	}
+
+	get placeIdsSnapshot(): readonly PlaceId[] {
+		return clone(this.#placeIdsSnapshot);
+	}
+
+	latestActiveEvidence(): ComparisonEvidence | undefined {
+		return clone([...this.#evidence].reverse().find((item) => item.active));
 	}
 
 	evidenceForNextRevision(baseRevision?: RankingRevision): readonly ComparisonEvidence[] {
@@ -276,7 +299,7 @@ export class RankingSession {
 		});
 		this.#nextSequence += 1;
 		this.#pendingRequest = undefined;
-		this.#consumeOutcome(outcome);
+		this.#consumeOutcome(outcome, request);
 		this.#advance();
 	}
 
@@ -350,6 +373,7 @@ export class RankingSession {
 			baseRevisionId: this.baseRevisionId,
 			purpose: this.purpose,
 			lifecycle: this.#lifecycle,
+			placeIdsSnapshot: clone(this.#placeIdsSnapshot),
 			algorithm: clone(this.#algorithm),
 			pendingRequest: clone(this.#pendingRequest),
 			evidence: clone(this.#evidence),
@@ -359,22 +383,59 @@ export class RankingSession {
 		};
 	}
 
-	#consumeOutcome(outcome: ComparisonOutcome) {
-		if (this.#algorithm.kind === 'initial') this.#consumeInitial(outcome);
-		else if (this.#algorithm.kind === 'insertion') this.#consumeInsertion(outcome);
+	static #recoverPlaceIdsSnapshot(state: SerializedRankingSession) {
+		const placeIds = new Set<PlaceId>();
+		const addTiers = (tiers: PlaceId[][] | undefined) => {
+			for (const tier of tiers ?? []) for (const placeId of tier) placeIds.add(placeId);
+		};
+		if (state.algorithm.kind === 'initial') {
+			for (const run of state.algorithm.runs) addTiers(run);
+			for (const run of state.algorithm.nextRuns) addTiers(run);
+			addTiers(state.algorithm.current?.left);
+			addTiers(state.algorithm.current?.right);
+			addTiers(state.algorithm.current?.merged);
+			addTiers(state.algorithm.result);
+		} else if (state.algorithm.kind === 'insertion') {
+			addTiers(state.algorithm.tiers);
+			placeIds.add(state.algorithm.newPlaceId);
+		} else {
+			for (const request of state.algorithm.requests) {
+				placeIds.add(request.leftPlaceId);
+				placeIds.add(request.rightPlaceId);
+			}
+		}
+		for (const evidence of state.evidence) {
+			placeIds.add(evidence.leftPlaceId);
+			placeIds.add(evidence.rightPlaceId);
+		}
+		return [...placeIds];
+	}
+
+	#consumeOutcome(outcome: ComparisonOutcome, request: ComparisonRequest) {
+		if (this.#algorithm.kind === 'initial') this.#consumeInitial(outcome, request);
+		else if (this.#algorithm.kind === 'insertion') this.#consumeInsertion(outcome, request);
 		else this.#algorithm.requestIndex += 1;
 	}
 
-	#consumeInitial(outcome: ComparisonOutcome) {
+	#consumeInitial(outcome: ComparisonOutcome, request: ComparisonRequest) {
 		const current = this.#algorithm.kind === 'initial' ? this.#algorithm.current : undefined;
 		if (!current) throw new Error('Missing merge state');
 		const left = current.left[current.leftIndex];
 		const right = current.right[current.rightIndex];
+		const preferredPlaceId =
+			outcome === 'left'
+				? request.leftPlaceId
+				: outcome === 'right'
+					? request.rightPlaceId
+					: undefined;
 		if (outcome === 'tie') {
 			current.merged.push([...left, ...right].sort());
 			current.leftIndex += 1;
 			current.rightIndex += 1;
-		} else if (outcome === 'left' || (outcome === 'skip' && left[0].localeCompare(right[0]) <= 0)) {
+		} else if (
+			preferredPlaceId === left[0] ||
+			(outcome === 'skip' && left[0].localeCompare(right[0]) <= 0)
+		) {
 			current.merged.push(left);
 			current.leftIndex += 1;
 		} else {
@@ -383,7 +444,7 @@ export class RankingSession {
 		}
 	}
 
-	#consumeInsertion(outcome: ComparisonOutcome) {
+	#consumeInsertion(outcome: ComparisonOutcome, request: ComparisonRequest) {
 		if (this.#algorithm.kind !== 'insertion') return;
 		const state = this.#algorithm;
 		if (state.pendingTie) {
@@ -396,8 +457,14 @@ export class RankingSession {
 		}
 		const middle = Math.floor((state.low + state.high) / 2);
 		const tier = state.tiers[middle];
-		if (outcome === 'left') state.high = middle;
-		else if (outcome === 'right') state.low = middle + 1;
+		const preferredPlaceId =
+			outcome === 'left'
+				? request.leftPlaceId
+				: outcome === 'right'
+					? request.rightPlaceId
+					: undefined;
+		if (preferredPlaceId === state.newPlaceId) state.high = middle;
+		else if (preferredPlaceId) state.low = middle + 1;
 		else if (outcome === 'tie' && tier.length === 1)
 			state.result = { type: 'tied', tierIndex: middle };
 		else if (outcome === 'tie') {

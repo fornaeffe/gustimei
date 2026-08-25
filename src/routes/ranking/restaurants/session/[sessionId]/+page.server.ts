@@ -1,12 +1,284 @@
+import { fail, isRedirect, redirect } from '@sveltejs/kit';
+import { and, eq, inArray } from 'drizzle-orm';
+import type { ComparisonOutcome, RankingRevision } from '$lib/domain/ranking/contracts';
+import { deriveRankingProjection } from '$lib/domain/ranking/revision';
+import { runtimeConfig } from '$lib/server/config';
 import { db } from '$lib/server/db';
+import { placeReview } from '$lib/server/db/schema';
+import { ConflictError, DomainValidationError, NotFoundError } from '$lib/server/domain/errors';
 import { requireUser } from '$lib/server/http/auth-guard';
+import { localizedPath } from '$lib/server/http/locale';
+import { ParticipationRepository } from '$lib/server/repositories/participation';
+import { PersonalCommentRepository } from '$lib/server/repositories/personal-comments';
 import { RankingRepository } from '$lib/server/repositories/rankings';
-import type { PageServerLoad } from './$types';
+import { stringField } from '$lib/server/security/auth-forms';
+import { PersonalCommentService } from '$lib/server/services/personal-comments';
+import { ProductAnalyticsService } from '$lib/server/services/product-analytics';
+import { RankingService } from '$lib/server/services/rankings';
+import type { Actions, PageServerLoad } from './$types';
 
-const rankings = new RankingRepository(db);
+const rankingRepository = new RankingRepository(db);
+const rankings = new RankingService(
+	rankingRepository,
+	new ParticipationRepository(db),
+	runtimeConfig.appEnvironment
+);
+const comments = new PersonalCommentService(new PersonalCommentRepository(db));
+const analytics = new ProductAnalyticsService(db);
+const outcomes = new Set<ComparisonOutcome>(['left', 'right', 'tie', 'skip']);
+
+function safeError(error: unknown) {
+	if (
+		error instanceof ConflictError ||
+		error instanceof DomainValidationError ||
+		error instanceof NotFoundError
+	) {
+		return error.message;
+	}
+	throw error;
+}
+
+function outcomeField(form: FormData) {
+	const value = stringField(form, 'outcome') as ComparisonOutcome;
+	if (!outcomes.has(value)) throw new DomainValidationError('Choose a valid comparison outcome');
+	return value;
+}
+
+function unresolvedGroups(revision: RankingRevision) {
+	const parent = new Map(revision.activePlaceIds.map((placeId) => [placeId, placeId]));
+	const find = (placeId: string): string => {
+		const next = parent.get(placeId) ?? placeId;
+		if (next === placeId) return placeId;
+		const root = find(next);
+		parent.set(placeId, root);
+		return root;
+	};
+	for (const relation of revision.unresolvedRelations) {
+		const first = find(relation.firstPlaceId);
+		const second = find(relation.secondPlaceId);
+		if (first !== second) parent.set(second, first);
+	}
+	const groups = new Map<string, Set<string>>();
+	for (const relation of revision.unresolvedRelations) {
+		const root = find(relation.firstPlaceId);
+		const group = groups.get(root) ?? new Set<string>();
+		group.add(relation.firstPlaceId);
+		group.add(relation.secondPlaceId);
+		groups.set(root, group);
+	}
+	return [...groups.values()].map((group) => [...group]);
+}
 
 export const load: PageServerLoad = async (event) => {
 	const user = requireUser(event);
-	const session = await rankings.loadSession(user.id, event.params.sessionId);
-	return { session: session.summary() };
+	const session = await rankingRepository.loadSession(user.id, event.params.sessionId);
+	const places = await rankings.listVisitedPlaces(user.id, 'restaurant');
+	const placeById = new Map(places.map((place) => [place.placeId, place]));
+	const comparison = session.nextComparison();
+	const currentRevision = await rankingRepository.loadCurrentRevision(user.id, session.listId);
+	const sessionEvidenceIds = new Set(session.evidence.map((item) => item.id));
+	const revisionEvidenceIds = new Set([
+		...(currentRevision?.activeEvidence.map((item) => item.id) ?? []),
+		...(currentRevision?.excludedEvidence.map((item) => item.evidence.id) ?? [])
+	]);
+	const revision =
+		currentRevision && [...sessionEvidenceIds].every((id) => revisionEvidenceIds.has(id))
+			? currentRevision
+			: undefined;
+	const unresolvedPlaceIds = new Set(
+		revision?.unresolvedRelations.flatMap((item) => [item.firstPlaceId, item.secondPlaceId]) ?? []
+	);
+	const ranking = revision
+		? {
+				projection: deriveRankingProjection(revision),
+				tiers: revision.orderedTiers
+					.map((tier, index) => ({
+						position: index + 1,
+						places: tier.placeIds
+							.filter((placeId) => !unresolvedPlaceIds.has(placeId))
+							.map((placeId) => placeById.get(placeId))
+							.filter((place) => place !== undefined)
+					}))
+					.filter((tier) => tier.places.length > 0),
+				unresolvedGroups: unresolvedGroups(revision).map((group) =>
+					group.map((placeId) => placeById.get(placeId)).filter((place) => place !== undefined)
+				)
+			}
+		: undefined;
+
+	let reviewPrompt;
+	if (
+		revision &&
+		user.emailVerified &&
+		event.cookies.get('ranking_review_prompt_dismissed') !== session.id
+	) {
+		const reviewed = await db
+			.select({ placeId: placeReview.placeId })
+			.from(placeReview)
+			.where(
+				and(
+					eq(placeReview.authorId, user.id),
+					inArray(placeReview.placeId, [...revision.activePlaceIds])
+				)
+			);
+		const reviewedIds = new Set(reviewed.map((item) => item.placeId));
+		reviewPrompt = places.find(
+			(place) => revision.activePlaceIds.includes(place.placeId) && !reviewedIds.has(place.placeId)
+		);
+		if (reviewPrompt && event.cookies.get('ranking_review_prompt_shown') !== session.id) {
+			const capture = await rankings.captureContext(user.id);
+			await analytics.record({
+				userId: user.id,
+				cohortAssignmentId: capture.cohortAssignmentId,
+				name: 'review-prompt-shown',
+				category: 'restaurant'
+			});
+			event.cookies.set('ranking_review_prompt_shown', session.id, {
+				path: '/',
+				httpOnly: true,
+				sameSite: 'lax',
+				secure: runtimeConfig.appEnvironment === 'production',
+				maxAge: 60 * 60 * 24 * 30
+			});
+		}
+	}
+
+	return {
+		session: session.summary(),
+		comparison: comparison
+			? {
+					...comparison,
+					left: placeById.get(comparison.leftPlaceId),
+					right: placeById.get(comparison.rightPlaceId)
+				}
+			: undefined,
+		latestEvidenceId: session.latestActiveEvidence()?.id,
+		ranking,
+		reviewPrompt
+	};
 };
+
+export const actions = {
+	submit: async (event) => {
+		const user = requireUser(event);
+		const form = await event.request.formData();
+		try {
+			const outcome = outcomeField(form);
+			const result = await rankings.submit(
+				user.id,
+				event.params.sessionId,
+				stringField(form, 'comparisonId'),
+				outcome
+			);
+			if (result.captured) {
+				const capture = await rankings.captureContext(user.id);
+				await analytics.record({
+					userId: user.id,
+					cohortAssignmentId: capture.cohortAssignmentId,
+					name: 'comparison-submitted',
+					category: 'restaurant',
+					metadata: {
+						outcome,
+						answeredCount: result.session.progress().answered,
+						estimatedTotal: result.session.progress().estimatedTotal
+					}
+				});
+			}
+			if (result.session.lifecycle === 'completed') {
+				const revision = await rankings.publishCompletedSession(
+					user.id,
+					event.params.sessionId,
+					'restaurant'
+				);
+				if (result.captured) {
+					const capture = await rankings.captureContext(user.id);
+					const projection = deriveRankingProjection(revision);
+					await analytics.record({
+						userId: user.id,
+						cohortAssignmentId: capture.cohortAssignmentId,
+						name: 'ranking-completed',
+						category: 'restaurant',
+						metadata: {
+							orderCoverage: projection.orderCoverage,
+							hasUnresolved: revision.unresolvedRelations.length > 0
+						}
+					});
+				}
+			}
+			redirect(303, localizedPath(`/ranking/restaurants/session/${event.params.sessionId}`));
+		} catch (error) {
+			if (isRedirect(error)) throw error;
+			return fail(409, { section: 'comparison', error: safeError(error) });
+		}
+	},
+	undo: async (event) => {
+		const user = requireUser(event);
+		const form = await event.request.formData();
+		try {
+			const result = await rankings.undo(
+				user.id,
+				event.params.sessionId,
+				stringField(form, 'evidenceId')
+			);
+			if (result.undone) {
+				const capture = await rankings.captureContext(user.id);
+				await analytics.record({
+					userId: user.id,
+					cohortAssignmentId: capture.cohortAssignmentId,
+					name: 'comparison-undone',
+					category: 'restaurant',
+					metadata: { answeredCount: result.session.progress().answered }
+				});
+			}
+			redirect(303, localizedPath(`/ranking/restaurants/session/${event.params.sessionId}`));
+		} catch (error) {
+			if (isRedirect(error)) throw error;
+			return fail(409, { section: 'comparison', error: safeError(error) });
+		}
+	},
+	publish: async (event) => {
+		const user = requireUser(event);
+		try {
+			await rankings.publishCompletedSession(user.id, event.params.sessionId, 'restaurant');
+			redirect(303, localizedPath(`/ranking/restaurants/session/${event.params.sessionId}`));
+		} catch (error) {
+			if (isRedirect(error)) throw error;
+			return fail(409, { section: 'publish', error: safeError(error) });
+		}
+	},
+	dismissReviewPrompt: async (event) => {
+		const user = requireUser(event);
+		event.cookies.set('ranking_review_prompt_dismissed', event.params.sessionId, {
+			path: '/',
+			httpOnly: true,
+			sameSite: 'lax',
+			secure: runtimeConfig.appEnvironment === 'production',
+			maxAge: 60 * 60 * 24 * 30
+		});
+		const capture = await rankings.captureContext(user.id);
+		await analytics.record({
+			userId: user.id,
+			cohortAssignmentId: capture.cohortAssignmentId,
+			name: 'review-prompt-dismissed',
+			category: 'restaurant'
+		});
+		return { section: 'reviewPrompt', dismissed: true };
+	},
+	saveComment: async (event) => {
+		const user = requireUser(event);
+		const form = await event.request.formData();
+		const placeId = stringField(form, 'placeId');
+		try {
+			await comments.save(user.id, placeId, stringField(form, 'body'));
+			return { section: 'comment', saved: true, placeId };
+		} catch (error) {
+			return fail(400, { section: 'comment', error: safeError(error) });
+		}
+	},
+	deleteComment: async (event) => {
+		const user = requireUser(event);
+		const form = await event.request.formData();
+		await comments.delete(user.id, stringField(form, 'placeId'));
+		return { section: 'comment', deleted: true };
+	}
+} satisfies Actions;

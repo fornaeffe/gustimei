@@ -1,7 +1,8 @@
-import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
 import type { AppEnvironment } from '$lib/server/config/environment';
 import type {
 	ComparisonEvidence,
+	ComparisonOutcome,
 	RankingCategory,
 	RankingRevision
 } from '$lib/domain/ranking/contracts';
@@ -29,6 +30,8 @@ export interface CaptureContext {
 	provenance: RankingRevision['provenance'];
 	environment: AppEnvironment;
 }
+
+export const RANKING_SESSION_IDLE_EXPIRY_MS = 30 * 24 * 60 * 60 * 1_000;
 
 function permitsDataClass(capture: CaptureContext, dataClass: 'real' | 'synthetic') {
 	if (capture.provenance === 'synthetic') {
@@ -285,6 +288,24 @@ export class RankingRepository {
 		return rows.map((row) => row.placeId);
 	}
 
+	async findOpenSession(ownerId: string, listId: string, now = new Date()) {
+		const [record] = await this.database
+			.select({ session: rankingSession, ownerId: rankingList.ownerId })
+			.from(rankingSession)
+			.innerJoin(rankingList, eq(rankingList.id, rankingSession.listId))
+			.where(
+				and(
+					eq(rankingSession.listId, listId),
+					eq(rankingSession.lifecycle, 'open'),
+					gt(rankingSession.updatedAt, new Date(now.getTime() - RANKING_SESSION_IDLE_EXPIRY_MS)),
+					eq(rankingList.ownerId, ownerId)
+				)
+			)
+			.orderBy(sql`${rankingSession.updatedAt} desc`)
+			.limit(1);
+		return record ? RankingSession.resume(record.session.serializedState) : undefined;
+	}
+
 	async saveSession(ownerId: string, session: RankingSession, capture: CaptureContext, now: Date) {
 		return this.database.transaction(async (transaction) => {
 			const [owned] = await transaction
@@ -375,17 +396,201 @@ export class RankingRepository {
 		});
 	}
 
-	async loadSession(ownerId: string, sessionId: string) {
-		const [record] = await this.database
-			.select({ session: rankingSession, ownerId: rankingList.ownerId })
-			.from(rankingSession)
-			.innerJoin(rankingList, eq(rankingList.id, rankingSession.listId))
-			.where(eq(rankingSession.id, sessionId));
-		if (!record || record.ownerId !== ownerId)
-			throw new NotFoundError('The ranking session was not found');
-		const session = RankingSession.resume(record.session.serializedState);
-		if (record.session.lifecycle === 'superseded') session.supersede();
-		return session;
+	async loadSession(ownerId: string, sessionId: string, now = new Date()) {
+		return this.database.transaction(async (transaction) => {
+			const [record] = await transaction
+				.select({ session: rankingSession, ownerId: rankingList.ownerId })
+				.from(rankingSession)
+				.innerJoin(rankingList, eq(rankingList.id, rankingSession.listId))
+				.where(eq(rankingSession.id, sessionId))
+				.for('update');
+			if (!record || record.ownerId !== ownerId) {
+				throw new NotFoundError('The ranking session was not found');
+			}
+			const session = RankingSession.resume(record.session.serializedState);
+			const expired =
+				record.session.lifecycle === 'open' &&
+				record.session.updatedAt <= new Date(now.getTime() - RANKING_SESSION_IDLE_EXPIRY_MS);
+			if (record.session.lifecycle === 'superseded' || expired) session.supersede();
+			if (expired) {
+				await transaction
+					.update(rankingSession)
+					.set({
+						lifecycle: 'superseded',
+						serializedState: session.serialize(),
+						updatedAt: now,
+						completedAt: now
+					})
+					.where(eq(rankingSession.id, sessionId));
+			}
+			return session;
+		});
+	}
+
+	async submitSessionOutcome(input: {
+		ownerId: string;
+		sessionId: string;
+		expectedComparisonId: string;
+		outcome: ComparisonOutcome;
+		capture: CaptureContext;
+		now: Date;
+	}) {
+		return this.database.transaction(async (transaction) => {
+			const [record] = await transaction
+				.select({ session: rankingSession, ownerId: rankingList.ownerId })
+				.from(rankingSession)
+				.innerJoin(rankingList, eq(rankingList.id, rankingSession.listId))
+				.where(eq(rankingSession.id, input.sessionId))
+				.for('update');
+			if (!record || record.ownerId !== input.ownerId) {
+				throw new NotFoundError('The ranking session was not found');
+			}
+			if (
+				input.capture.provenance === 'synthetic' &&
+				!['development', 'test'].includes(input.capture.environment)
+			) {
+				throw new DomainValidationError(
+					'Synthetic sessions are forbidden in preview and production'
+				);
+			}
+
+			const session = RankingSession.resume(record.session.serializedState);
+			if (record.session.lifecycle === 'superseded') session.supersede();
+			if (
+				record.session.lifecycle === 'open' &&
+				record.session.updatedAt <= new Date(input.now.getTime() - RANKING_SESSION_IDLE_EXPIRY_MS)
+			) {
+				session.supersede();
+				await transaction
+					.update(rankingSession)
+					.set({
+						lifecycle: 'superseded',
+						serializedState: session.serialize(),
+						updatedAt: input.now,
+						completedAt: input.now
+					})
+					.where(eq(rankingSession.id, input.sessionId));
+				return { session, captured: false };
+			}
+			const previouslyCaptured = session.evidence.find(
+				(item) => item.id === input.expectedComparisonId
+			);
+			if (previouslyCaptured) {
+				if (previouslyCaptured.outcome !== input.outcome) {
+					throw new ConflictError('This comparison was already answered differently');
+				}
+				return { session, captured: false };
+			}
+			if (session.lifecycle !== 'open') {
+				throw new ConflictError('The ranking session is no longer open');
+			}
+			if (session.nextComparison()?.id !== input.expectedComparisonId) {
+				throw new ConflictError('The comparison changed in another tab');
+			}
+
+			session.submit(input.outcome);
+			const summary = session.summary();
+			await transaction
+				.update(rankingSession)
+				.set({
+					lifecycle: summary.lifecycle,
+					serializedState: session.serialize(),
+					updatedAt: input.now,
+					completedAt: summary.lifecycle === 'open' ? null : input.now
+				})
+				.where(eq(rankingSession.id, session.id));
+
+			const captured = session.evidence.at(-1);
+			if (!captured) throw new ConflictError('The comparison outcome was not captured');
+			await transaction.insert(comparisonEvidence).values({
+				id: captured.id,
+				sessionId: session.id,
+				sequence: captured.sequence,
+				logicalFirstPlaceId: captured.logicalPair[0],
+				logicalSecondPlaceId: captured.logicalPair[1],
+				leftPlaceId: captured.leftPlaceId,
+				rightPlaceId: captured.rightPlaceId,
+				outcome: captured.outcome,
+				reason: captured.reason,
+				active: 1,
+				supersedesEvidenceId: captured.supersedesEvidenceId,
+				capturedAt: input.now
+			});
+			return { session, captured: true };
+		});
+	}
+
+	async undoSessionOutcome(input: {
+		ownerId: string;
+		sessionId: string;
+		expectedEvidenceId: string;
+		capture: CaptureContext;
+		now: Date;
+	}) {
+		return this.database.transaction(async (transaction) => {
+			if (
+				input.capture.provenance === 'synthetic' &&
+				!['development', 'test'].includes(input.capture.environment)
+			) {
+				throw new DomainValidationError(
+					'Synthetic sessions are forbidden in preview and production'
+				);
+			}
+			const [record] = await transaction
+				.select({ session: rankingSession, ownerId: rankingList.ownerId })
+				.from(rankingSession)
+				.innerJoin(rankingList, eq(rankingList.id, rankingSession.listId))
+				.where(eq(rankingSession.id, input.sessionId))
+				.for('update');
+			if (!record || record.ownerId !== input.ownerId) {
+				throw new NotFoundError('The ranking session was not found');
+			}
+			const session = RankingSession.resume(record.session.serializedState);
+			if (record.session.lifecycle === 'superseded') session.supersede();
+			if (
+				record.session.lifecycle === 'open' &&
+				record.session.updatedAt <= new Date(input.now.getTime() - RANKING_SESSION_IDLE_EXPIRY_MS)
+			) {
+				session.supersede();
+				await transaction
+					.update(rankingSession)
+					.set({
+						lifecycle: 'superseded',
+						serializedState: session.serialize(),
+						updatedAt: input.now,
+						completedAt: input.now
+					})
+					.where(eq(rankingSession.id, input.sessionId));
+				return { session, undone: false };
+			}
+			const latest = session.latestActiveEvidence();
+			if (!latest) return { session, undone: false };
+			if (latest.id !== input.expectedEvidenceId) {
+				const expected = session.evidence.find((item) => item.id === input.expectedEvidenceId);
+				if (expected && !expected.active) return { session, undone: false };
+				throw new ConflictError('The ranking changed in another tab');
+			}
+			if (!session.undo()) return { session, undone: false };
+			await transaction
+				.update(rankingSession)
+				.set({
+					lifecycle: 'open',
+					serializedState: session.serialize(),
+					updatedAt: input.now,
+					completedAt: null
+				})
+				.where(eq(rankingSession.id, session.id));
+			await transaction
+				.update(comparisonEvidence)
+				.set({ active: 0 })
+				.where(
+					and(
+						eq(comparisonEvidence.id, input.expectedEvidenceId),
+						eq(comparisonEvidence.sessionId, input.sessionId)
+					)
+				);
+			return { session, undone: true };
+		});
 	}
 
 	async publishRevision(ownerId: string, revision: RankingRevision, capture: CaptureContext) {

@@ -69,7 +69,12 @@ export const productEventNameEnum = pgEnum('product_event_name', [
 	'visited-place-added',
 	'visited-place-removed',
 	'ranking-threshold-reached',
-	'ranking-started'
+	'ranking-started',
+	'comparison-submitted',
+	'comparison-undone',
+	'ranking-completed',
+	'review-prompt-shown',
+	'review-prompt-dismissed'
 ]);
 
 export const catalogueRoleEnum = pgEnum('catalogue_role', ['admin', 'catalogue_curator']);

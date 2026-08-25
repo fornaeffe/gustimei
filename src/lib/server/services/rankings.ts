@@ -104,29 +104,43 @@ export class RankingService {
 	}
 
 	async startInitialSession(ownerId: string, listId: string) {
+		const now = this.clock();
+		const existing = await this.rankings.findOpenSession(ownerId, listId, now);
+		if (existing) return existing;
 		const placeIds = await this.rankings.listVisitedPlaceIds(ownerId, listId);
 		if (placeIds.length < 2)
 			throw new DomainValidationError('At least two visited places are required');
-		const now = this.clock();
 		const session = RankingSession.initial({ id: this.createId(), listId, placeIds });
 		await this.rankings.saveSession(ownerId, session, await this.captureContext(ownerId, now), now);
 		return session;
 	}
 
-	async submit(ownerId: string, sessionId: string, outcome: ComparisonOutcome) {
-		const session = await this.rankings.loadSession(ownerId, sessionId);
-		session.submit(outcome);
+	async submit(
+		ownerId: string,
+		sessionId: string,
+		expectedComparisonId: string,
+		outcome: ComparisonOutcome
+	) {
 		const now = this.clock();
-		await this.rankings.saveSession(ownerId, session, await this.captureContext(ownerId, now), now);
-		return session;
+		return this.rankings.submitSessionOutcome({
+			ownerId,
+			sessionId,
+			expectedComparisonId,
+			outcome,
+			capture: await this.captureContext(ownerId, now),
+			now
+		});
 	}
 
-	async undo(ownerId: string, sessionId: string) {
-		const session = await this.rankings.loadSession(ownerId, sessionId);
-		if (!session.undo()) return false;
+	async undo(ownerId: string, sessionId: string, expectedEvidenceId: string) {
 		const now = this.clock();
-		await this.rankings.saveSession(ownerId, session, await this.captureContext(ownerId, now), now);
-		return true;
+		return this.rankings.undoSessionOutcome({
+			ownerId,
+			sessionId,
+			expectedEvidenceId,
+			capture: await this.captureContext(ownerId, now),
+			now
+		});
 	}
 
 	async publishCompletedSession(ownerId: string, sessionId: string, category: RankingCategory) {
@@ -137,9 +151,14 @@ export class RankingService {
 		const capture = await this.captureContext(ownerId, now);
 		const base = await this.rankings.loadCurrentRevision(ownerId, session.listId);
 		if (session.baseRevisionId !== base?.id) {
+			const publishedEvidenceIds = new Set([
+				...(base?.activeEvidence.map((item) => item.id) ?? []),
+				...(base?.excludedEvidence.map((item) => item.evidence.id) ?? [])
+			]);
+			if (base && session.evidence.every((item) => publishedEvidenceIds.has(item.id))) return base;
 			throw new ConflictError('The ranking session is based on a stale revision');
 		}
-		const activePlaceIds = await this.rankings.listVisitedPlaceIds(ownerId, session.listId);
+		const activePlaceIds = [...session.placeIdsSnapshot];
 		const revision = createRankingRevision({
 			id: this.createId(),
 			listId: session.listId,

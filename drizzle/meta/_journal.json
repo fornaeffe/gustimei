@@ -43,6 +43,13 @@
       "when": 1786896842391,
       "tag": "0005_wide_whizzer",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1787646867404,
+      "tag": "0006_damp_robin_chapel",
+      "breakpoints": true
     }
   ]
 }

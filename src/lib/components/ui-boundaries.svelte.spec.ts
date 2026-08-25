@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import * as m from '$lib/paraglide/messages';
 import PersonalCommentField from './comments/PersonalCommentField.svelte';
+import ComparisonPlaceCard from './ranking/ComparisonPlaceCard.svelte';
 import ReviewDisclosure from './reviews/ReviewDisclosure.svelte';
 import PlaceCard from './ui/PlaceCard.svelte';
 
@@ -31,5 +32,25 @@ describe('Phase 3 content boundaries', () => {
 		const screen = await render(ReviewDisclosure);
 		await expect.element(screen.getByText(m.public_review_title())).toBeVisible();
 		await expect.element(screen.getByText(m.public_review_explanation())).toBeVisible();
+	});
+
+	it('offers a balanced explicit comparison choice with a collapsed owner-only note', async () => {
+		const screen = await render(ComparisonPlaceCard, {
+			place: {
+				name: 'Trattoria Verde',
+				category: 'restaurant',
+				displayLocality: 'Parma',
+				addressLabel: 'Via Verde 1',
+				commentBody: 'Quiet table by the window'
+			},
+			comparisonId: 'comparison-1',
+			outcome: 'left'
+		});
+		await expect
+			.element(screen.getByRole('button', { name: m.prefer_place({ place: 'Trattoria Verde' }) }))
+			.toBeVisible();
+		await expect.element(screen.getByText('Parma')).toBeVisible();
+		await expect.element(screen.getByText(m.view_private_note())).toBeVisible();
+		await expect.element(screen.getByText('Quiet table by the window')).not.toBeVisible();
 	});
 });

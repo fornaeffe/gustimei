@@ -39,7 +39,16 @@
 		</StatePanel>
 	{:else}
 		{#if form?.error}<p class="form-status form-status--error" role="alert">{form.error}</p>{/if}
-		<ReviewComposer bind:body={reviewBody} bind:serviceDate idempotencyKey={data.idempotencyKey} />
+		<ReviewComposer
+			bind:body={reviewBody}
+			bind:serviceDate
+			idempotencyKey={data.idempotencyKey}
+			returnTo={data.returnTo}
+			dismissHref={localizeHref(
+				data.returnTo ?? `/places/${encodeURIComponent(data.place.placeId)}`,
+				{ locale }
+			)}
+		/>
 		{#if reviewBody.trim()}
 			<section class="stack" aria-labelledby="review-preview-title">
 				<h2 id="review-preview-title">{m.review_preview()}</h2>

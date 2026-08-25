@@ -1,7 +1,8 @@
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-const address = 'http://127.0.0.1:3000';
+const port = process.env.E2E_PORT ?? '3000';
+const address = `http://127.0.0.1:${port}`;
 const playwrightCli = fileURLToPath(
 	new URL('../node_modules/@playwright/test/cli.js', import.meta.url)
 );
@@ -69,7 +70,7 @@ async function stopServer(server) {
 }
 
 const server = spawn(process.execPath, ['--env-file=.env.test', 'build'], {
-	env: { ...process.env, HOST: '127.0.0.1', PORT: '3000' },
+	env: { ...process.env, HOST: '127.0.0.1', PORT: port },
 	stdio: 'inherit'
 });
 
@@ -79,6 +80,7 @@ try {
 	await waitForServer(server);
 
 	const tests = spawn(process.execPath, [playwrightCli, 'test'], {
+		env: { ...process.env, E2E_BASE_URL: address },
 		stdio: ['inherit', 'inherit', 'inherit', 'ipc']
 	});
 

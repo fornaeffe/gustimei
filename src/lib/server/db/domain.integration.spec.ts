@@ -7,6 +7,7 @@ import { RankingSession } from '$lib/domain/ranking/session';
 import { createDatabase } from '$lib/server/db/connection';
 import {
 	catalogueSourceSnapshot,
+	comparisonEvidence,
 	localityBoundary,
 	personalPlaceComment,
 	productAnalyticsEvent,
@@ -402,6 +403,91 @@ describe('ranking, comments, provenance, and policy-enforced evidence', () => {
 			{ id: 'session-second', lifecycle: 'open' }
 		]);
 		expect((await rankings.loadSession('user-1', 'session-first')).lifecycle).toBe('superseded');
+	});
+
+	it('serializes duplicate comparison writes and stale undo commands', async () => {
+		await seedCatalogue('synthetic', [fixturePlace(1, 'One'), fixturePlace(2, 'Two')]);
+		await seedParticipation();
+		const rankings = new RankingRepository(db);
+		await rankings.getOrCreateList({
+			id: 'list-concurrent',
+			ownerId: 'user-1',
+			category: 'restaurant',
+			now
+		});
+		for (const placeId of ['osm:node:1', 'osm:node:2']) {
+			await rankings.addVisitedPlace({
+				ownerId: 'user-1',
+				listId: 'list-concurrent',
+				placeId,
+				capture,
+				now
+			});
+		}
+		const session = RankingSession.initial({
+			id: 'session-concurrent',
+			listId: 'list-concurrent',
+			placeIds: ['osm:node:1', 'osm:node:2']
+		});
+		await rankings.saveSession('user-1', session, capture, now);
+		const comparisonId = session.nextComparison()!.id;
+		const results = await Promise.all([
+			rankings.submitSessionOutcome({
+				ownerId: 'user-1',
+				sessionId: session.id,
+				expectedComparisonId: comparisonId,
+				outcome: 'tie',
+				capture,
+				now
+			}),
+			rankings.submitSessionOutcome({
+				ownerId: 'user-1',
+				sessionId: session.id,
+				expectedComparisonId: comparisonId,
+				outcome: 'tie',
+				capture,
+				now
+			})
+		]);
+		expect(results.map((result) => result.captured).sort()).toEqual([false, true]);
+		expect(await db.select().from(comparisonEvidence)).toHaveLength(1);
+		await expect(
+			rankings.submitSessionOutcome({
+				ownerId: 'user-1',
+				sessionId: session.id,
+				expectedComparisonId: comparisonId,
+				outcome: 'skip',
+				capture,
+				now
+			})
+		).rejects.toThrow('already answered differently');
+
+		const firstUndo = await rankings.undoSessionOutcome({
+			ownerId: 'user-1',
+			sessionId: session.id,
+			expectedEvidenceId: comparisonId,
+			capture,
+			now
+		});
+		const duplicateUndo = await rankings.undoSessionOutcome({
+			ownerId: 'user-1',
+			sessionId: session.id,
+			expectedEvidenceId: comparisonId,
+			capture,
+			now
+		});
+		expect(firstUndo.undone).toBe(true);
+		expect(duplicateUndo.undone).toBe(false);
+		expect((await db.select().from(comparisonEvidence))[0].active).toBe(0);
+		expect(
+			(
+				await rankings.loadSession(
+					'user-1',
+					session.id,
+					new Date(now.getTime() + 31 * 24 * 60 * 60 * 1_000)
+				)
+			).lifecycle
+		).toBe('superseded');
 	});
 
 	it('deletes personal comments with their owning account', async () => {
