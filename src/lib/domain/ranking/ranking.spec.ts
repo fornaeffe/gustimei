@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ComparisonEvidence, ComparisonOutcome, RankingRevision } from './contracts';
-import { createRankingRevision, deriveRankingProjection } from './revision';
+import { createRankingRevision, deriveRankingDisplay, deriveRankingProjection } from './revision';
 import { RankingSession } from './session';
 
 const publishedAt = '2026-08-14T00:00:00.000Z';
@@ -194,6 +194,20 @@ describe('tier-aware stable merge ranking session', () => {
 		const result = revision(placeIds, session.evidence);
 
 		expect(result.unresolvedRelations.some((item) => item.reason === 'skipped')).toBe(true);
+		expect(deriveRankingProjection(result).orderCoverage).toBe('partial');
+	});
+
+	it('ranks the comparable places while isolating one restaurant skipped throughout', () => {
+		const placeIds = Array.from({ length: 10 }, (_, index) => `p${index}`);
+		const skippedPlaceId = 'p9';
+		const session = complete(placeIds, (left, right) =>
+			left === skippedPlaceId || right === skippedPlaceId ? 'skip' : numericPreference(left, right)
+		);
+		const result = revision(placeIds, session.evidence);
+		const display = deriveRankingDisplay(result);
+
+		expect(display.orderedTiers.flatMap((tier) => tier.placeIds)).toEqual(placeIds.slice(0, 9));
+		expect(display.unresolvedPlaceGroups).toEqual([[skippedPlaceId]]);
 		expect(deriveRankingProjection(result).orderCoverage).toBe('partial');
 	});
 

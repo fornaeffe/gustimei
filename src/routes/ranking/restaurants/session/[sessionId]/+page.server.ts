@@ -1,7 +1,7 @@
 import { fail, isRedirect, redirect } from '@sveltejs/kit';
 import { and, eq, inArray } from 'drizzle-orm';
-import type { ComparisonOutcome, RankingRevision } from '$lib/domain/ranking/contracts';
-import { deriveRankingProjection } from '$lib/domain/ranking/revision';
+import type { ComparisonOutcome } from '$lib/domain/ranking/contracts';
+import { deriveRankingDisplay, deriveRankingProjection } from '$lib/domain/ranking/revision';
 import { runtimeConfig } from '$lib/server/config';
 import { db } from '$lib/server/db';
 import { placeReview } from '$lib/server/db/schema';
@@ -44,31 +44,6 @@ function outcomeField(form: FormData) {
 	return value;
 }
 
-function unresolvedGroups(revision: RankingRevision) {
-	const parent = new Map(revision.activePlaceIds.map((placeId) => [placeId, placeId]));
-	const find = (placeId: string): string => {
-		const next = parent.get(placeId) ?? placeId;
-		if (next === placeId) return placeId;
-		const root = find(next);
-		parent.set(placeId, root);
-		return root;
-	};
-	for (const relation of revision.unresolvedRelations) {
-		const first = find(relation.firstPlaceId);
-		const second = find(relation.secondPlaceId);
-		if (first !== second) parent.set(second, first);
-	}
-	const groups = new Map<string, Set<string>>();
-	for (const relation of revision.unresolvedRelations) {
-		const root = find(relation.firstPlaceId);
-		const group = groups.get(root) ?? new Set<string>();
-		group.add(relation.firstPlaceId);
-		group.add(relation.secondPlaceId);
-		groups.set(root, group);
-	}
-	return [...groups.values()].map((group) => [...group]);
-}
-
 export const load: PageServerLoad = async (event) => {
 	const user = requireUser(event);
 	const session = await rankingRepository.loadSession(user.id, event.params.sessionId);
@@ -85,22 +60,19 @@ export const load: PageServerLoad = async (event) => {
 		currentRevision && [...sessionEvidenceIds].every((id) => revisionEvidenceIds.has(id))
 			? currentRevision
 			: undefined;
-	const unresolvedPlaceIds = new Set(
-		revision?.unresolvedRelations.flatMap((item) => [item.firstPlaceId, item.secondPlaceId]) ?? []
-	);
+	const display = revision ? deriveRankingDisplay(revision) : undefined;
 	const ranking = revision
 		? {
 				projection: deriveRankingProjection(revision),
-				tiers: revision.orderedTiers
+				tiers: display!.orderedTiers
 					.map((tier, index) => ({
 						position: index + 1,
 						places: tier.placeIds
-							.filter((placeId) => !unresolvedPlaceIds.has(placeId))
 							.map((placeId) => placeById.get(placeId))
 							.filter((place) => place !== undefined)
 					}))
 					.filter((tier) => tier.places.length > 0),
-				unresolvedGroups: unresolvedGroups(revision).map((group) =>
+				unresolvedGroups: display!.unresolvedPlaceGroups.map((group) =>
 					group.map((placeId) => placeById.get(placeId)).filter((place) => place !== undefined)
 				)
 			}

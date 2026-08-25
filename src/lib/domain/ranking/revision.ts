@@ -363,6 +363,84 @@ export function deriveRepairRequirement(revision: RankingRevision): RepairRequir
 	};
 }
 
+export function deriveRankingDisplay(revision: RankingRevision): {
+	orderedTiers: EquivalenceTier[];
+	unresolvedPlaceGroups: PlaceId[][];
+} {
+	const unresolvedPairs = new Set(
+		revision.unresolvedRelations.map((relation) =>
+			pairKey(relation.firstPlaceId, relation.secondPlaceId)
+		)
+	);
+	const tiersAreComparable = (first: EquivalenceTier, second: EquivalenceTier) =>
+		first.placeIds.every((firstPlaceId) =>
+			second.placeIds.every(
+				(secondPlaceId) => !unresolvedPairs.has(pairKey(firstPlaceId, secondPlaceId))
+			)
+		);
+	const bestEndingAt: { placeCount: number; tierIndexes: number[] }[] = [];
+	for (const [tierIndex, tier] of revision.orderedTiers.entries()) {
+		let best = { placeCount: tier.placeIds.length, tierIndexes: [tierIndex] };
+		for (let previousIndex = 0; previousIndex < tierIndex; previousIndex += 1) {
+			if (!tiersAreComparable(revision.orderedTiers[previousIndex], tier)) continue;
+			const previous = bestEndingAt[previousIndex];
+			const candidate = {
+				placeCount: previous.placeCount + tier.placeIds.length,
+				tierIndexes: [...previous.tierIndexes, tierIndex]
+			};
+			if (candidate.placeCount > best.placeCount) best = candidate;
+		}
+		bestEndingAt.push(best);
+	}
+	const best = bestEndingAt.reduce(
+		(current, candidate) => (candidate.placeCount > current.placeCount ? candidate : current),
+		{ placeCount: 0, tierIndexes: [] as number[] }
+	);
+	const resolvedTierIndexes = new Set(best.tierIndexes);
+	const orderedTiers = revision.orderedTiers
+		.filter((_tier, tierIndex) => resolvedTierIndexes.has(tierIndex))
+		.map((tier) => ({ placeIds: [...tier.placeIds] }));
+	const unresolvedPlaceIds = new Set(
+		revision.orderedTiers
+			.filter((_tier, tierIndex) => !resolvedTierIndexes.has(tierIndex))
+			.flatMap((tier) => tier.placeIds)
+	);
+	const adjacency = new Map(
+		[...unresolvedPlaceIds].map((placeId) => [placeId, new Set<PlaceId>()])
+	);
+	for (const relation of revision.unresolvedRelations) {
+		if (
+			!unresolvedPlaceIds.has(relation.firstPlaceId) ||
+			!unresolvedPlaceIds.has(relation.secondPlaceId)
+		) {
+			continue;
+		}
+		adjacency.get(relation.firstPlaceId)?.add(relation.secondPlaceId);
+		adjacency.get(relation.secondPlaceId)?.add(relation.firstPlaceId);
+	}
+	const visited = new Set<PlaceId>();
+	const unresolvedPlaceGroups: PlaceId[][] = [];
+	for (const placeId of unresolvedPlaceIds) {
+		if (visited.has(placeId)) continue;
+		const group: PlaceId[] = [];
+		const pending = [placeId];
+		visited.add(placeId);
+		while (pending.length > 0) {
+			const current = pending.shift();
+			if (current === undefined) break;
+			group.push(current);
+			for (const neighbor of adjacency.get(current) ?? []) {
+				if (visited.has(neighbor)) continue;
+				visited.add(neighbor);
+				pending.push(neighbor);
+			}
+		}
+		unresolvedPlaceGroups.push(group.sort());
+	}
+
+	return { orderedTiers, unresolvedPlaceGroups };
+}
+
 export function deriveRankingProjection(
 	revision: RankingRevision,
 	openSession?: RankingSessionSummary

@@ -1041,7 +1041,7 @@ proportionate retention purpose ([17 April 2026 decision](https://www.garantepri
   review-prompt display/dismissal, plus migration `0006_damp_robin_chapel.sql`. No comparison pair,
   place identity, comment/review content, service date, or declaration value is collected.
 - Verification completed: Prettier, ESLint, zero-warning Svelte diagnostics, repeated Svelte autofixer
-  passes, production build, 76 server/component unit tests, 23 PostgreSQL integration tests, and all
+  passes, production build, 77 server/component unit tests, 23 PostgreSQL integration tests, and all
   three localized production-build Playwright checks pass. The database suite used a temporary isolated
   PostgreSQL 18 listener on port 55433 because Docker/WSL processes reserved the configured port 5433;
   the temporary server was stopped after the suite. The E2E runner now accepts an `E2E_PORT` override
@@ -1057,6 +1057,12 @@ proportionate retention purpose ([17 April 2026 decision](https://www.garantepri
   now use an explicit `rebuild` session tied to the current revision, publish only the newly elicited
   ordering evidence while retaining the previous immutable revision, and safely recover legacy
   affected sessions when their visited-place snapshot still matches the current list.
+- Post-implementation skip testing with a ten-place list found that the completed view hid every
+  endpoint of every unresolved relation. Repeatedly skipping one place therefore hid the nine
+  otherwise comparable places as well. The completed projection now selects the largest
+  evidence-supported chain of ordered equivalence tiers, assigns it dense displayed positions, and
+  leaves only places outside that chain in explicit unresolved groups. The persisted partial
+  revision and its missing-evidence relations remain unchanged.
 
 **Open questions to answer before Phase 6:**
 
