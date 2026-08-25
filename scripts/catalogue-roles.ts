@@ -1,19 +1,12 @@
 import { loadEnvironment, type AppEnvironment } from '$lib/server/config/environment';
 import { createDatabase } from '$lib/server/db/connection';
 import { CatalogueGovernanceService } from '$lib/server/services/catalogue-governance';
+import { parseOperatorArguments } from '$lib/server/cli/operator-arguments';
 
 const runtimeConfig = loadEnvironment(process.env);
 const connection = createDatabase(runtimeConfig.databaseUrl);
 const [command, ...rawArguments] = process.argv.slice(2);
-const argumentsByName = new Map<string, string>();
-for (let index = 0; index < rawArguments.length; index += 2) {
-	const name = rawArguments[index];
-	const value = rawArguments[index + 1];
-	if (!name?.startsWith('--') || !value || value.startsWith('--')) {
-		throw new Error('Every operator argument must use --name value syntax');
-	}
-	argumentsByName.set(name.slice(2), value);
-}
+const argumentsByName = parseOperatorArguments(rawArguments);
 
 function required(name: string) {
 	const value = argumentsByName.get(name)?.trim();
@@ -95,7 +88,7 @@ try {
 			break;
 		default:
 			throw new Error(
-				'Usage: catalogue:roles -- <bootstrap|grant|revoke|rotate|break-glass> --environment <environment> ...'
+				'Usage: npm run catalogue:roles -- <bootstrap|grant|revoke|rotate|break-glass> environment=<environment> ...'
 			);
 	}
 	process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);

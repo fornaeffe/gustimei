@@ -23,9 +23,13 @@ After the target Better Auth accounts exist and have verified email addresses, b
 review administrator and grant a separate least-privilege moderator account:
 
 ```powershell
-npm run review:roles -- bootstrap --environment development --target-user-id ADMIN_USER_ID --role admin --operator LOCAL_OPERATOR --reason "initial local review administrator"
-npm run review:roles -- grant --environment development --actor-user-id ADMIN_USER_ID --target-user-id MODERATOR_USER_ID --role review_moderator --reason "Phase 6 synthetic case exercise"
+npm run review:roles -- bootstrap environment=development target-user-id=ADMIN_USER_ID role=admin operator=LOCAL_OPERATOR "reason=initial local review administrator"
+npm run review:roles -- grant environment=development actor-user-id=ADMIN_USER_ID target-user-id=MODERATOR_USER_ID role=review_moderator "reason=Phase 6 synthetic case exercise"
 ```
+
+The `name=value` form is intentional: npm 11 on Windows can consume conventional `--name value`
+script arguments as npm configuration instead of forwarding them. The operator scripts accept both
+forms so direct invocation and non-Windows npm versions remain compatible.
 
 The bootstrap command is deliberately disabled in preview and production. Use `revoke` with the
 same environment, actor, target, role, and a documented reason when local access is no longer

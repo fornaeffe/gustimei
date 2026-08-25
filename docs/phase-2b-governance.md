@@ -37,21 +37,24 @@ blocked in preview and production and require an explicit environment matching `
 After the target Better Auth account exists and has a verified email, bootstrap a local admin:
 
 ```powershell
-npm run catalogue:roles -- bootstrap --environment development --target-user-id USER_ID --role admin --operator LOCAL_OPERATOR --reason "initial local administrator"
+npm run catalogue:roles -- bootstrap environment=development target-user-id=USER_ID role=admin operator=LOCAL_OPERATOR "reason=initial local administrator"
 ```
 
 Then grant a curator through that administrator:
 
 ```powershell
-npm run catalogue:roles -- grant --environment development --actor-user-id ADMIN_ID --target-user-id CURATOR_ID --role catalogue_curator --reason "catalogue operations"
+npm run catalogue:roles -- grant environment=development actor-user-id=ADMIN_ID target-user-id=CURATOR_ID role=catalogue_curator "reason=catalogue operations"
 ```
 
 Rotation grants and verifies the successor before revoking the predecessor and all predecessor
 Better Auth database sessions:
 
 ```powershell
-npm run catalogue:roles -- rotate --environment development --actor-user-id ADMIN_ID --predecessor-user-id OLD_ID --successor-user-id NEW_ID --role admin --reason "operator rotation"
+npm run catalogue:roles -- rotate environment=development actor-user-id=ADMIN_ID predecessor-user-id=OLD_ID successor-user-id=NEW_ID role=admin "reason=operator rotation"
 ```
+
+The `name=value` form avoids an npm 11 argument-forwarding bug on Windows. Both operator scripts
+also accept conventional `--name value` arguments when invoked in an environment that forwards them.
 
 `revoke` uses the same actor/target/role arguments and refuses to remove the last active admin.
 `break-glass` accepts the bootstrap-style operator arguments, always grants `admin`, and produces a

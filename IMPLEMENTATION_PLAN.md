@@ -694,6 +694,11 @@ effects. No public review UI or genuine review/case data is enabled. See
 [operations notes](docs/phase-2c-reviews.md). The product decisions and remaining counsel gates below
 are centralized as versioned policy rather than hidden assumptions or final legal copy.
 
+**Maintenance record (2026-08-25):** the review and catalogue role operator CLIs now share a tested
+argument parser and document a Windows-safe `name=value` form. This works around npm 11 on Windows
+consuming conventional `--name value` script arguments while retaining that syntax for direct or
+non-Windows invocation.
+
 This phase is placed after completed Phase 2B and before any product UI because the new public routes, author forms, optional post-ranking prompt, moderation states, and hotel reuse all depend on stable review/complaint contracts and migrations. It extends the existing stable-place, Better Auth user-ID, server-authorization, audit, provider, and catalogue-redirect boundaries without reopening Phase 2A/2B ranking or catalogue decisions. It is not placed in Phase 8 because deferring the legal lifecycle and moderation foundation until then would force restaurant screens to be rebuilt and would leave too little time to exercise expiry, redress, and retention before beta.
 
 Current-state constraints discovered before planning:
