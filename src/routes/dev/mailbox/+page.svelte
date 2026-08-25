@@ -15,7 +15,7 @@
 		<p>This page drains pending local outbox jobs. Never enable it in preview or production.</p>
 	</header>
 	{#if data.messages.length === 0}<p>No messages.</p>{/if}
-	{#each data.messages as message (`${message.template}:${message.recipient}:${message.variables.actionUrl ?? ''}`)}
+	{#each data.messages as message, index (index)}
 		<section>
 			<h2>{message.template}</h2>
 			<p>{message.recipient}</p>

@@ -15,7 +15,9 @@
 	<ReviewCard pseudonym={data.review.pseudonym} body={data.review.body} serviceMonth="" />
 	{#if form?.error}<p class="form-status form-status--error" role="alert">{form.error}</p>{/if}
 	{#if form?.submitted}
-		<p class="form-status" role="status">{m.notice_submitted()}</p>
+		<p class="form-status" role="status">
+			{form.duplicate ? m.notice_duplicate_reused() : m.notice_submitted()}
+		</p>
 		{#if form.evidenceError}<p class="form-status form-status--error" role="alert">
 				{form.evidenceError}
 			</p>{/if}

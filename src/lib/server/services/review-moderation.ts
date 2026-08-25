@@ -363,6 +363,11 @@ export class ReviewModerationService {
 				throw new DomainValidationError('Notice must target an exact publication version');
 			}
 			if (!target.authorId) throw new ConflictError('The review author account has been erased');
+			const allegedGround = required(input.allegedGround, 'Alleged ground', 3, 500);
+			const explanation = normalizeCaseText(input.explanation, 'Notice explanation');
+			const notifierName = anonymous
+				? 'anonymous'
+				: required(input.notifierName, 'Notifier name', 2, 200);
 			let exactUrl: URL;
 			try {
 				exactUrl = new URL(input.exactPublicUrl);
@@ -372,19 +377,50 @@ export class ReviewModerationService {
 			if (!['http:', 'https:'].includes(exactUrl.protocol)) {
 				throw new DomainValidationError('Exact public URL must use HTTP or HTTPS');
 			}
+			const deduplicationKey = sha256(
+				`${input.versionId}:${input.kind}:${allegedGround}:${email || 'anonymous'}`
+			);
+			await transaction.execute(
+				sql`select pg_advisory_xact_lock(hashtextextended(${deduplicationKey}, 0))`
+			);
+			const [semanticDuplicate] = await transaction
+				.select({ id: reviewNotice.id })
+				.from(reviewNotice)
+				.where(
+					and(
+						eq(reviewNotice.deduplicationKey, deduplicationKey),
+						sql`${reviewNotice.status} <> 'closed'`
+					)
+				)
+				.orderBy(desc(reviewNotice.createdAt))
+				.limit(1);
+			if (semanticDuplicate) {
+				if (email) {
+					await transaction.insert(reviewCaseAccessToken).values({
+						id: this.id(),
+						noticeId: semanticDuplicate.id,
+						partyRole: 'notifier',
+						tokenHash: sha256(rawToken),
+						expiresAt: addDays(now, 7),
+						createdAt: now
+					});
+				}
+				return {
+					noticeId: semanticDuplicate.id,
+					caseToken: email ? rawToken : undefined,
+					duplicate: true
+				};
+			}
 			const noticeId = this.id();
-			const explanation = normalizeCaseText(input.explanation, 'Notice explanation');
 			await transaction.insert(reviewNotice).values({
 				id: noticeId,
 				publicationId: input.publicationId,
 				versionId: input.versionId,
 				exactPublicUrl: exactUrl.toString(),
 				kind: input.kind,
-				allegedGround: required(input.allegedGround, 'Alleged ground', 3, 500),
+				allegedGround,
 				explanation,
-				notifierName: anonymous
-					? 'anonymous'
-					: required(input.notifierName, 'Notifier name', 2, 200),
+				notifierName,
 				notifierEmail: email,
 				notifierEmailHash: email ? sha256(email) : sha256(`anonymous:${noticeId}`),
 				ownerAssertion: !anonymous && input.ownerOrDelegate ? 'asserted' : 'none',
@@ -392,9 +428,7 @@ export class ReviewModerationService {
 				status: 'awaiting-submissions',
 				priority: !anonymous && input.ownerOrDelegate ? 10 : 0,
 				idempotencyKey: input.idempotencyKey,
-				deduplicationKey: sha256(
-					`${input.versionId}:${input.kind}:${input.allegedGround}:${email || 'anonymous'}`
-				),
+				deduplicationKey,
 				acknowledgedAt: now,
 				submissionDeadline: addDays(now, provisionalReviewClockPolicy.partySubmissionWindowDays),
 				decisionDueAt: addDays(now, 30),

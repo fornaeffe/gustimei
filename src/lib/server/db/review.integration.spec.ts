@@ -294,6 +294,26 @@ describe('notice, moderation, evidence, expiry, and erasure', () => {
 			'review-acknowledgement:v1',
 			'review-author-notice:v1'
 		]);
+		const duplicateNotice = await moderation.submitNotice({
+			publicationId: created.publicationId!,
+			versionId: created.versionId!,
+			exactPublicUrl: `https://example.test/places/1#review-${created.versionId}`,
+			kind: 'alleged-illegality',
+			allegedGround: 'Synthetic alleged legal issue',
+			explanation: 'A sufficiently detailed synthetic explanation for moderation.',
+			notifierName: 'Notifier',
+			notifierEmail: 'notifier@example.test',
+			ownerOrDelegate: true,
+			goodFaithAccepted: true,
+			idempotencyKey: 'notice-duplicate-browser-submit'
+		});
+		expect(duplicateNotice).toMatchObject({
+			noticeId: notice.noticeId,
+			duplicate: true
+		});
+		expect(duplicateNotice.caseToken).toBeTruthy();
+		expect(await db.select().from(reviewNotice)).toHaveLength(1);
+		expect(await new ReviewOutboxWorker(db, email, clock).runBatch()).toBe(0);
 		expect((await reviews.listPublic('osm:node:1'))[0].presentation).toBe('disputed');
 		await moderation.submitPartyStatement({
 			noticeId: notice.noticeId,

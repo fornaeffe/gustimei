@@ -1155,6 +1155,14 @@ composer remains responsible for the independently entered 30-day service-date e
   timing, scheduler lag, durable evidence deletion, alerts, backup/tombstone replay, and compliance
   with legally approved SLAs remain Phase 9 release gates; the ephemeral local adapters cannot
   truthfully establish them.
+- Human duplicate-notice testing found that the stored semantic deduplication fingerprint was only
+  indexed for triage: browser submissions use fresh idempotency UUIDs, so an identical report opened
+  a second active case. It also exposed a development-mailbox keyed-each collision when separate
+  messages shared template, recipient, and no action URL. Active semantic duplicates now resolve
+  transactionally to the existing case under a per-fingerprint advisory lock, issue a fresh
+  case-scoped notifier token without duplicating notifications, and the mailbox renders repeated
+  messages without assuming that presentation fields form a unique identity. Existing case/audit
+  rows are preserved rather than rewritten or deleted.
 
 **Open questions to answer before Phase 7:**
 

@@ -203,6 +203,7 @@
 	"notice_ground": "Motivo giuridico o di policy contestato",
 	"good_faith_declaration": "Ritengo in buona fede che le informazioni e le contestazioni contenute nella segnalazione siano accurate e complete.",
 	"notice_submitted": "La segnalazione è stata ricevuta. Salva il link del caso per seguirne lo stato.",
+	"notice_duplicate_reused": "Questa segnalazione corrisponde a una segnalazione attiva. È stato riutilizzato il caso esistente.",
 	"case_status": "Stato del caso",
 	"phase_five_session_ready": "La sessione di confronto è salvata e pronta per l'esperienza di confronto della Fase 5.",
 	"load_more": "Carica altro",

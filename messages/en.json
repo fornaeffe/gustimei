@@ -203,6 +203,7 @@
 	"notice_ground": "Alleged legal or policy ground",
 	"good_faith_declaration": "I believe in good faith that the information and allegations in this notice are accurate and complete.",
 	"notice_submitted": "Your report was received. Save the case link to follow its status.",
+	"notice_duplicate_reused": "This report matches an active notice. The existing case was reused.",
 	"case_status": "Case status",
 	"phase_five_session_ready": "Your comparison session is saved and ready for the Phase 5 comparison experience.",
 	"load_more": "Load more",

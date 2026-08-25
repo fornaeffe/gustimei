@@ -79,6 +79,7 @@ export const actions = {
 			}
 			return {
 				submitted: true,
+				duplicate: result.duplicate,
 				noticeId: result.noticeId,
 				evidenceError,
 				caseHref: result.caseToken
