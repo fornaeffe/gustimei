@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
 import type { AppEnvironment } from '$lib/server/config/environment';
 import type {
 	ComparisonEvidence,
@@ -304,6 +304,42 @@ export class RankingRepository {
 			.orderBy(sql`${rankingSession.updatedAt} desc`)
 			.limit(1);
 		return record ? RankingSession.resume(record.session.serializedState) : undefined;
+	}
+
+	async findCompletedSessionForRevision(ownerId: string, listId: string, revisionId: string) {
+		const [record] = await this.database
+			.select({ id: rankingSession.id })
+			.from(rankingSession)
+			.innerJoin(rankingList, eq(rankingList.id, rankingSession.listId))
+			.where(
+				and(
+					eq(rankingSession.listId, listId),
+					eq(rankingSession.lifecycle, 'completed'),
+					eq(rankingList.ownerId, ownerId),
+					sql`exists (
+						select 1
+						from ${comparisonEvidence}
+						inner join ${rankingRevisionEvidence}
+							on ${rankingRevisionEvidence.comparisonId} = ${comparisonEvidence.id}
+						where ${comparisonEvidence.sessionId} = ${rankingSession.id}
+							and ${rankingRevisionEvidence.revisionId} = ${revisionId}
+					)`,
+					sql`not exists (
+						select 1
+						from ${comparisonEvidence}
+						where ${comparisonEvidence.sessionId} = ${rankingSession.id}
+							and not exists (
+								select 1
+								from ${rankingRevisionEvidence}
+								where ${rankingRevisionEvidence.comparisonId} = ${comparisonEvidence.id}
+									and ${rankingRevisionEvidence.revisionId} = ${revisionId}
+							)
+					)`
+				)
+			)
+			.orderBy(desc(rankingSession.updatedAt))
+			.limit(1);
+		return record;
 	}
 
 	async saveSession(ownerId: string, session: RankingSession, capture: CaptureContext, now: Date) {

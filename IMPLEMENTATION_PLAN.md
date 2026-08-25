@@ -1041,7 +1041,7 @@ proportionate retention purpose ([17 April 2026 decision](https://www.garantepri
   review-prompt display/dismissal, plus migration `0006_damp_robin_chapel.sql`. No comparison pair,
   place identity, comment/review content, service date, or declaration value is collected.
 - Verification completed: Prettier, ESLint, zero-warning Svelte diagnostics, repeated Svelte autofixer
-  passes, production build, 77 server/component unit tests, 23 PostgreSQL integration tests, and all
+  passes, production build, 78 server/component unit tests, 23 PostgreSQL integration tests, and all
   three localized production-build Playwright checks pass. The database suite used a temporary isolated
   PostgreSQL 18 listener on port 55433 because Docker/WSL processes reserved the configured port 5433;
   the temporary server was stopped after the suite. The E2E runner now accepts an `E2E_PORT` override
@@ -1063,6 +1063,11 @@ proportionate retention purpose ([17 April 2026 decision](https://www.garantepri
   evidence-supported chain of ordered equivalence tiers, assigns it dense displayed positions, and
   leaves only places outside that chain in explicit unresolved groups. The persisted partial
   revision and its missing-evidence relations remain unchanged.
+- Post-implementation dashboard testing found that the restaurant-ranking card counted selected
+  memberships but did not inspect the current published revision, linked nowhere, and always reused
+  setup-oriented introduction copy. The dashboard now derives ranked and unresolved counts from the
+  current revision, distinguishes selection/setup from a published ranking, and links the ready card
+  to a completed session whose full evidence belongs to that revision.
 
 **Open questions to answer before Phase 6:**
 

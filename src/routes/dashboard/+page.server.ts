@@ -1,21 +1,38 @@
-import { and, count, eq } from 'drizzle-orm';
+import { deriveRankingDisplay } from '$lib/domain/ranking/revision';
 import { db } from '$lib/server/db';
-import { rankingList, rankingListPlace } from '$lib/server/db/schema';
 import { requireUser } from '$lib/server/http/auth-guard';
+import { RankingRepository } from '$lib/server/repositories/rankings';
 import type { PageServerLoad } from './$types';
+
+const rankings = new RankingRepository(db);
 
 export const load: PageServerLoad = async (event) => {
 	const user = requireUser(event);
-	const [summary] = await db
-		.select({ places: count(rankingListPlace.placeId), listId: rankingList.id })
-		.from(rankingList)
-		.leftJoin(rankingListPlace, eq(rankingListPlace.listId, rankingList.id))
-		.where(and(eq(rankingList.ownerId, user.id), eq(rankingList.category, 'restaurant')))
-		.groupBy(rankingList.id)
-		.limit(1);
+	const list = await rankings.findList(user.id, 'restaurant');
+	const [placeIds, revision] = list
+		? await Promise.all([
+				rankings.listVisitedPlaceIds(user.id, list.id),
+				rankings.loadCurrentRevision(user.id, list.id)
+			])
+		: [[], undefined];
+	let restaurantRanking;
+	if (list && revision) {
+		const display = deriveRankingDisplay(revision);
+		const completedSession = await rankings.findCompletedSessionForRevision(
+			user.id,
+			list.id,
+			revision.id
+		);
+		restaurantRanking = {
+			sessionId: completedSession?.id,
+			rankedPlaces: display.orderedTiers.flatMap((tier) => tier.placeIds).length,
+			unresolvedPlaces: display.unresolvedPlaceGroups.flat().length
+		};
+	}
 	return {
 		email: user.email,
 		emailVerified: user.emailVerified,
-		restaurantPlaces: summary?.places ?? 0
+		restaurantPlaces: placeIds.length,
+		restaurantRanking
 	};
 };

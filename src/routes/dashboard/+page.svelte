@@ -13,7 +13,13 @@
 	<div>
 		<p class="eyebrow">{data.emailVerified ? m.verified_account() : m.unverified_account()}</p>
 		<h1>{m.dashboard_title()}</h1>
-		<p class="lede">{m.dashboard_intro()}</p>
+		<p class="lede">
+			{data.restaurantRanking
+				? m.dashboard_ranking_ready_intro()
+				: data.restaurantPlaces >= 2
+					? m.dashboard_ranking_pending_intro()
+					: m.dashboard_intro()}
+		</p>
 	</div>
 </header>
 <section class="dashboard-grid" aria-label={m.nav_discover()}>
@@ -31,9 +37,32 @@
 		<div>
 			<Icon icon={ListOrdered} size={28} />
 			<h2>{m.dashboard_ranking_title()}</h2>
-			<p class="dashboard-card__number">{data.restaurantPlaces}</p>
-			<p>{data.restaurantPlaces ? m.dashboard_intro() : m.dashboard_empty_ranking_body()}</p>
+			<p>
+				{data.restaurantRanking
+					? m.dashboard_ready_ranking_body({
+							ranked: data.restaurantRanking.rankedPlaces,
+							unresolved: data.restaurantRanking.unresolvedPlaces
+						})
+					: data.restaurantPlaces
+						? m.dashboard_pending_ranking_body({ count: data.restaurantPlaces })
+						: m.dashboard_empty_ranking_body()}
+			</p>
 		</div>
+		{#if data.restaurantRanking?.sessionId}
+			<Button
+				href={localizeHref(`/ranking/restaurants/session/${data.restaurantRanking.sessionId}`, {
+					locale
+				})}
+				variant="secondary"
+			>
+				{m.view_restaurant_ranking()}
+				<Icon icon={ArrowRight} size={18} />
+			</Button>
+		{:else}
+			<Button href={localizeHref('/ranking/restaurants', { locale })} variant="secondary">
+				{data.restaurantPlaces >= 2 ? m.start_ranking() : m.dashboard_primary_action()}
+			</Button>
+		{/if}
 	</article>
 	<article class="surface-card dashboard-card">
 		<div>

@@ -281,6 +281,9 @@ describe('ranking, comments, provenance, and policy-enforced evidence', () => {
 		});
 		await rankings.publishRevision('user-1', revision, capture);
 		expect(await rankings.loadCurrentRevision('user-1', 'list-1')).toEqual(revision);
+		expect(await rankings.findCompletedSessionForRevision('user-1', 'list-1', revision.id)).toEqual(
+			{ id: 'session-1' }
+		);
 		const skippedRevisionNumber = createRankingRevision({
 			...revision,
 			id: 'revision-3',
