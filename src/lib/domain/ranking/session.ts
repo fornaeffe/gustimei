@@ -147,13 +147,40 @@ export class RankingSession {
 	}
 
 	static initial(input: { id: string; listId: string; placeIds: readonly PlaceId[] }) {
+		return RankingSession.#fullOrdering({ ...input, purpose: 'initial-order' });
+	}
+
+	static rebuild(input: {
+		id: string;
+		listId: string;
+		baseRevision: RankingRevision;
+		placeIds: readonly PlaceId[];
+	}) {
+		if (input.baseRevision.listId !== input.listId) {
+			throw new Error('The rebuilt revision must belong to the ranking list');
+		}
+		return RankingSession.#fullOrdering({
+			...input,
+			baseRevisionId: input.baseRevision.id,
+			purpose: 'rebuild'
+		});
+	}
+
+	static #fullOrdering(input: {
+		id: string;
+		listId: string;
+		baseRevisionId?: string;
+		purpose: Extract<RankingSessionPurpose, 'initial-order' | 'rebuild'>;
+		placeIds: readonly PlaceId[];
+	}) {
 		const placeIds = [...new Set(input.placeIds)];
 		if (placeIds.length !== input.placeIds.length) throw new Error('Ranking items must be unique');
 		return new RankingSession({
 			version: 1,
 			id: input.id,
 			listId: input.listId,
-			purpose: 'initial-order',
+			baseRevisionId: input.baseRevisionId,
+			purpose: input.purpose,
 			lifecycle: 'open',
 			placeIdsSnapshot: [...placeIds],
 			algorithm: {
@@ -253,12 +280,13 @@ export class RankingSession {
 	}
 
 	evidenceForNextRevision(baseRevision?: RankingRevision): readonly ComparisonEvidence[] {
-		const baseEvidence = baseRevision
-			? [
-					...baseRevision.activeEvidence,
-					...baseRevision.excludedEvidence.map((item) => item.evidence)
-				]
-			: [];
+		const baseEvidence =
+			baseRevision && this.purpose !== 'rebuild'
+				? [
+						...baseRevision.activeEvidence,
+						...baseRevision.excludedEvidence.map((item) => item.evidence)
+					]
+				: [];
 		const uniqueBaseEvidence = [...new Map(baseEvidence.map((item) => [item.id, item])).values()];
 		const maximumSequence = uniqueBaseEvidence.reduce(
 			(maximum, item) => Math.max(maximum, item.sequence),

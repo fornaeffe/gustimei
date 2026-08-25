@@ -157,6 +157,30 @@ describe('tier-aware stable merge ranking session', () => {
 		expect(deriveRankingProjection(result).orderCoverage).toBe('total');
 	});
 
+	it('rebuilds from a captured revision without carrying its old ordering evidence forward', () => {
+		const base = revision(['a', 'b'], [evidence('old', 1, 'a', 'b', 'left')]);
+		const session = RankingSession.rebuild({
+			id: 'rebuild',
+			listId: 'list-1',
+			baseRevision: base,
+			placeIds: ['a', 'b']
+		});
+		const request = session.nextComparison();
+		if (!request) throw new Error('Expected a rebuild comparison');
+		session.submit(preferPlace(request, 'b'));
+
+		expect(session.summary()).toMatchObject({
+			baseRevisionId: base.id,
+			purpose: 'rebuild',
+			lifecycle: 'completed'
+		});
+		expect(session.evidenceForNextRevision(base)).toEqual(session.evidence);
+		expect(revision(['a', 'b'], session.evidenceForNextRevision(base)).orderedTiers).toEqual([
+			{ placeIds: ['b'] },
+			{ placeIds: ['a'] }
+		]);
+	});
+
 	it('preserves a skipped pair as unresolved instead of inventing a strict order', () => {
 		let skipped = false;
 		const placeIds = ['p2', 'p1', 'p0'];

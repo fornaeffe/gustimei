@@ -1041,7 +1041,7 @@ proportionate retention purpose ([17 April 2026 decision](https://www.garantepri
   review-prompt display/dismissal, plus migration `0006_damp_robin_chapel.sql`. No comparison pair,
   place identity, comment/review content, service date, or declaration value is collected.
 - Verification completed: Prettier, ESLint, zero-warning Svelte diagnostics, repeated Svelte autofixer
-  passes, production build, 73 server/component unit tests, 23 PostgreSQL integration tests, and all
+  passes, production build, 76 server/component unit tests, 23 PostgreSQL integration tests, and all
   three localized production-build Playwright checks pass. The database suite used a temporary isolated
   PostgreSQL 18 listener on port 55433 because Docker/WSL processes reserved the configured port 5433;
   the temporary server was stopped after the suite. The E2E runner now accepts an `E2E_PORT` override
@@ -1051,6 +1051,12 @@ proportionate retention purpose ([17 April 2026 decision](https://www.garantepri
   was applied to the local development database, and the analytics service is now explicitly
   best-effort: it reports a generic operational failure but never fails the ranking, catalogue, or
   review-prompt action that emitted the event.
+- Post-implementation re-sort testing found that the full-list action created another
+  `initial-order` session without capturing the already published base revision. The completed
+  session was consequently rejected as stale when its final answer triggered publication. Re-sorts
+  now use an explicit `rebuild` session tied to the current revision, publish only the newly elicited
+  ordering evidence while retaining the previous immutable revision, and safely recover legacy
+  affected sessions when their visited-place snapshot still matches the current list.
 
 **Open questions to answer before Phase 6:**
 

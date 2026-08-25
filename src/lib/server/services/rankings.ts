@@ -107,10 +107,20 @@ export class RankingService {
 		const now = this.clock();
 		const existing = await this.rankings.findOpenSession(ownerId, listId, now);
 		if (existing) return existing;
-		const placeIds = await this.rankings.listVisitedPlaceIds(ownerId, listId);
+		const [placeIds, baseRevision] = await Promise.all([
+			this.rankings.listVisitedPlaceIds(ownerId, listId),
+			this.rankings.loadCurrentRevision(ownerId, listId)
+		]);
 		if (placeIds.length < 2)
 			throw new DomainValidationError('At least two visited places are required');
-		const session = RankingSession.initial({ id: this.createId(), listId, placeIds });
+		const session = baseRevision
+			? RankingSession.rebuild({
+					id: this.createId(),
+					listId,
+					baseRevision,
+					placeIds
+				})
+			: RankingSession.initial({ id: this.createId(), listId, placeIds });
 		await this.rankings.saveSession(ownerId, session, await this.captureContext(ownerId, now), now);
 		return session;
 	}
@@ -150,13 +160,21 @@ export class RankingService {
 		const now = this.clock();
 		const capture = await this.captureContext(ownerId, now);
 		const base = await this.rankings.loadCurrentRevision(ownerId, session.listId);
+		let legacyRebuild = false;
 		if (session.baseRevisionId !== base?.id) {
+			if (session.purpose === 'initial-order' && !session.baseRevisionId && base) {
+				const currentPlaceIds = await this.rankings.listVisitedPlaceIds(ownerId, session.listId);
+				legacyRebuild =
+					currentPlaceIds.length === session.placeIdsSnapshot.length &&
+					currentPlaceIds.every((placeId) => session.placeIdsSnapshot.includes(placeId));
+			}
 			const publishedEvidenceIds = new Set([
 				...(base?.activeEvidence.map((item) => item.id) ?? []),
 				...(base?.excludedEvidence.map((item) => item.evidence.id) ?? [])
 			]);
 			if (base && session.evidence.every((item) => publishedEvidenceIds.has(item.id))) return base;
-			throw new ConflictError('The ranking session is based on a stale revision');
+			if (!legacyRebuild)
+				throw new ConflictError('The ranking session is based on a stale revision');
 		}
 		const activePlaceIds = [...session.placeIdsSnapshot];
 		const revision = createRankingRevision({
@@ -165,7 +183,7 @@ export class RankingService {
 			category,
 			revision: (base?.revision ?? 0) + 1,
 			activePlaceIds,
-			evidence: session.evidenceForNextRevision(base),
+			evidence: session.evidenceForNextRevision(legacyRebuild ? undefined : base),
 			provenance: capture.provenance,
 			publishedAt: now.toISOString()
 		});
