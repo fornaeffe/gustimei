@@ -1139,6 +1139,17 @@ composer remains responsible for the independently entered 30-day service-date e
   all three localized production-build Playwright checks. The database suite ran against a temporary
   isolated PostgreSQL 18 listener on port 55434 because the configured test endpoint was occupied by
   a server with different credentials; the temporary server and data directory were removed.
+- A post-completion human-exercise audit found that report, party submission/upload, moderation,
+  decision, redress, and local-mail routes existed, but clean evidence could not be opened by its
+  authorized viewers and uploaders could not delete it through the case UI. Added audited,
+  case-bound evidence downloads for parties and moderators, uploader deletion, visible submission
+  deadlines, multipart initial-notice upload, and an audited local review-role CLI. Exact local
+  deadline boundaries remain covered by deterministic database tests.
+- Split the former Phase 6 operational-target question at the actual provider boundary. Phase 6 can
+  exercise local synthetic usability, consistent treatment, and authorization. Hosted delivery
+  timing, scheduler lag, durable evidence deletion, alerts, backup/tombstone replay, and compliance
+  with legally approved SLAs remain Phase 9 release gates; the ephemeral local adapters cannot
+  truthfully establish them.
 
 **Open questions to answer before Phase 7:**
 
@@ -1149,7 +1160,7 @@ composer remains responsible for the independently entered 30-day service-date e
 - How is that order delivered: page/cursor size, maximum browsable depth, stable tie-breaking, snapshot/version consistency across pages, and invalidation behavior?
 - Where do unsupported or newly imported places appear, if anywhere, and how are visited items interleaved without implying confidence the model does not have?
 - What local latency, memory, artifact-size, and quality thresholds must the Phase 7 implementation meet before hotels are added?
-- Did human case exercises meet the approved acknowledgement, evidence-window, decision, notification, redress, expiry, and evidence-deletion targets without arbitrary treatment or unauthorized disclosure?
+- Did local synthetic human case exercises confirm that acknowledgement, bilateral submission/evidence, human decision, notification-preview, redress, and reinstatement paths are usable; that comparable cases receive consistent policy treatment; and that public users, each case party, catalogue curators, moderators, and administrators see only their authorized material? Record provisional timings as diagnostics, but do not claim operational SLA compliance before the approved targets and hosted providers exist.
 - Which moderation states are public, author-only, notifier-only, or moderator-only, and did accessibility testing confirm that “disputed” and “removed” do not imply an unreviewed allegation is true?
 - Did edit/substitution and catalogue-merge concurrency tests preserve one current review per effective author/place without losing reported-version history or allowing an expired/removed generation to reappear?
 
@@ -1223,6 +1234,7 @@ composer remains responsible for the independently entered 30-day service-date e
 - Verify that the MVP ships no marketing email, cross-site/third-party analytics, non-essential tracking, fingerprinting, pixels, advertising identifiers, or session replay, and that transactional templates contain no promotional material.
 - Run responsive and cross-browser end-to-end tests of sign-up, draft/resume, ranking, optional post-session review dismissal/publication, later review management, public place pagination/disclosures, edit/substitution/withdrawal/expiry, general and owner/delegate notices, bilateral evidence, reasoned decision/redress/reinstatement, insertion, recommendation, locale switching, and failure recovery.
 - Exercise the staffed beta moderation/incident runbook, urgent escalation, moderator conflict/absence backup, transparency-report data extraction where applicable, queue/decision/deletion alerts, and an evidence-access audit before invitations. Seed only synthetic non-sensitive case fixtures; do not use a real person's receipt or booking evidence for operational drills.
+- Against the approved moderation target matrix, measure acknowledgement and notification delivery, bilateral evidence-window enforcement, human decision and redress timing, query-time and worker expiry lag, durable evidence deletion (including retry after provider failure), unauthorized-access attempts, and paired-case consistency. Record evidence for every target; local Phase 6 diagnostics are not substitutes for this hosted operational exercise.
 - Verify beta synthetic-data labelling and isolation, including that no synthetic ranking evidence is associated with or affects real places.
 - Run the approved private-beta cohort and research method with both restaurants and hotels in the chosen area. Collect the first external real-user evidence under the documented product-processing lawful bases, notices, participant controls, and—where a distinct research activity requires it—separate research consent.
 - After sufficient beta evidence exists, repeat the leakage-safe recommendation evaluation on the external cohort, report synthetic, internal-testing, and beta results separately, and recalibrate category-specific support/personalization thresholds. Compare recommendation relevance with the global prior and review delayed predicted-versus-actual agreement before making launch or catalogue-expansion claims.

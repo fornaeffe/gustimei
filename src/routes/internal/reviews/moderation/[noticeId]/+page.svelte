@@ -70,6 +70,11 @@
 					{item.uploaderRole}: {item.originalFilename ?? item.id} · {item.scanState} · {item.sizeBytes}
 					bytes
 				</p>
+				{#if item.scanState === 'clean'}
+					<Button href={`./${data.case.id}/evidence/${item.id}`} variant="secondary"
+						>{m.open_evidence()}</Button
+					>
+				{/if}
 				{#if item.scanState === 'pending'}
 					<form method="POST" action="?/scanEvidence" use:enhance>
 						<input type="hidden" name="evidenceId" value={item.id} />

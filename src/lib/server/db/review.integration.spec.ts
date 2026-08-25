@@ -309,6 +309,25 @@ describe('notice, moderation, evidence, expiry, and erasure', () => {
 			idempotencyKey: 'author-statement',
 			authorUserId: 'author'
 		});
+		const authorObject = await moderation.uploadEvidence({
+			noticeId: notice.noticeId,
+			partyRole: 'author',
+			authorUserId: 'author',
+			bytes: new TextEncoder().encode('synthetic author evidence'),
+			mediaType: 'text/plain',
+			filename: 'author-evidence.txt',
+			purpose: 'support the synthetic author response'
+		});
+		await moderation.markEvidenceScan('moderator', authorObject.id, true);
+		expect((await moderation.getCaseForAuthor('author', notice.noticeId)).evidence).toMatchObject([
+			{ id: authorObject.id, originalFilename: 'author-evidence.txt', scanState: 'clean' }
+		]);
+		await moderation.deleteEvidence({
+			evidenceId: authorObject.id,
+			partyRole: 'author',
+			authorUserId: 'author'
+		});
+		expect((await moderation.getCaseForAuthor('author', notice.noticeId)).evidence).toEqual([]);
 		expect(
 			(await moderation.getCaseForAuthor('author', notice.noticeId)).submissions
 		).toMatchObject([{ statement: 'Author-only response statement.' }]);
@@ -322,6 +341,22 @@ describe('notice, moderation, evidence, expiry, and erasure', () => {
 			notifierToken: notice.caseToken
 		});
 		await moderation.markEvidenceScan('moderator', object.id, true);
+		expect(
+			await moderation.readEvidenceFile({
+				evidenceId: object.id,
+				noticeId: notice.noticeId,
+				actorType: 'review_moderator',
+				actorReference: 'moderator'
+			})
+		).toMatchObject({ mediaType: 'text/plain', filename: 'evidence.txt' });
+		await expect(
+			moderation.readEvidenceFile({
+				evidenceId: object.id,
+				noticeId: 'a-different-case',
+				actorType: 'review_moderator',
+				actorReference: 'moderator'
+			})
+		).rejects.toThrow('Evidence object was not found');
 		await expect(
 			moderation.readEvidence({
 				evidenceId: object.id,
@@ -339,6 +374,9 @@ describe('notice, moderation, evidence, expiry, and erasure', () => {
 				})
 			)
 		).toBe('synthetic evidence');
+		expect(
+			(await moderation.getCaseForNotifier(notice.noticeId, notice.caseToken!)).evidence
+		).toMatchObject([{ id: object.id, originalFilename: 'evidence.txt', scanState: 'clean' }]);
 		await moderation.assign('moderator', notice.noticeId);
 		await expect(
 			moderation.verifyOwnerAssertion('moderator', notice.noticeId, true, 'synthetic-authority')

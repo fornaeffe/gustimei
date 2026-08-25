@@ -86,5 +86,23 @@ export const actions = {
 				error: cause instanceof Error ? cause.message : 'Evidence upload failed'
 			});
 		}
+	},
+	deleteEvidence: async (event) => {
+		const form = await event.request.formData();
+		const token =
+			String(form.get('token') ?? '').trim() || event.url.searchParams.get('token') || undefined;
+		try {
+			await reviewModeration.deleteEvidence({
+				evidenceId: stringField(form, 'evidenceId'),
+				partyRole: token ? 'notifier' : 'author',
+				notifierToken: token,
+				authorUserId: token ? undefined : requireUser(event, { verified: true }).id
+			});
+			return { saved: true };
+		} catch (cause) {
+			return fail(400, {
+				error: cause instanceof Error ? cause.message : 'Evidence deletion failed'
+			});
+		}
 	}
 } satisfies Actions;

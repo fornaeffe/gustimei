@@ -4,7 +4,7 @@
 	let { versionId, action = '?/notice' }: { versionId: string; action?: string } = $props();
 </script>
 
-<form method="POST" {action} class="stack-form">
+<form method="POST" enctype="multipart/form-data" {action} class="stack-form">
 	<input type="hidden" name="versionId" value={versionId} />
 	<label class="check-row"
 		><input type="checkbox" name="anonymous" value="true" />

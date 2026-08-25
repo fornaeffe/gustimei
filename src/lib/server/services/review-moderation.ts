@@ -628,6 +628,16 @@ export class ReviewModerationService {
 		actorReference: string;
 		notifierToken?: string;
 	}) {
+		return (await this.readEvidenceFile(input)).bytes;
+	}
+
+	async readEvidenceFile(input: {
+		evidenceId: string;
+		noticeId?: string;
+		actorType: 'author' | 'notifier' | 'review_moderator' | 'admin';
+		actorReference: string;
+		notifierToken?: string;
+	}) {
 		const [record] = await this.database
 			.select()
 			.from(reviewEvidenceObject)
@@ -635,7 +645,11 @@ export class ReviewModerationService {
 				and(eq(reviewEvidenceObject.id, input.evidenceId), isNull(reviewEvidenceObject.deletedAt))
 			)
 			.limit(1);
-		if (!record || record.scanState !== 'clean')
+		if (
+			!record ||
+			(input.noticeId && record.noticeId !== input.noticeId) ||
+			record.scanState !== 'clean'
+		)
 			throw new NotFoundError('Evidence object was not found');
 		if (input.actorType === 'review_moderator' || input.actorType === 'admin') {
 			await this.requireModerator(input.actorReference);
@@ -660,7 +674,11 @@ export class ReviewModerationService {
 			purpose: 'case-review',
 			accessedAt: this.clock()
 		});
-		return bytes;
+		return {
+			bytes,
+			mediaType: record.mediaType,
+			filename: record.originalFilename ?? 'case-evidence'
+		};
 	}
 
 	async assign(actorUserId: string, noticeId: string, moderatorUserId = actorUserId) {
@@ -1097,7 +1115,7 @@ export class ReviewModerationService {
 		record: Awaited<ReturnType<ReviewModerationService['caseTarget']>>,
 		party: PartyRole
 	) {
-		const [submissions, decisions, redress] = await Promise.all([
+		const [submissions, evidence, decisions, redress] = await Promise.all([
 			this.database
 				.select({
 					id: reviewCasePartySubmission.id,
@@ -1112,6 +1130,25 @@ export class ReviewModerationService {
 					)
 				)
 				.orderBy(asc(reviewCasePartySubmission.createdAt)),
+			this.database
+				.select({
+					id: reviewEvidenceObject.id,
+					originalFilename: reviewEvidenceObject.originalFilename,
+					mediaType: reviewEvidenceObject.mediaType,
+					sizeBytes: reviewEvidenceObject.sizeBytes,
+					scanState: reviewEvidenceObject.scanState,
+					expiresAt: reviewEvidenceObject.expiresAt,
+					createdAt: reviewEvidenceObject.createdAt
+				})
+				.from(reviewEvidenceObject)
+				.where(
+					and(
+						eq(reviewEvidenceObject.noticeId, record.id),
+						eq(reviewEvidenceObject.uploaderRole, party),
+						isNull(reviewEvidenceObject.deletedAt)
+					)
+				)
+				.orderBy(asc(reviewEvidenceObject.createdAt)),
 			this.database
 				.select({
 					id: reviewModerationDecision.id,
@@ -1147,6 +1184,7 @@ export class ReviewModerationService {
 			createdAt: record.createdAt,
 			submissionDeadline: record.submissionDeadline,
 			submissions,
+			evidence,
 			decisions,
 			redress
 		};

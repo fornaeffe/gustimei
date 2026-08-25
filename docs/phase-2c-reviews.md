@@ -8,6 +8,46 @@ Apply the reviewed migrations with `npm run db:migrate`. Validate a disposable i
 
 An approved policy record and localized declaration-policy records must exist before publication. The integration fixture demonstrates installation through `ReviewService.installPolicy`. Production policy installation requires the reviewed operations path added before beta; do not mark draft legal text approved merely to unblock UI development.
 
+For a fresh development/test database used only for synthetic exercises, install the explicitly
+non-production policy snapshot once:
+
+```powershell
+npm run review:policy:synthetic
+```
+
+The command is disabled in preview and production. Its database status is `approved` only because
+the domain deliberately refuses publication and decisions without an active snapshot; the version
+and body identify it as synthetic, and it is not legal approval or launch policy.
+
+After the target Better Auth accounts exist and have verified email addresses, bootstrap a local
+review administrator and grant a separate least-privilege moderator account:
+
+```powershell
+npm run review:roles -- bootstrap --environment development --target-user-id ADMIN_USER_ID --role admin --operator LOCAL_OPERATOR --reason "initial local review administrator"
+npm run review:roles -- grant --environment development --actor-user-id ADMIN_USER_ID --target-user-id MODERATOR_USER_ID --role review_moderator --reason "Phase 6 synthetic case exercise"
+```
+
+The bootstrap command is deliberately disabled in preview and production. Use `revoke` with the
+same environment, actor, target, role, and a documented reason when local access is no longer
+needed.
+
+## Phase 6 human exercise paths
+
+- Submit an exact-version report from the public review card and retain the returned notifier case
+  link. The development mailbox at `/dev/mailbox` drains local acknowledgement and author-notice
+  jobs and exposes their action links without sending external email.
+- Authors discover their cases under `/reviews/manage`; notifiers use their case-scoped link.
+  Both can submit statements, upload evidence, open their own clean evidence after moderator scan,
+  delete their own evidence, read shared reasoned decisions, and request redress.
+- Authorized staff use `/internal/reviews/moderation` to assign cases, verify owner/delegate
+  assertions, review both parties' isolated submissions and clean evidence, apply an interim
+  restriction, decide or reinstate, inspect the audit timeline, and close a case.
+
+Use only synthetic non-sensitive evidence. The development evidence store is process-memory-only,
+so keep the server running for an exercise; a restart intentionally makes the bytes unavailable.
+The database integration suite remains the deterministic alternative for exact deadline-boundary,
+expiry, deletion, and authorization checks.
+
 ## Service boundaries
 
 - `ReviewService`: policy installation, pseudonym setup, create/edit/substitute/withdraw, owner management, anonymous public reads, redirect resolution, query-time expiry.
@@ -33,6 +73,11 @@ Run workers in bounded batches and retry safely:
 4. release expired account-erasure holds and redact retained review text.
 
 Public reads never depend on worker timing: expired, hidden/quarantined, withdrawn, removed, interim-restricted, account-erased, and collision-restricted publications are excluded at query time.
+
+Local deterministic worker tests prove boundary behavior, but they do not establish operational
+SLAs. Hosted notification delivery, scheduler lag, durable evidence-provider deletion, alerting,
+and backup/tombstone replay are Phase 9 exercises after providers, schedules, and legally approved
+targets exist.
 
 ## Incident and privacy rules
 

@@ -66,11 +66,13 @@ role bootstrap/rotation commands and moderation invariants. The migration copies
 effective catalogue into a provider-derived base projection, so existing Phase 2A imports are
 preserved and later local overrides can be reconciled safely.
 
-Phase 2C adds the server-only public-review and notice/action foundation: immutable publication
+Phase 2C added the server-only public-review and notice/action foundation: immutable publication
 generations and versions, declaration snapshots, pseudonyms, exact-version notices, restricted
 case evidence, least-privilege moderation, redress/reinstatement, expiry/retention workers,
-account-erasure holds, and explicit catalogue-merge collision handling. Public review UI remains a
-later phase. See [ADR 0005](docs/adr/0005-public-review-foundation.md), the
+account-erasure holds, and explicit catalogue-merge collision handling. Phases 4–6 now provide the
+public review, party case, and local moderator UI; use `npm run review:roles` to provision audited
+local review roles and `npm run review:policy:synthetic` only for a fresh synthetic exercise
+database. See [ADR 0005](docs/adr/0005-public-review-foundation.md), the
 [compliance matrix](docs/phase-2c-compliance-matrix.md), and the
 [local operations notes](docs/phase-2c-reviews.md). Review and case content is strictly excluded
 from ranking and recommendation evidence.
