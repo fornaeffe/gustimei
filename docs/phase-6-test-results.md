@@ -11,4 +11,4 @@
 | Upload clean evidence | PASSED | |
 | Upload rejected/oversized/disallowed evidence | PASSED with issues | The notice is submitted even if the evidence is rejected. It should not be submitted unless the user explicitly resubmit it without evidence (or with allowed evidence). Failure does not expose internal storage details. |
 
-| Assign a case | pending ||
+| Assign a case | PENDING RETEST | The case UI now keeps moderator self-assignment and gives administrators an active-moderator select for assignment/reassignment; revoked roles are excluded and the service enforces the boundary. |

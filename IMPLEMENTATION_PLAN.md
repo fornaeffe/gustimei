@@ -1170,6 +1170,16 @@ composer remains responsible for the independently entered 30-day service-date e
   limits; evidence is labelled and remains optional; invalid notice kinds fail in the domain; and a
   reusable action-error boundary exposes expected validation/conflict messages while replacing
   unexpected infrastructure errors with a safe actionable fallback.
+- Human assignment testing found that the case workspace exposed only self-assignment even though
+  the service accepted a target moderator. Administrators now receive a human-readable select of
+  active review-role holders and can assign or reassign active cases for conflict/absence coverage;
+  ordinary moderators retain self-assignment only. The service enforces that distinction against
+  crafted requests, resolves dual-role users as administrators, records assignment/reassignment
+  events, rejects stale concurrent changes, and excludes revoked roles. Added a linked staff workflow
+  covering triage, bilateral submissions, evidence, interim restriction, decision, notification,
+  redress, closure, privacy boundaries, and local-vs-Phase-9 limits. Verification passed ESLint,
+  Prettier, zero-warning Svelte diagnostics/autofixer, a production build, 88 unit/component tests,
+  and 24 PostgreSQL integration tests; the human assignment row remains pending retest.
 
 **Open questions to answer before Phase 7:**
 

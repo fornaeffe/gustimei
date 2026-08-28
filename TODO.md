@@ -4,3 +4,7 @@
 - In reviews/cases the case dates should be formatted in a easily readable format.
 - When a user submits an anonymous notice, the page still shows "Save case link" even if no case link is given. It should not prompt the user to save a case link if it does not exists.
 - When a user submits a notice with invalid evidence, the notice is submitted even if the evidence is rejected. It should not be submitted unless the user explicitly resubmit it without evidence (or with allowed evidence).
+- The review case status timeline case-assigned event and the review moderation queue both show the user ID under assigned-to. The UI should show emails and/or names, IDs are only meaningful internally or for debug/development.
+- There is too much difference between different font sizes: large titles are too large compared to smallest text. Keep a small number of typography sizes and reduce the size of largest ones.
+- Admin/moderation UI should have accessible navigation components.
+- The review moderation queue UI should visually mark the cases assigned to the logged user.

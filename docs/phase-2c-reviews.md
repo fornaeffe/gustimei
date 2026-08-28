@@ -1,6 +1,8 @@
 # Phase 2C review operations
 
-Phase 2C exposes server services and deterministic workers; product and moderator UI arrives in later phases. Do not collect genuine review, notice, or evidence data yet.
+Phase 2C established the server services and deterministic workers; Phases 4–6 added the local
+product, party, and moderator UI. Do not collect genuine review, notice, or evidence data yet. Staff
+should follow the [review moderation workflow](review-moderation-workflow.md).
 
 ## Local setup and verification
 
@@ -46,6 +48,11 @@ needed.
 - Authorized staff use `/internal/reviews/moderation` to assign cases, verify owner/delegate
   assertions, review both parties' isolated submissions and clean evidence, apply an interim
   restriction, decide or reinstate, inspect the audit timeline, and close a case.
+
+Administrators can assign or reassign an active case to another active moderator from the case page;
+moderators can assign an unassigned case only to themselves. See the
+[human-readable staff workflow](review-moderation-workflow.md) for the complete sequence and role
+boundaries.
 
 Use only synthetic non-sensitive evidence. The development evidence store is process-memory-only,
 so keep the server running for an exercise; a restart intentionally makes the bytes unavailable.

@@ -27,7 +27,8 @@ import {
 	reviewRoleEvent,
 	reviewVersion,
 	session,
-	transactionalOutbox
+	transactionalOutbox,
+	user
 } from '$lib/server/db/schema';
 import {
 	AuthorizationError,
@@ -126,6 +127,35 @@ export class ReviewModerationService {
 				(row.status === 'under-review' && row.decisionDueAt && row.decisionDueAt <= now)
 			)
 		}));
+	}
+
+	async getModeratorAssignmentContext(actorUserId: string) {
+		const actorRole = await this.requireModerator(actorUserId);
+		if (actorRole !== 'admin') {
+			return { actorUserId, actorRole, assignableModerators: [] };
+		}
+		const rows = await this.database
+			.select({
+				userId: reviewModeratorAssignment.userId,
+				role: reviewModeratorAssignment.role,
+				name: user.name,
+				email: user.email
+			})
+			.from(reviewModeratorAssignment)
+			.innerJoin(user, eq(user.id, reviewModeratorAssignment.userId))
+			.where(
+				and(
+					eq(reviewModeratorAssignment.environment, this.environment),
+					isNull(reviewModeratorAssignment.revokedAt)
+				)
+			)
+			.orderBy(asc(user.name), asc(user.email));
+		const byUser = new Map<string, (typeof rows)[number]>();
+		for (const row of rows) {
+			const existing = byUser.get(row.userId);
+			if (!existing || row.role === 'admin') byUser.set(row.userId, row);
+		}
+		return { actorUserId, actorRole, assignableModerators: [...byUser.values()] };
 	}
 
 	async getCaseForModerator(actorUserId: string, noticeId: string) {
@@ -727,21 +757,52 @@ export class ReviewModerationService {
 	}
 
 	async assign(actorUserId: string, noticeId: string, moderatorUserId = actorUserId) {
-		await this.requireModerator(actorUserId);
+		const actorRole = await this.requireModerator(actorUserId);
+		if (moderatorUserId !== actorUserId && actorRole !== 'admin') {
+			throw new AuthorizationError(
+				'Review administrator permission is required to assign another moderator'
+			);
+		}
 		await this.requireModerator(moderatorUserId);
 		const now = this.clock();
-		const [record] = await this.database
-			.update(reviewNotice)
-			.set({ assignedModeratorId: moderatorUserId, status: 'under-review', updatedAt: now })
-			.where(
-				and(
-					eq(reviewNotice.id, noticeId),
-					inArray(reviewNotice.status, ['received', 'awaiting-submissions'])
+		return this.database.transaction(async (transaction) => {
+			const target = await this.caseTarget(noticeId, transaction);
+			const initialAssignment =
+				!target.assignedModeratorId &&
+				(target.status === 'received' || target.status === 'awaiting-submissions');
+			const administrativeReassignment =
+				actorRole === 'admin' &&
+				target.status === 'under-review' &&
+				target.assignedModeratorId !== moderatorUserId;
+			if (!initialAssignment && !administrativeReassignment) {
+				throw new ConflictError('Review case cannot be assigned in its current state');
+			}
+			const [record] = await transaction
+				.update(reviewNotice)
+				.set({ assignedModeratorId: moderatorUserId, status: 'under-review', updatedAt: now })
+				.where(
+					and(
+						eq(reviewNotice.id, noticeId),
+						eq(reviewNotice.status, target.status),
+						target.assignedModeratorId
+							? eq(reviewNotice.assignedModeratorId, target.assignedModeratorId)
+							: isNull(reviewNotice.assignedModeratorId)
+					)
 				)
-			)
-			.returning();
-		if (!record) throw new ConflictError('Review case cannot be assigned');
-		return record;
+				.returning();
+			if (!record) throw new ConflictError('Review case assignment changed; reload and try again');
+			await this.event(transaction, {
+				noticeId,
+				reviewId: target.reviewId,
+				publicationId: target.publicationId,
+				versionId: target.versionId,
+				actorType: actorRole,
+				actorReference: actorUserId,
+				action: initialAssignment ? 'case-assigned' : 'case-reassigned',
+				reasonCode: `assigned-to:${moderatorUserId}`
+			});
+			return record;
+		});
 	}
 
 	async verifyOwnerAssertion(
@@ -1102,7 +1163,7 @@ export class ReviewModerationService {
 		userId: string,
 		database: ReviewDatabase = this.database
 	): Promise<ModeratorRole> {
-		const [reviewRole] = await database
+		const reviewRoles = await database
 			.select({ role: reviewModeratorAssignment.role })
 			.from(reviewModeratorAssignment)
 			.where(
@@ -1111,9 +1172,9 @@ export class ReviewModerationService {
 					eq(reviewModeratorAssignment.environment, this.environment),
 					isNull(reviewModeratorAssignment.revokedAt)
 				)
-			)
-			.limit(1);
-		if (reviewRole) return reviewRole.role;
+			);
+		if (reviewRoles.some((assignment) => assignment.role === 'admin')) return 'admin';
+		if (reviewRoles.length > 0) return 'review_moderator';
 		const [catalogueAdmin] = await database
 			.select({ id: catalogueRoleAssignment.id })
 			.from(catalogueRoleAssignment)

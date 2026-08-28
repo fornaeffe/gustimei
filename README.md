@@ -74,5 +74,6 @@ public review, party case, and local moderator UI; use `npm run review:roles` to
 local review roles and `npm run review:policy:synthetic` only for a fresh synthetic exercise
 database. See [ADR 0005](docs/adr/0005-public-review-foundation.md), the
 [compliance matrix](docs/phase-2c-compliance-matrix.md), and the
-[local operations notes](docs/phase-2c-reviews.md). Review and case content is strictly excluded
-from ranking and recommendation evidence.
+[local operations notes](docs/phase-2c-reviews.md). Administrators and moderators should use the
+[review moderation workflow](docs/review-moderation-workflow.md). Review and case content is
+strictly excluded from ranking and recommendation evidence.

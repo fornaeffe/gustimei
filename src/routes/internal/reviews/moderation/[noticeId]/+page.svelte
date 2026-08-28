@@ -13,6 +13,23 @@
 			at: item.createdAt.toISOString()
 		}))
 	);
+	let assignedModerator = $derived(
+		data.assignment.assignableModerators.find(
+			(moderator) => moderator.userId === data.case.assignedModeratorId
+		)
+	);
+	let availableModerators = $derived(
+		data.assignment.assignableModerators.filter(
+			(moderator) => moderator.userId !== data.case.assignedModeratorId
+		)
+	);
+	let canAssignToSelf = $derived(
+		(!data.case.assignedModeratorId &&
+			(data.case.status === 'received' || data.case.status === 'awaiting-submissions')) ||
+			(data.assignment.actorRole === 'admin' &&
+				data.case.status === 'under-review' &&
+				data.case.assignedModeratorId !== data.assignment.actorUserId)
+	);
 </script>
 
 <svelte:head><title>{m.moderation_case()} — {m.product_name()}</title></svelte:head>
@@ -40,10 +57,34 @@
 
 	<section class="surface-card stack">
 		<h2>{m.assigned_moderator()}</h2>
-		<p>{data.case.assignedModeratorId ?? '—'}</p>
-		<form method="POST" action="?/assign" use:enhance>
-			<Button type="submit">{m.assign_to_me()}</Button>
-		</form>
+		<p>
+			{#if assignedModerator}
+				{assignedModerator.name} ({assignedModerator.email})
+			{:else}
+				{data.case.assignedModeratorId ?? m.unassigned_case()}
+			{/if}
+		</p>
+		{#if canAssignToSelf}
+			<form method="POST" action="?/assign" use:enhance>
+				<Button type="submit">{m.assign_to_me()}</Button>
+			</form>
+		{/if}
+		{#if data.assignment.actorRole === 'admin' && availableModerators.length > 0}
+			<form method="POST" action="?/assign" use:enhance class="stack-form">
+				<label for="moderator-user-id">{m.assign_case_to()}</label>
+				<select id="moderator-user-id" name="moderatorUserId" required>
+					<option value="" disabled selected>{m.choose_moderator()}</option>
+					{#each availableModerators as moderator (moderator.userId)}
+						<option value={moderator.userId}>
+							{moderator.name} ({moderator.email}) · {moderator.role === 'admin'
+								? m.review_administrator()
+								: m.review_moderator()}
+						</option>
+					{/each}
+				</select>
+				<Button type="submit">{m.assign_moderator()}</Button>
+			</form>
+		{/if}
 		{#if data.case.ownerAssertion !== 'none'}
 			<form method="POST" action="?/ownerAssertion" use:enhance class="stack-form">
 				<label for="owner-reason">{m.reason_code()}</label>

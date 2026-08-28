@@ -11,7 +11,11 @@ function message(cause: unknown) {
 export const load: PageServerLoad = async (event) => {
 	const user = requireUser(event, { verified: true });
 	try {
-		return { case: await reviewModeration.getCaseForModerator(user.id, event.params.noticeId) };
+		const [moderationCase, assignment] = await Promise.all([
+			reviewModeration.getCaseForModerator(user.id, event.params.noticeId),
+			reviewModeration.getModeratorAssignmentContext(user.id)
+		]);
+		return { case: moderationCase, assignment };
 	} catch {
 		error(403, 'Review moderator permission is required');
 	}
@@ -20,8 +24,14 @@ export const load: PageServerLoad = async (event) => {
 export const actions = {
 	assign: async (event) => {
 		const user = requireUser(event, { verified: true });
+		const form = await event.request.formData();
+		const requestedModeratorId = String(form.get('moderatorUserId') ?? '').trim();
 		try {
-			await reviewModeration.assign(user.id, event.params.noticeId);
+			await reviewModeration.assign(
+				user.id,
+				event.params.noticeId,
+				requestedModeratorId || user.id
+			);
 			return { section: 'assign', saved: true };
 		} catch (cause) {
 			return fail(409, { section: 'assign', error: message(cause) });

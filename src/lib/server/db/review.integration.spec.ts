@@ -297,6 +297,15 @@ describe('notice, moderation, evidence, expiry, and erasure', () => {
 		await moderation.grantModerator('admin', 'other', 'review_moderator', 'temporary coverage');
 		await moderation.revokeModerator('admin', 'other', 'review_moderator', 'coverage ended');
 		expect(await db.select().from(reviewRoleEvent)).toHaveLength(4);
+		expect(await moderation.getModeratorAssignmentContext('moderator')).toMatchObject({
+			actorRole: 'review_moderator',
+			assignableModerators: []
+		});
+		expect(
+			(await moderation.getModeratorAssignmentContext('admin')).assignableModerators.map(
+				(item) => item.userId
+			)
+		).toEqual(['admin', 'moderator']);
 		const notice = await moderation.submitNotice({
 			publicationId: created.publicationId!,
 			versionId: created.versionId!,
@@ -419,7 +428,21 @@ describe('notice, moderation, evidence, expiry, and erasure', () => {
 		expect(
 			(await moderation.getCaseForNotifier(notice.noticeId, notice.caseToken!)).evidence
 		).toMatchObject([{ id: object.id, originalFilename: 'evidence.txt', scanState: 'clean' }]);
-		await moderation.assign('moderator', notice.noticeId);
+		await expect(moderation.assign('moderator', notice.noticeId, 'admin')).rejects.toThrow(
+			'administrator permission'
+		);
+		await moderation.assign('admin', notice.noticeId, 'moderator');
+		await moderation.grantModerator('admin', 'other', 'review_moderator', 'absence coverage');
+		await moderation.assign('admin', notice.noticeId, 'other');
+		expect(
+			(await moderation.getCaseForModerator('admin', notice.noticeId)).assignedModeratorId
+		).toBe('other');
+		await moderation.assign('admin', notice.noticeId, 'moderator');
+		expect(
+			(await db.select().from(reviewModerationEvent)).filter((event) =>
+				['case-assigned', 'case-reassigned'].includes(event.action)
+			)
+		).toHaveLength(3);
 		await expect(
 			moderation.verifyOwnerAssertion('moderator', notice.noticeId, true, 'synthetic-authority')
 		).resolves.toEqual({ verified: true });
