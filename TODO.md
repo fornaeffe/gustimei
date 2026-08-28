@@ -8,3 +8,7 @@
 - There is too much difference between different font sizes: large titles are too large compared to smallest text. Keep a small number of typography sizes and reduce the size of largest ones.
 - Admin/moderation UI should have accessible navigation components.
 - The review moderation queue UI should visually mark the cases assigned to the logged user.
+- Apply interim restriction UI component should be disabled when an interim restriction is active, or the component should make clear that a restriction is already in place. Or better, the componend should change in "remove interim restriction".
+- In ranking/restaurants, when typing inside the restaurant name or locality field, when the UI loads results the focus is lost, but the user may still be typing. The focus should not be lost if the update is triggered while still typing.
+- In ranking/restaurants, restaurant name and locality fields should be aligned.
+- In places/[placeId] there should be a button to mark the place as visited, if it is not in the user's visited places bucket. If it is already visited, a UI component should mark it as such.

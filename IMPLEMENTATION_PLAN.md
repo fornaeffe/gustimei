@@ -1180,6 +1180,10 @@ composer remains responsible for the independently entered 30-day service-date e
   redress, closure, privacy boundaries, and local-vs-Phase-9 limits. Verification passed ESLint,
   Prettier, zero-warning Svelte diagnostics/autofixer, a production build, 88 unit/component tests,
   and 24 PostgreSQL integration tests; the human assignment row remains pending retest.
+- Human evidence-scanning testing exposed relative `./…/evidence/…` links in the moderator and party
+  case pages. The shared button correctly rejects those paths because SvelteKit `resolve` accepts
+  only absolute internal pathnames or route IDs. Both views now use one absolute, localized,
+  parameter-encoded evidence-path builder; opening clean evidence remains pending human retest.
 
 **Open questions to answer before Phase 7:**
 

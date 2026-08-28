@@ -3,8 +3,11 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import CaseTimeline from '$lib/components/reviews/CaseTimeline.svelte';
 	import ReasonedDecision from '$lib/components/reviews/ReasonedDecision.svelte';
+	import { reviewCaseEvidencePath } from '$lib/domain/reviews/case-routes';
 	import * as m from '$lib/paraglide/messages';
+	import { getLocale, localizeHref } from '$lib/paraglide/runtime';
 	let { data, form } = $props();
+	let locale = $derived(getLocale());
 	let events = $derived(
 		data.case.events.map((item) => ({
 			id: item.id,
@@ -112,8 +115,16 @@
 					bytes
 				</p>
 				{#if item.scanState === 'clean'}
-					<Button href={`./${data.case.id}/evidence/${item.id}`} variant="secondary"
-						>{m.open_evidence()}</Button
+					<Button
+						href={localizeHref(
+							reviewCaseEvidencePath({
+								audience: 'moderator',
+								noticeId: data.case.id,
+								evidenceId: item.id
+							}),
+							{ locale }
+						)}
+						variant="secondary">{m.open_evidence()}</Button
 					>
 				{/if}
 				{#if item.scanState === 'pending'}
