@@ -2,3 +2,5 @@
 - If a user has not yet a public pseudonym but an approved review policy is in place, the message appearing to the user when he/she tries to write a review should cite only the pseudonym as a prerequisite to write the review, not the presence of approved review policy.
 - There should be a UI component that should display the name or e-mail or (in future) avatar for the current logged user, discreet but easily findable/retrievable.
 - In reviews/cases the case dates should be formatted in a easily readable format.
+- When a user submits an anonymous notice, the page still shows "Save case link" even if no case link is given. It should not prompt the user to save a case link if it does not exists.
+- When a user submits a notice with invalid evidence, the notice is submitted even if the evidence is rejected. It should not be submitted unless the user explicitly resubmit it without evidence (or with allowed evidence).
