@@ -973,7 +973,11 @@ export class ReviewModerationService {
 				sourceDecisionId: decisionId
 			});
 			for (const role of ['author', 'notifier'] as const) {
-				if (role === 'author' && !target.authorId) continue;
+				if (
+					(role === 'author' && !target.authorId) ||
+					(role === 'notifier' && !target.notifierEmail)
+				)
+					continue;
 				await this.queueNotification(transaction, {
 					noticeId: input.noticeId,
 					reviewId: target.reviewId,
@@ -1307,6 +1311,8 @@ export class ReviewModerationService {
 			variables: Record<string, string>;
 		}
 	) {
+		const recipientReference = input.recipientReference.trim();
+		if (!recipientReference) throw new Error('Review notification recipient is required');
 		const now = this.clock();
 		const outboxId = this.id();
 		const decisionSuffix = input.variables.decisionReference
@@ -1318,7 +1324,7 @@ export class ReviewModerationService {
 			.values({
 				id: outboxId,
 				purpose: input.purpose,
-				recipientReference: input.recipientReference,
+				recipientReference,
 				payload: input.variables,
 				idempotencyKey,
 				availableAt: now,

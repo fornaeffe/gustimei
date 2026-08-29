@@ -10,12 +10,17 @@ add hosted implementations behind the provider contracts in `src/lib/server/prov
 local environment receives its own `DATABASE_URL`, `ORIGIN`, and `BETTER_AUTH_SECRET`; credentials
 must never be shared between environments.
 
-| Environment | Configuration source                                     | Database boundary                        |
-| ----------- | -------------------------------------------------------- | ---------------------------------------- |
-| Development | `.env`, copied from `.env.example`                       | Persistent local PostgreSQL on port 5432 |
-| Test        | Checked-in non-secret `.env.test`                        | Disposable local PostgreSQL on port 5433 |
-| Preview     | Runtime secrets, documented by `.env.preview.example`    | Isolated preview database                |
-| Production  | Runtime secrets, documented by `.env.production.example` | Isolated production database             |
+| Environment | Configuration source                                     | Database boundary                                      |
+| ----------- | -------------------------------------------------------- | ------------------------------------------------------ |
+| Development | `.env`, copied from `.env.example`                       | Persistent `db-development` Compose service, port 5432 |
+| Test        | Checked-in non-secret `.env.test`                        | Tmpfs-backed `db-test` Compose service, port 5433      |
+| Preview     | Runtime secrets, documented by `.env.preview.example`    | Isolated preview database                              |
+| Production  | Runtime secrets, documented by `.env.production.example` | Isolated production database                           |
+
+The checked-in `db-test` service is the default database for all local database integration and
+browser tests. Start it with `docker compose up -d db-test`; `npm run test:db` and
+`npm run db:test:reset` validate that destructive resets target only its expected local port and
+database name.
 
 Production rejects a non-HTTPS origin. Runtime configuration is validated when the Node process
 starts. Placeholder values are used only while SvelteKit analyzes and bundles server modules, so

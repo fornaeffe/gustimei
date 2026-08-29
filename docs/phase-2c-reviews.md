@@ -6,7 +6,9 @@ should follow the [review moderation workflow](review-moderation-workflow.md).
 
 ## Local setup and verification
 
-Apply the reviewed migrations with `npm run db:migrate`. Validate a disposable isolated database with `npm run test:db`. The review tests use only synthetic place, account, review, notice, and evidence fixtures.
+Apply the reviewed development migrations with `npm run db:migrate`. For review integration tests,
+start the default checked-in test database with `docker compose up -d db-test`, then run
+`npm run test:db`; its guarded reset applies the reviewed migrations to `gustimei_test` on local port 5433. The review tests use only synthetic place, account, review, notice, and evidence fixtures.
 
 An approved policy record and localized declaration-policy records must exist before publication. The integration fixture demonstrates installation through `ReviewService.installPolicy`. Production policy installation requires the reviewed operations path added before beta; do not mark draft legal text approved merely to unblock UI development.
 

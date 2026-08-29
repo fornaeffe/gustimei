@@ -11,12 +11,14 @@ import {
 	reviewDeclarationAcceptance,
 	reviewModerationDecision,
 	reviewModerationEvent,
+	reviewNotification,
 	reviewNotice,
 	reviewPublication,
 	reviewRedressRequest,
 	reviewRetentionHold,
 	reviewRoleEvent,
 	reviewVersion,
+	transactionalOutbox,
 	user
 } from '$lib/server/db/schema';
 import { EphemeralEvidenceStore } from '$lib/server/providers/evidence';
@@ -273,8 +275,110 @@ describe('notice, moderation, evidence, expiry, and erasure', () => {
 			priority: 0
 		});
 		const email = new LocalEmailProvider();
-		expect(await new ReviewOutboxWorker(db, email, clock).runBatch()).toBe(1);
+		const worker = new ReviewOutboxWorker(db, email, clock);
+		expect(await worker.runBatch()).toBe(1);
 		expect(email.outbox.map((message) => message.template)).toEqual(['review-author-notice:v1']);
+		await moderation.bootstrapModerator({
+			userId: 'moderator',
+			environment: 'test',
+			operatorReference: 'local-test',
+			reason: 'synthetic anonymous notice decision'
+		});
+		await moderation.decide('moderator', {
+			noticeId: notice.noticeId,
+			outcome: 'no-action',
+			scope: 'exact publication',
+			ground: 'synthetic-policy-ground',
+			reasonedExplanation: 'The anonymous synthetic notice does not support removal.',
+			factsReliedOn: 'The notice and available synthetic case record.',
+			automationDisclosure: 'No automation made the decision.'
+		});
+		expect(await worker.runBatch()).toBe(1);
+		expect(email.outbox.map((message) => message.template)).toEqual([
+			'review-author-notice:v1',
+			'review-decision:v1'
+		]);
+		expect(
+			(await db.select().from(reviewNotification)).filter(
+				(item) => item.recipientRole === 'notifier' && item.purpose === 'review-decision'
+			)
+		).toEqual([]);
+	});
+
+	it('isolates terminal recipient failures and continues delivering the batch', async () => {
+		await setup();
+		await db.insert(transactionalOutbox).values([
+			{
+				id: 'a-invalid-recipient',
+				purpose: 'review-decision',
+				recipientReference: '',
+				payload: { caseReference: 'anonymous-case' },
+				idempotencyKey: 'invalid-recipient-job',
+				availableAt: now,
+				createdAt: now
+			},
+			{
+				id: 'b-missing-recipient',
+				purpose: 'review-decision',
+				recipientReference: 'deleted-user',
+				payload: { caseReference: 'erased-author-case' },
+				idempotencyKey: 'missing-recipient-job',
+				availableAt: now,
+				createdAt: now
+			},
+			{
+				id: 'c-valid-recipient',
+				purpose: 'review-decision',
+				recipientReference: 'valid@example.test',
+				payload: { caseReference: 'valid-case' },
+				idempotencyKey: 'valid-recipient-job',
+				availableAt: now,
+				createdAt: now
+			}
+		]);
+		await db.insert(reviewNotification).values([
+			{
+				id: 'invalid-recipient-notification',
+				recipientRole: 'notifier',
+				purpose: 'review-decision',
+				templateVersion: 'v1',
+				outboxJobId: 'a-invalid-recipient',
+				createdAt: now
+			},
+			{
+				id: 'missing-recipient-notification',
+				recipientRole: 'author',
+				purpose: 'review-decision',
+				templateVersion: 'v1',
+				outboxJobId: 'b-missing-recipient',
+				createdAt: now
+			}
+		]);
+		const email = new LocalEmailProvider();
+		const worker = new ReviewOutboxWorker(db, email, clock);
+		expect(await worker.runBatch()).toBe(1);
+		expect(email.outbox).toMatchObject([
+			{ recipient: 'valid@example.test', template: 'review-decision:v1' }
+		]);
+		const jobs = await db.select().from(transactionalOutbox);
+		expect(jobs.find((item) => item.id === 'a-invalid-recipient')).toMatchObject({
+			attemptCount: 1,
+			lastErrorCode: 'recipient-invalid',
+			deliveredAt: null
+		});
+		expect(jobs.find((item) => item.id === 'b-missing-recipient')).toMatchObject({
+			attemptCount: 1,
+			lastErrorCode: 'recipient-not-found',
+			deliveredAt: null
+		});
+		expect((await db.select().from(reviewNotification)).map((item) => item.state)).toEqual([
+			'failed',
+			'failed'
+		]);
+		expect(await worker.runBatch()).toBe(0);
+		const terminalJobs = await db.select().from(transactionalOutbox);
+		expect(terminalJobs.find((item) => item.id === 'a-invalid-recipient')?.attemptCount).toBe(1);
+		expect(terminalJobs.find((item) => item.id === 'b-missing-recipient')?.attemptCount).toBe(1);
 	});
 
 	it('keeps reports non-dispositive, isolates party evidence, and supports human redress', async () => {

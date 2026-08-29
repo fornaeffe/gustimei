@@ -95,7 +95,7 @@ reference, environment, source identities, before/after effective fields, struct
 evidence, linked report, impact counts, and reversal lineage. Personal-comment content is never
 copied into this audit.
 
-Run the Phase 2B database suite against the isolated PostgreSQL service:
+Run the Phase 2B database suite against the default checked-in `db-test` Compose service:
 
 ```powershell
 docker compose up -d db-test

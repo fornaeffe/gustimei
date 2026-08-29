@@ -28,7 +28,8 @@ GustiMei targets Node.js 22 and PostgreSQL 17.
 1. Copy `.env.example` to `.env` and replace `BETTER_AUTH_SECRET` with a local secret of at least
    32 characters.
 2. Run `npm ci`.
-3. Start the development and test databases with `npm run db:start`.
+3. Start the development database with `docker compose up -d db-development`. Database-backed
+   tests use the separate checked-in `db-test` Compose service described below.
 4. Apply the reviewed development migrations with `npm run db:migrate`. Use `npm run db:push`
    only for explicitly disposable schema experiments.
 5. Start SvelteKit with `npm run dev`.
@@ -40,10 +41,11 @@ pending email jobs and displays an **Open action URL** link for each message. If
 request a resend and reopen the mailbox. Delivered messages are held in memory, so restarting the
 development server can clear messages that were already displayed.
 
-Run the fast baseline with `npm run ci`. Browser tests use the isolated test database on port
-5433; install Chromium once with `npm run test:e2e:install`, apply the test schema with
-`$env:DATABASE_URL = 'postgres://gustimei:gustimei-test@localhost:5433/gustimei_test'; npm run db:push`,
-then run `npm run test:e2e`.
+Run the fast baseline with `npm run ci`. The default database for database integration and browser
+tests is the checked-in `db-test` Compose service (`gustimei_test` on local port 5433). Start it with
+`docker compose up -d db-test`; do not create an ad hoc PostgreSQL listener for routine tests.
+Install Chromium once with `npm run test:e2e:install`. Before browser tests, apply the reviewed test
+migrations with `npm run db:test:reset`, then run `npm run test:e2e`.
 
 Run the deterministic, synthetic-only Phase 1 algorithm suite with `npm run benchmark:phase1`.
 Its dataset, selection criteria, and recorded results are documented in
@@ -52,7 +54,7 @@ Its dataset, selection criteria, and recorded results are documented in
 See [the runtime boundary](docs/runtime-boundary.md) for environment isolation, provider seams,
 and production Node startup details.
 
-Phase 2A database integration tests use the isolated PostgreSQL instance and can be run with
+Phase 2A database integration tests use the same `db-test` Compose service and can be run with
 `npm run test:db`. The command validates and resets only `gustimei_test` on local port 5433 before
 applying reviewed migrations. See [catalogue operations and compliance](docs/phase-2a-catalogue.md)
 for the on-demand Italy restaurant import, coverage audit, locality rules, and OSM attribution.
