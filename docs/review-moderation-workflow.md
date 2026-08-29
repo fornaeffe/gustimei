@@ -101,6 +101,44 @@ Choose **Record and notify decision** once. The service saves an immutable decis
 publication visibility as required, and queues separate author/notifier notifications. In local
 development, `/dev/mailbox` previews those messages instead of sending external email.
 
+### Effect of each outcome
+
+The outcome changes the publication identified by the case. It does not moderate every review by
+the author or every publication generation for the place. In particular, a later-visit substitution
+is a separate publication generation; deciding a case about an older generation does not change the
+current generation.
+
+| Outcome     | Persisted publication change                                                                                                                                                                                                   | Effect on public visibility                                                                                                                                                                                               |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `no-action` | Clears any interim restriction. It does not otherwise change the publication lifecycle.                                                                                                                                        | A current, published, unexpired review becomes visible again if the case's interim restriction was its only visibility blocker. It does not reinstate a publication already removed, withdrawn, expired, or superseded.   |
+| `restrict`  | Sets an interim-restriction timestamp on the publication. It does not change the publication lifecycle.                                                                                                                        | Hides the review from public review queries. The restriction remains in effect until a later decision clears it; entering a duration records explanatory decision data but does not currently schedule automatic lifting. |
+| `remove`    | Sets the lifecycle to `removed`, records the removal time, and clears any interim restriction.                                                                                                                                 | Keeps the review out of public review queries as a moderation removal. A later `restore` decision is required to reverse this lifecycle change.                                                                           |
+| `restore`   | If the publication has expired, sets its lifecycle to `expired`, records the expiry time, and clears the interim restriction. Otherwise sets its lifecycle to `published` and clears its removal time and interim restriction. | Republishes the current publication only when it is still within its two-year publication lifetime and no independent visibility blocker applies. An expired review stays non-public.                                     |
+
+The outcome value is the part of the decision that drives these state changes. **Scope**,
+**duration**, **ground**, the reasoned explanation, facts relied on, and automation disclosure are
+stored in the immutable decision and communicated for accountability; scope and duration are not
+currently executable selectors or timers.
+
+Public visibility is still derived at read time. Therefore `no-action` or `restore` does not
+guarantee that text will appear publicly when, for example, the place is unavailable, a catalogue
+merge collision restricts the review, the publication has expired, the publication is not the
+aggregate's current generation, or another open notice still applies. Deciding the last open notice
+also removes the public `disputed` presentation because decided and closed notices are not counted as
+open disputes.
+
+Every outcome also has the following case effects:
+
+- creates a new immutable, versioned moderation decision and, when one exists, supersedes the
+  preceding decision without deleting it;
+- records an audited `decision-<outcome>` event and moves the case to `decided`;
+- resolves any open redress request when the new decision is a reconsideration;
+- queues an author notification when the linked author remains and, for a non-anonymous notifier
+  with an address, a separate notifier notification (`restore` uses the reinstatement notification
+  purpose; the other outcomes use the decision purpose);
+- leaves the review's visited-place membership, ranking evidence, recommendation data, and private
+  personal comment unchanged.
+
 ## 7. Handle redress and reinstatement
 
 After a decision, either party can request redress from its authorized case view. A redress request

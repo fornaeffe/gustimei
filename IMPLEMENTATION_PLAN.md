@@ -1195,6 +1195,12 @@ composer remains responsible for the independently entered 30-day service-date e
   case pages. The shared button correctly rejects those paths because SvelteKit `resolve` accepts
   only absolute internal pathnames or route IDs. Both views now use one absolute, localized,
   parameter-encoded evidence-path builder; opening clean evidence remains pending human retest.
+- Documented the implemented effects of all four moderation outcomes in the staff workflow,
+  including exact-publication scope, lifecycle and interim-restriction mutations, query-time
+  visibility limits, decision/version/audit/notification effects, redress handling, and isolation
+  from rankings, recommendations, visited membership, and private comments. The guide also makes
+  explicit that decision scope and duration are currently recorded accountability fields rather
+  than executable selectors or automatic timers.
 
 **Open questions to answer before Phase 7:**
 
