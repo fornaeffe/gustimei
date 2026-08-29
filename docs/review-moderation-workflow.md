@@ -23,6 +23,12 @@ administrator, but ordinary catalogue-curator permissions do not cross this boun
 
 ## Before starting
 
+Ensure the application database is current before opening staff tools. Run `npm run db:check`; if
+it reports pending migrations, stop the application, run `npm run db:migrate` against the intended
+database, and restart it. The `npm run dev` and `npm start` commands enforce the same read-only
+check. A schema or database failure is a server error and must not be interpreted as proof that a
+staff role was revoked.
+
 ### Approved clocks
 
 | Workflow target                 |                                   SLA |

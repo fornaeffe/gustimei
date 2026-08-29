@@ -7,9 +7,11 @@
 		"node": ">=22"
 	},
 	"scripts": {
+		"predev": "npm run db:check",
 		"dev": "vite dev",
 		"build": "vite build",
 		"preview": "vite preview",
+		"prestart": "npm run db:check",
 		"start": "node build",
 		"start:test": "node --env-file=.env.test build",
 		"prepare": "npm run i18n:compile && svelte-kit sync || echo ''",
@@ -30,6 +32,7 @@
 		"db:push": "drizzle-kit push",
 		"db:generate": "drizzle-kit generate",
 		"db:migrate": "drizzle-kit migrate",
+		"db:check": "node --env-file-if-exists=.env scripts/check-database-migrations.mjs",
 		"db:test:reset": "node --env-file=.env.test scripts/reset-test-database.mjs",
 		"db:studio": "drizzle-kit studio",
 		"test:db": "npm run db:test:reset && node --env-file=.env.test node_modules/vitest/vitest.mjs --run --config vitest.database.config.ts",

@@ -1221,6 +1221,16 @@ composer remains responsible for the independently entered 30-day service-date e
   three localized production-build browser checks; affected human rows remain explicitly marked for
   retest in the Phase 6 report.
 
+- Diagnosed a post-exercise false 403 on both moderation routes as schema drift, not lost staff
+  authorization: development still had its active moderator/admin assignments but was missing
+  migrations 0007 and 0008, and 0007's existing-row deadline backfill was rejected by the append-only
+  decision trigger. The migration now uses the trigger's transaction-scoped metadata-maintenance
+  allowance, both migrations are applied without replacing case or role data, and moderation loads
+  map only typed authorization/not-found failures to 403/404 while infrastructure faults reach the
+  500 boundary. Local and production startup now perform a read-only migration-parity check and
+  require migrations to be applied explicitly. Automated verification passed; staff browser access
+  remains pending a refresh/retest.
+
 **Open questions to answer before Phase 7:**
 
 - Where will model artifacts and reproducible training metadata live locally, and what provider-neutral artifact-store contract will allow Phase 9 external storage without changing recommendation code?

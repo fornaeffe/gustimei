@@ -6,3 +6,4 @@
 - In places/[placeId] there should be a button to mark the place as visited, if it is not in the user's visited places bucket. If it is already visited, a UI component should mark it as such.
 - Extend the reusable section-local `FormFeedback` pattern from review case/moderation forms to the remaining app forms so error, success, and warning feedback is consistently adjacent to the action that produced it.
 - Restaurant data should show the restaurant address if available in the external data source, even in the search results.
+- Form feedback when reporting a review should explain clearly which field is problematic and why, when rejecting a notice.

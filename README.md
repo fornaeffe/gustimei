@@ -32,7 +32,10 @@ GustiMei targets Node.js 22 and PostgreSQL 17.
    tests use the separate checked-in `db-test` Compose service described below.
 4. Apply the reviewed development migrations with `npm run db:migrate`. Use `npm run db:push`
    only for explicitly disposable schema experiments.
-5. Start SvelteKit with `npm run dev`.
+5. Start SvelteKit with `npm run dev`. Development and production startup run the read-only
+   `npm run db:check` guard first and stop with an actionable message if the selected database is
+   behind the reviewed migration journal. Apply migrations explicitly; startup never mutates the
+   schema.
 
 Transactional email is captured locally instead of being sent. After signing up or requesting a
 password reset, open the development mailbox at

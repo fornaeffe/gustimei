@@ -1,5 +1,6 @@
-import { error, fail } from '@sveltejs/kit';
+import { fail } from '@sveltejs/kit';
 import { requireUser } from '$lib/server/http/auth-guard';
+import { rethrowReviewModerationLoadError } from '$lib/server/http/review-moderation-load-errors';
 import { stringField } from '$lib/server/security/auth-forms';
 import { reviewModeration } from '$lib/server/services/review-moderation-runtime';
 import type { Actions, PageServerLoad } from './$types';
@@ -16,8 +17,8 @@ export const load: PageServerLoad = async (event) => {
 			reviewModeration.getModeratorAssignmentContext(user.id)
 		]);
 		return { case: moderationCase, assignment };
-	} catch {
-		error(403, 'Review moderator permission is required');
+	} catch (cause) {
+		rethrowReviewModerationLoadError(cause);
 	}
 };
 

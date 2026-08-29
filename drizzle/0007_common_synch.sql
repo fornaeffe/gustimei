@@ -1,6 +1,9 @@
 ALTER TABLE "review_notification" DROP CONSTRAINT "review_notification_purpose_uq";--> statement-breakpoint
 DROP INDEX "review_redress_queue_idx";--> statement-breakpoint
 ALTER TABLE "review_moderation_decision" ADD COLUMN "redress_submission_deadline" timestamp with time zone;--> statement-breakpoint
+-- The append-only trigger deliberately permits metadata-only maintenance while this
+-- transaction-local flag is enabled. Existing decision facts remain unchanged.
+SET LOCAL app.review_erasure = 'on';--> statement-breakpoint
 UPDATE "review_moderation_decision" SET "redress_submission_deadline" = "decided_at" + interval '30 days';--> statement-breakpoint
 ALTER TABLE "review_moderation_decision" ALTER COLUMN "redress_submission_deadline" SET NOT NULL;--> statement-breakpoint
 ALTER TABLE "review_notification" ADD COLUMN "delivery_key" text DEFAULT '' NOT NULL;--> statement-breakpoint
