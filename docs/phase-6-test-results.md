@@ -12,3 +12,9 @@
 | Upload rejected/oversized/disallowed evidence | PASSED with issues | The notice is submitted even if the evidence is rejected. It should not be submitted unless the user explicitly resubmit it without evidence (or with allowed evidence). Failure does not expose internal storage details. |
 
 | Assign a case | PASSED | The case UI now keeps moderator self-assignment and gives administrators an active-moderator select for assignment/reassignment; revoked roles are excluded and the service enforces the boundary. |
+| review both sides’ permitted material | PASSED | |
+| Issue "retain" outcome | PASSED with issues | Only outcome and reason explanation are shown; scope, ground, facts relied upon, policy version and automation disclosure are not visible from reviews/cases/[noticeId] |
+| Issue "restrict" outcome | PASSED | |
+| Issue "restore" outcome | PASSED | |
+| Try deciding with the wrong moderator | PASSED with issues | Unassigned moderators cannot decide, but error message is displayed out of view. |
+| Try deciding without required reasons | PASSED with issues | If "decisions scope" is left blank, when submitting the focus go to the "decisions scope" field, but without any messages. If other required fields are left blank, a "Fill this field" message is shown. The "Fill this field" message should be shown consistently for all required fields. |

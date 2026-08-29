@@ -14,7 +14,7 @@ Keep the project scalable and easily maintainable. Better a bit more work now th
 
 Don't repeat yourself: if something will be probably repeated/reused in the same project, make it reusable (abstracting it as a component, as a function, as a theme variable...).
 
-Before making changes to the repo, take a look at TODO.md: if and only if there are TODOs relevant for the current task, if possible and appropriate, integrate them inside the current task. If the current task contradicts some TODOs, ask what should be done.
+Before making changes to the repo, take a look at TODO.md: if and only if there are TODOs relevant for the current task and inside its scope, if possible and appropriate, integrate them inside the current task. If the current task contradicts some TODOs, ask what should be done.
 
 ---
 
