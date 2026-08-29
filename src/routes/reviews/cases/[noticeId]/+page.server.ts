@@ -40,9 +40,12 @@ export const actions = {
 				statement: stringField(form, 'statement'),
 				idempotencyKey: randomUUID()
 			});
-			return { saved: true };
+			return { section: 'statement', saved: true };
 		} catch (cause) {
-			return fail(400, { error: cause instanceof Error ? cause.message : 'Statement failed' });
+			return fail(400, {
+				section: 'statement',
+				error: cause instanceof Error ? cause.message : 'Statement failed'
+			});
 		}
 	},
 	redress: async (event) => {
@@ -58,9 +61,12 @@ export const actions = {
 				statement: stringField(form, 'statement'),
 				idempotencyKey: randomUUID()
 			});
-			return { saved: true };
+			return { section: 'redress', saved: true };
 		} catch (cause) {
-			return fail(400, { error: cause instanceof Error ? cause.message : 'Redress failed' });
+			return fail(400, {
+				section: 'redress',
+				error: cause instanceof Error ? cause.message : 'Redress failed'
+			});
 		}
 	},
 	evidence: async (event) => {
@@ -68,7 +74,8 @@ export const actions = {
 		const token =
 			String(form.get('token') ?? '').trim() || event.url.searchParams.get('token') || undefined;
 		const evidence = form.get('evidence');
-		if (!(evidence instanceof File)) return fail(400, { error: 'Evidence file is required' });
+		if (!(evidence instanceof File))
+			return fail(400, { section: 'evidence', error: 'Evidence file is required' });
 		try {
 			await reviewModeration.uploadEvidence({
 				noticeId: event.params.noticeId,
@@ -80,9 +87,10 @@ export const actions = {
 				filename: evidence.name,
 				purpose: 'case-support'
 			});
-			return { saved: true };
+			return { section: 'evidence', saved: true };
 		} catch (cause) {
 			return fail(400, {
+				section: 'evidence',
 				error: cause instanceof Error ? cause.message : 'Evidence upload failed'
 			});
 		}
@@ -98,9 +106,10 @@ export const actions = {
 				notifierToken: token,
 				authorUserId: token ? undefined : requireUser(event, { verified: true }).id
 			});
-			return { saved: true };
+			return { section: 'evidence', saved: true };
 		} catch (cause) {
 			return fail(400, {
+				section: 'evidence',
 				error: cause instanceof Error ? cause.message : 'Evidence deletion failed'
 			});
 		}

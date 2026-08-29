@@ -9,6 +9,7 @@ import { CatalogueRepository } from '$lib/server/repositories/catalogue';
 import { runtimeConfig } from '$lib/server/config';
 import { stringField } from '$lib/server/security/auth-forms';
 import { reviewModeration } from '$lib/server/services/review-moderation-runtime';
+import { validateEvidenceMetadata } from '$lib/domain/reviews/evidence';
 import type { Actions, PageServerLoad } from './$types';
 
 const catalogue = new CatalogueRepository(db, runtimeConfig.appEnvironment);
@@ -42,6 +43,19 @@ export const actions = {
 		const form = await event.request.formData();
 		const anonymous = form.get('anonymous') === 'true';
 		try {
+			const evidence = form.get('evidence');
+			if (evidence instanceof File && evidence.size > 0) {
+				validateEvidenceMetadata({
+					mediaType: evidence.type,
+					sizeBytes: evidence.size,
+					filename: evidence.name
+				});
+				if (anonymous && !String(form.get('email') ?? '').trim()) {
+					throw new Error(
+						'Remove the optional evidence or provide a contact email before submitting anonymously'
+					);
+				}
+			}
 			const result = await reviewModeration.submitNotice({
 				publicationId: review.publicationId,
 				versionId: review.versionId,
@@ -57,7 +71,6 @@ export const actions = {
 				anonymous,
 				idempotencyKey: randomUUID()
 			});
-			const evidence = form.get('evidence');
 			let evidenceError: string | undefined;
 			if (evidence instanceof File && evidence.size > 0) {
 				if (!result.caseToken) {

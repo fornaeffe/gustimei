@@ -23,6 +23,21 @@ administrator, but ordinary catalogue-curator permissions do not cross this boun
 
 ## Before starting
 
+### Approved clocks
+
+| Workflow target                 |                                   SLA |
+| ------------------------------- | ------------------------------------: |
+| Party statement/evidence window |       14 days after notice submission |
+| Initial decision                |       30 days after notice submission |
+| Redress request                 | 30 days after the applicable decision |
+| Redress decision                |      30 days after redress submission |
+| Notifier access link            |     7 days after each token is issued |
+| Evidence deletion deadline      |      90 days after final case closure |
+| Review publication lifetime     |                      2 calendar years |
+
+These are persisted deadlines. The queue marks overdue initial and redress decisions. Phase 9 must
+still measure delivery, worker, and durable-provider performance against them.
+
 1. Sign in with a verified account that has an active `admin` or `review_moderator` review role.
 2. For local synthetic exercises, install the synthetic policy and provision roles as described in
    [Phase 2C review operations](phase-2c-reviews.md#local-setup-and-verification).
@@ -54,6 +69,10 @@ The author uses `/reviews/manage`; the notifier uses the case-scoped link sent i
 acknowledgement. Each party can submit a statement and optional evidence until the displayed
 submission deadline.
 
+Notifier links expire after seven days. The notifier can use `/reviews/cases/recover` with the case
+reference and original contact email to request a fresh seven-day link. The response is identical
+whether or not the values match, and requests are rate-limited to avoid exposing case membership.
+
 In the internal case, compare the parties' statements without disclosing one party's evidence or
 contact details to the other. Evidence is optional: a case can be decided from sufficiently reliable
 statements and other facts. Never demand a receipt merely because the upload area exists.
@@ -80,6 +99,10 @@ Use **Apply interim restriction** only when documented, objective risk makes tem
 necessary while the case remains open. Enter a reason code that another reviewer can understand.
 Do not restrict automatically because a notice was filed, because the notifier is an owner, or
 because the review is unfavorable.
+
+When a restriction is active, the same control becomes **Lift interim restriction** and requires a
+new reason code. The author management view distinguishes this state from an ordinarily published
+review.
 
 ## 6. Record the human decision
 
@@ -146,6 +169,11 @@ appears in the internal case. Reassess it against the same policy and record a n
 version supersedes the previous decision without deleting history. Use `restore` when reconsideration
 supports reinstatement. An expired review remains expired even if the moderation restriction is
 lifted.
+
+Each party has 30 days from the applicable decision to submit one canonical redress request. The
+redress decision is due 30 days after submission. Concurrent tabs cannot create multiple canonical
+requests; historical duplicates created before this constraint remain retained for audit but are not
+shown as active party requests.
 
 ## 8. Close the case
 

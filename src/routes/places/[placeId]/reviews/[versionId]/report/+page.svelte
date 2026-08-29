@@ -16,7 +16,11 @@
 	{#if form?.error}<p class="form-status form-status--error" role="alert">{form.error}</p>{/if}
 	{#if form?.submitted}
 		<p class="form-status" role="status">
-			{form.duplicate ? m.notice_duplicate_reused() : m.notice_submitted()}
+			{form.duplicate
+				? m.notice_duplicate_reused()
+				: form.caseHref
+					? m.notice_submitted()
+					: m.notice_submitted_without_case_access()}
 		</p>
 		{#if form.evidenceError}<p class="form-status form-status--error" role="alert">
 				{form.evidenceError}

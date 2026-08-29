@@ -2,13 +2,16 @@
 	import { resolve } from '$app/paths';
 	import type { Pathname } from '$app/types';
 	import { getLocale, localizeHref } from '$lib/paraglide/runtime';
+	import LocalizedDateTime from '$lib/components/ui/LocalizedDateTime.svelte';
 	import StatePanel from '$lib/components/ui/StatePanel.svelte';
 	import * as m from '$lib/paraglide/messages';
+
 	let { data } = $props();
 	let locale = $derived(getLocale());
 </script>
 
 <svelte:head><title>{m.moderation_queue()} — {m.product_name()}</title></svelte:head>
+
 <div class="stack">
 	<header>
 		<p class="eyebrow">{m.restricted_case_material()}</p>
@@ -29,11 +32,23 @@
 							>
 						</h2>
 						<span class="status-chip">{item.status}</span>
+						{#if item.assignedToActor}<strong class="status-chip">{m.assigned_to_you()}</strong
+							>{/if}
 						{#if item.overdue}<strong class="form-status form-status--error">{m.overdue()}</strong
 							>{/if}
 					</header>
 					<p>{item.kind} · {item.allegedGround}</p>
-					<p>{m.assigned_moderator()}: {item.assignedModeratorId ?? '—'}</p>
+					<p>
+						{m.assigned_moderator()}:
+						{item.assignedModeratorName
+							? `${item.assignedModeratorName} (${item.assignedModeratorEmail})`
+							: m.unassigned_case()}
+					</p>
+					{#if item.redressDecisionDueAt}
+						<p>
+							{m.redress_decision_due()}: <LocalizedDateTime value={item.redressDecisionDueAt} />
+						</p>
+					{/if}
 				</article>
 			{/each}
 		</div>

@@ -66,6 +66,20 @@ export const actions = {
 			return fail(409, { section: 'restrict', error: message(cause) });
 		}
 	},
+	liftRestriction: async (event) => {
+		const user = requireUser(event, { verified: true });
+		const form = await event.request.formData();
+		try {
+			await reviewModeration.clearInterimRestriction(
+				user.id,
+				event.params.noticeId,
+				stringField(form, 'reasonCode')
+			);
+			return { section: 'restrict', saved: true };
+		} catch (cause) {
+			return fail(409, { section: 'restrict', error: message(cause) });
+		}
+	},
 	decide: async (event) => {
 		const user = requireUser(event, { verified: true });
 		const form = await event.request.formData();

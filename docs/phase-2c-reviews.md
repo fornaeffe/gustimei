@@ -68,6 +68,12 @@ expiry, deletion, and authorization checks.
 - `ReviewPrivacyService`: account erasure, immediate public removal, attribution removal, bounded case holds, and post-hold redaction.
 - `ReviewOutboxWorker`: deterministic idempotent local delivery of acknowledgement, author notice, decision, reinstatement, redress, and retention messages.
 
+Approved workflow clocks are centralized in `approvedReviewClockPolicy`: 14 days for party
+submissions, 30 days for the initial decision, two calendar years for publication, 90 days after
+closure for evidence retention, seven days per notifier token, 30 days to submit redress, and 30 days
+to decide redress. Decision and redress deadlines are persisted; expired notifier access is recovered
+through a rate-limited, non-enumerating email flow.
+
 Review author IDs, moderator permissions, and case-party access must be resolved by SvelteKit server hooks/actions. Never accept them from client form fields. Catalogue-curator permission does not imply review-moderator permission.
 
 ## Restricted evidence

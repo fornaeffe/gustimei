@@ -8,3 +8,8 @@ export function reviewCaseEvidencePath(input: {
 	const path = `${prefix}/${encodeURIComponent(input.noticeId)}/evidence/${encodeURIComponent(input.evidenceId)}`;
 	return input.token ? `${path}?token=${encodeURIComponent(input.token)}` : path;
 }
+
+export function reviewCaseAction(action: string, token?: string): string {
+	const base = `?/${encodeURIComponent(action)}`;
+	return token ? `${base}&token=${encodeURIComponent(token)}` : base;
+}

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	assertServiceDateEligible,
+	approvedReviewClockPolicy,
 	deriveExpiresAt,
 	derivePublicPresentation,
 	italianCalendarDate,
@@ -10,6 +11,18 @@ import {
 } from './policy';
 
 describe('review publication policy', () => {
+	it('exposes the approved review and redress clocks', () => {
+		expect(approvedReviewClockPolicy).toEqual({
+			serviceDateWindowDays: 30,
+			publicationLifetimeYears: 2,
+			partySubmissionWindowDays: 14,
+			initialDecisionDays: 30,
+			evidenceRetentionDays: 90,
+			notifierTokenLifetimeDays: 7,
+			redressSubmissionWindowDays: 30,
+			redressDecisionDays: 30
+		});
+	});
 	it('uses the Italian calendar at UTC day boundaries and enforces the provisional window', () => {
 		const now = new Date('2026-08-15T22:30:00.000Z');
 		expect(italianCalendarDate(now)).toBe('2026-08-16');

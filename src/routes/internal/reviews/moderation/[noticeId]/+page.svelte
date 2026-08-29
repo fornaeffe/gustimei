@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import Button from '$lib/components/ui/Button.svelte';
+	import FormFeedback from '$lib/components/ui/FormFeedback.svelte';
 	import CaseTimeline from '$lib/components/reviews/CaseTimeline.svelte';
 	import ReasonedDecision from '$lib/components/reviews/ReasonedDecision.svelte';
 	import { reviewCaseEvidencePath } from '$lib/domain/reviews/case-routes';
@@ -12,7 +13,7 @@
 		data.case.events.map((item) => ({
 			id: item.id,
 			title: item.action,
-			description: item.reasonCode,
+			description: item.presentationReason,
 			at: item.createdAt.toISOString()
 		}))
 	);
@@ -37,6 +38,11 @@
 
 <svelte:head><title>{m.moderation_case()} — {m.product_name()}</title></svelte:head>
 <div class="stack">
+	<nav aria-label={m.moderation_queue()}>
+		<Button href={localizeHref('/internal/reviews/moderation', { locale })} variant="secondary"
+			>{m.back_to_moderation_queue()}</Button
+		>
+	</nav>
 	<header>
 		<p class="eyebrow">{data.case.id}</p>
 		<h1>{m.moderation_case()}</h1>
@@ -46,9 +52,6 @@
 			<span>{data.case.ownerAssertion}</span>
 		</div>
 	</header>
-	{#if form?.error}<p class="form-status form-status--error" role="alert">{form.error}</p>{/if}
-	{#if form?.saved}<p class="form-status" role="status">{m.save()}</p>{/if}
-
 	<section class="surface-card stack content-boundary content-boundary--restricted">
 		<h2>{m.exact_reported_version()}</h2>
 		<p><strong>{data.case.pseudonym}</strong></p>
@@ -60,6 +63,12 @@
 
 	<section class="surface-card stack">
 		<h2>{m.assigned_moderator()}</h2>
+		<FormFeedback
+			active={form?.section === 'assign' || form?.section === 'ownerAssertion'}
+			error={form?.error}
+			saved={form?.saved}
+			savedMessage={m.action_saved()}
+		/>
 		<p>
 			{#if assignedModerator}
 				{assignedModerator.name} ({assignedModerator.email})
@@ -102,6 +111,12 @@
 
 	<section class="surface-card stack">
 		<h2>{m.restricted_evidence()}</h2>
+		<FormFeedback
+			active={form?.section === 'scanEvidence'}
+			error={form?.error}
+			saved={form?.saved}
+			savedMessage={m.action_saved()}
+		/>
 		{#each data.case.submissions as submission (submission.id)}
 			<article>
 				<strong>{submission.partyRole}</strong>
@@ -140,26 +155,58 @@
 
 	<section class="surface-card stack">
 		<h2>{m.interim_restrict()}</h2>
-		<form method="POST" action="?/restrict" use:enhance class="cluster">
+		<FormFeedback
+			active={form?.section === 'restrict'}
+			error={form?.error}
+			saved={form?.saved}
+			savedMessage={m.action_saved()}
+		/>
+		{#if data.case.interimRestrictedAt}<p class="form-status">
+				{m.interim_restriction_active()}
+			</p>{/if}
+		<form
+			method="POST"
+			action={data.case.interimRestrictedAt ? '?/liftRestriction' : '?/restrict'}
+			use:enhance
+			class="cluster"
+		>
 			<label for="restriction-reason">{m.reason_code()}</label>
 			<input id="restriction-reason" name="reasonCode" required maxlength="500" />
-			<Button type="submit" variant="danger">{m.interim_restrict()}</Button>
+			<Button type="submit" variant={data.case.interimRestrictedAt ? 'secondary' : 'danger'}
+				>{data.case.interimRestrictedAt
+					? m.lift_interim_restriction()
+					: m.interim_restrict()}</Button
+			>
 		</form>
 	</section>
 
 	<section class="surface-card stack">
 		<h2>{m.reasoned_explanation()}</h2>
+		<FormFeedback
+			active={form?.section === 'decide'}
+			error={form?.error}
+			saved={form?.saved}
+			savedMessage={m.action_saved()}
+		/>
 		{#each data.case.decisions as decision (decision.id)}
 			<ReasonedDecision
 				outcome={decision.outcome}
+				scope={decision.scope}
+				duration={decision.duration}
+				ground={decision.ground}
+				policyVersionId={decision.policyVersionId}
 				reasons={decision.reasonedExplanation}
-				decidedAt={decision.decidedAt.toISOString()}
+				factsReliedOn={decision.factsReliedOn}
+				automationDisclosure={decision.automationDisclosure}
+				decidedAt={decision.decidedAt}
+				redressSubmissionDeadline={decision.redressSubmissionDeadline}
 			/>
 		{/each}
 		{#each data.case.redress as request (request.id)}
 			<p><strong>{request.partyRole} · {request.status}</strong>: {request.statement}</p>
 		{/each}
 		<form method="POST" action="?/decide" use:enhance class="stack-form">
+			<p id="decision-required" class="field__hint">{m.validation_required()}</p>
 			<label for="decision-outcome">{m.decision_outcome()}</label>
 			<select id="decision-outcome" name="outcome" required>
 				<option value="no-action">no-action</option><option value="restrict">restrict</option
@@ -205,6 +252,12 @@
 
 	<section class="surface-card stack">
 		<h2>{m.case_status()}</h2>
+		<FormFeedback
+			active={form?.section === 'close'}
+			error={form?.error}
+			saved={form?.saved}
+			savedMessage={m.action_saved()}
+		/>
 		<CaseTimeline {events} />
 		{#if data.case.status === 'decided'}<form method="POST" action="?/close" use:enhance>
 				<Button type="submit" variant="secondary">{m.close_case()}</Button>

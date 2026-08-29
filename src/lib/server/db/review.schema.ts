@@ -405,7 +405,7 @@ export const reviewEvidenceObject = pgTable(
 		scanState: reviewEvidenceScanStateEnum('scan_state').notNull(),
 		purpose: text('purpose').notNull(),
 		accessClassification: text('access_classification').notNull(),
-		expiresAt: eventTimestamp('expires_at').notNull(),
+		expiresAt: eventTimestamp('expires_at'),
 		deletedAt: eventTimestamp('deleted_at'),
 		createdAt: eventTimestamp('created_at').notNull()
 	},
@@ -455,6 +455,7 @@ export const reviewModerationDecision = pgTable(
 		}),
 		supersedesDecisionId: text('supersedes_decision_id'),
 		decidedAt: eventTimestamp('decided_at').notNull(),
+		redressSubmissionDeadline: eventTimestamp('redress_submission_deadline').notNull(),
 		notifiedAt: eventTimestamp('notified_at')
 	},
 	(table) => [
@@ -481,10 +482,17 @@ export const reviewRedressRequest = pgTable(
 		statement: text('statement').notNull(),
 		status: reviewRedressStatusEnum('status').notNull().default('submitted'),
 		idempotencyKey: text('idempotency_key').notNull().unique(),
+		duplicateOfId: text('duplicate_of_id'),
 		createdAt: eventTimestamp('created_at').notNull(),
+		decisionDueAt: eventTimestamp('decision_due_at').notNull(),
 		decidedAt: eventTimestamp('decided_at')
 	},
-	(table) => [index('review_redress_queue_idx').on(table.status, table.createdAt)]
+	(table) => [
+		uniqueIndex('review_redress_decision_party_uq')
+			.on(table.decisionId, table.partyRole)
+			.where(sql`${table.duplicateOfId} is null`),
+		index('review_redress_queue_idx').on(table.status, table.decisionDueAt)
+	]
 );
 
 export const transactionalOutbox = pgTable(
@@ -512,6 +520,7 @@ export const reviewNotification = pgTable(
 		reviewId: text('review_id').references(() => placeReview.id, { onDelete: 'restrict' }),
 		recipientRole: text('recipient_role').notNull(),
 		purpose: text('purpose').notNull(),
+		deliveryKey: text('delivery_key').notNull().default(''),
 		templateVersion: text('template_version').notNull(),
 		outboxJobId: text('outbox_job_id')
 			.notNull()
@@ -521,7 +530,12 @@ export const reviewNotification = pgTable(
 		deliveredAt: eventTimestamp('delivered_at')
 	},
 	(table) => [
-		unique('review_notification_purpose_uq').on(table.noticeId, table.recipientRole, table.purpose)
+		unique('review_notification_delivery_uq').on(
+			table.noticeId,
+			table.recipientRole,
+			table.purpose,
+			table.deliveryKey
+		)
 	]
 );
 

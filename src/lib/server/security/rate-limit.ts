@@ -3,6 +3,7 @@ export type RateLimitPurpose =
 	| 'review-author-mutation'
 	| 'review-notice'
 	| 'review-case-message'
+	| 'review-case-access'
 	| 'review-evidence-upload'
 	| 'review-moderator-action'
 	| 'review-redress';
@@ -34,6 +35,7 @@ export const reviewRateLimitPolicies: Readonly<
 	'review-author-mutation': { limit: 10, windowMs: 60 * 60_000 },
 	'review-notice': { limit: 5, windowMs: 60 * 60_000 },
 	'review-case-message': { limit: 10, windowMs: 24 * 60 * 60_000 },
+	'review-case-access': { limit: 5, windowMs: 60 * 60_000 },
 	'review-evidence-upload': { limit: 5, windowMs: 24 * 60 * 60_000 },
 	'review-moderator-action': { limit: 100, windowMs: 60 * 60_000 },
 	'review-redress': { limit: 3, windowMs: 30 * 24 * 60 * 60_000 }

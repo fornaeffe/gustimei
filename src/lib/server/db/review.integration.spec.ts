@@ -429,6 +429,25 @@ describe('notice, moderation, evidence, expiry, and erasure', () => {
 			'review-acknowledgement:v1',
 			'review-author-notice:v1'
 		]);
+		const [storedNotice] = await db.select().from(reviewNotice);
+		expect(storedNotice.submissionDeadline).toEqual(new Date('2026-08-29T10:00:00.000Z'));
+		expect(storedNotice.decisionDueAt).toEqual(new Date('2026-09-14T10:00:00.000Z'));
+		await moderation.requestNotifierCaseAccess({
+			noticeId: notice.noticeId,
+			email: 'notifier@example.test',
+			caseActionUrl: (token) =>
+				`https://example.test/reviews/cases/${notice.noticeId}?token=${encodeURIComponent(token)}`
+		});
+		expect(await new ReviewOutboxWorker(db, email, clock).runBatch()).toBe(1);
+		const recoveredUrl = email.outbox.at(-1)?.variables.actionUrl;
+		expect(email.outbox.at(-1)?.template).toBe('review-case-access:v1');
+		expect(recoveredUrl).toBeTruthy();
+		await expect(
+			moderation.getCaseForNotifier(
+				notice.noticeId,
+				new URL(recoveredUrl!).searchParams.get('token')!
+			)
+		).resolves.toMatchObject({ id: notice.noticeId });
 		const duplicateNotice = await moderation.submitNotice({
 			publicationId: created.publicationId!,
 			versionId: created.versionId!,
@@ -496,6 +515,7 @@ describe('notice, moderation, evidence, expiry, and erasure', () => {
 			notifierToken: notice.caseToken
 		});
 		await moderation.markEvidenceScan('moderator', object.id, true);
+		expect(await moderation.runEvidenceRetentionBatch()).toBe(0);
 		expect(
 			await moderation.readEvidenceFile({
 				evidenceId: object.id,
@@ -536,6 +556,9 @@ describe('notice, moderation, evidence, expiry, and erasure', () => {
 			'administrator permission'
 		);
 		await moderation.assign('admin', notice.noticeId, 'moderator');
+		expect(
+			(await moderation.listModeratorQueue('moderator')).find((item) => item.id === notice.noticeId)
+		).toMatchObject({ assignedToActor: true, assignedModeratorEmail: 'moderator@example.test' });
 		await moderation.grantModerator('admin', 'other', 'review_moderator', 'absence coverage');
 		await moderation.assign('admin', notice.noticeId, 'other');
 		expect(
@@ -552,6 +575,9 @@ describe('notice, moderation, evidence, expiry, and erasure', () => {
 		).resolves.toEqual({ verified: true });
 		await moderation.setInterimRestriction('moderator', notice.noticeId, 'documented-risk');
 		expect(await reviews.listPublic('osm:node:1')).toEqual([]);
+		await moderation.clearInterimRestriction('moderator', notice.noticeId, 'risk-resolved');
+		expect(await reviews.listPublic('osm:node:1')).toHaveLength(1);
+		await moderation.setInterimRestriction('moderator', notice.noticeId, 'documented-risk');
 		const removed = await moderation.decide('moderator', {
 			noticeId: notice.noticeId,
 			outcome: 'remove',
@@ -569,7 +595,34 @@ describe('notice, moderation, evidence, expiry, and erasure', () => {
 			idempotencyKey: 'redress-1',
 			authorUserId: 'author'
 		});
-		expect(redress).toMatchObject({ noticeId: notice.noticeId, status: 'submitted' });
+		expect(redress).toMatchObject({
+			noticeId: notice.noticeId,
+			status: 'submitted',
+			decisionDueAt: new Date('2026-09-14T10:00:00.000Z')
+		});
+		await expect(
+			moderation.requestRedress({
+				noticeId: notice.noticeId,
+				decisionId: removed.decisionId,
+				partyRole: 'author',
+				statement: 'A concurrent duplicate reconsideration request.',
+				idempotencyKey: 'redress-concurrent-tab',
+				authorUserId: 'author'
+			})
+		).rejects.toThrow('already requested');
+		expect(await moderation.getCaseForAuthor('author', notice.noticeId)).toMatchObject({
+			decisions: [
+				{
+					id: removed.decisionId,
+					scope: 'exact publication',
+					ground: 'synthetic-policy-ground',
+					factsReliedOn: 'The notice, author response, and clean synthetic evidence.',
+					automationDisclosure: 'Automation only routed and scanned the file.',
+					redressOpen: false,
+					redressSubmissionDeadline: new Date('2026-09-14T10:00:00.000Z')
+				}
+			]
+		});
 		await moderation.decide('moderator', {
 			noticeId: notice.noticeId,
 			outcome: 'restore',

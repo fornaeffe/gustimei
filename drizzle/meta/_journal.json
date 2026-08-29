@@ -50,6 +50,20 @@
       "when": 1787646867404,
       "tag": "0006_damp_robin_chapel",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1787985649290,
+      "tag": "0007_common_synch",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1787986290256,
+      "tag": "0008_square_giant_man",
+      "breakpoints": true
     }
   ]
 }

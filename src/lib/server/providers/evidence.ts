@@ -1,12 +1,10 @@
-export const EVIDENCE_MAX_FILES_PER_CASE = 5;
-export const EVIDENCE_MAX_FILE_BYTES = 5 * 1024 * 1024;
-export const EVIDENCE_ALLOWED_MEDIA_TYPES = new Set([
-	'application/pdf',
-	'image/jpeg',
-	'image/png',
-	'image/webp',
-	'text/plain'
-]);
+import {
+	EVIDENCE_ALLOWED_MEDIA_TYPES,
+	EVIDENCE_MAX_FILE_BYTES,
+	EVIDENCE_MAX_FILES_PER_CASE
+} from '$lib/domain/reviews/evidence';
+
+export { EVIDENCE_ALLOWED_MEDIA_TYPES, EVIDENCE_MAX_FILE_BYTES, EVIDENCE_MAX_FILES_PER_CASE };
 
 export interface EvidenceWrite {
 	handle: string;

@@ -30,6 +30,9 @@
 					<header>
 						<h2>{review.placeName ?? review.placeId}</h2>
 						<span class="status-chip">{review.lifecycle}</span>
+						{#if review.interimRestrictedAt}<span class="status-chip"
+								>{m.interim_restriction_active()}</span
+							>{/if}
 					</header>
 					<p class="review-card__body">{review.body}</p>
 					<div class="form-footer">
@@ -40,7 +43,7 @@
 						{#if review.lifecycle === 'published'}
 							<Button
 								href={localizeHref(`/reviews/manage/${review.reviewId}/edit`, { locale })}
-								variant="quiet">{m.save()}</Button
+								variant="quiet">{m.edit_review()}</Button
 							>
 							<form method="POST" action="?/withdraw" use:enhance>
 								<input type="hidden" name="reviewId" value={review.reviewId} />

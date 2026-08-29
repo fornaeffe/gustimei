@@ -43,6 +43,7 @@ export type ReviewOutboxPurpose =
 	| 'email-verification'
 	| 'password-reset'
 	| 'review-acknowledgement'
+	| 'review-case-access'
 	| 'review-author-notice'
 	| 'review-evidence-window'
 	| 'review-decision'

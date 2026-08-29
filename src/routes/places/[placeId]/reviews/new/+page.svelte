@@ -32,7 +32,7 @@
 		locality={data.place.displayLocality}
 	/>
 	{#if !data.profile}
-		<StatePanel title={m.review_unavailable()} description={m.review_unavailable_body()}>
+		<StatePanel title={m.review_unavailable()} description={m.review_pseudonym_required_body()}>
 			{#snippet action()}
 				<Button href={localizeHref('/settings/profile', { locale })}>{m.save_pseudonym()}</Button>
 			{/snippet}

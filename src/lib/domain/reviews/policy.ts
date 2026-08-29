@@ -7,14 +7,22 @@ export interface ReviewClockPolicy {
 	serviceDateWindowDays: number;
 	publicationLifetimeYears: number;
 	partySubmissionWindowDays: number;
+	initialDecisionDays: number;
 	evidenceRetentionDays: number;
+	notifierTokenLifetimeDays: number;
+	redressSubmissionWindowDays: number;
+	redressDecisionDays: number;
 }
 
-export const provisionalReviewClockPolicy: Readonly<ReviewClockPolicy> = {
+export const approvedReviewClockPolicy: Readonly<ReviewClockPolicy> = {
 	serviceDateWindowDays: 30,
 	publicationLifetimeYears: 2,
 	partySubmissionWindowDays: 14,
-	evidenceRetentionDays: 90
+	initialDecisionDays: 30,
+	evidenceRetentionDays: 90,
+	notifierTokenLifetimeDays: 7,
+	redressSubmissionWindowDays: 30,
+	redressDecisionDays: 30
 };
 
 export interface ReviewDeclarations {
@@ -129,7 +137,7 @@ function epochDay(value: string): number {
 export function assertServiceDateEligible(
 	serviceDate: string,
 	now: Date,
-	policy: Pick<ReviewClockPolicy, 'serviceDateWindowDays'> = provisionalReviewClockPolicy
+	policy: Pick<ReviewClockPolicy, 'serviceDateWindowDays'> = approvedReviewClockPolicy
 ): string {
 	const normalized = parseItalianServiceDate(serviceDate);
 	const age = epochDay(italianCalendarDate(now)) - epochDay(normalized);
@@ -152,7 +160,7 @@ export function addDays(at: Date, days: number): Date {
 
 export function deriveExpiresAt(
 	publishedAt: Date,
-	policy: Pick<ReviewClockPolicy, 'publicationLifetimeYears'> = provisionalReviewClockPolicy
+	policy: Pick<ReviewClockPolicy, 'publicationLifetimeYears'> = approvedReviewClockPolicy
 ): Date {
 	return addCalendarYears(publishedAt, policy.publicationLifetimeYears);
 }
@@ -200,7 +208,7 @@ export function assertExactReportedVersion(
 
 export function evidenceDeletionDeadline(
 	caseClosedAt: Date,
-	policy: Pick<ReviewClockPolicy, 'evidenceRetentionDays'> = provisionalReviewClockPolicy
+	policy: Pick<ReviewClockPolicy, 'evidenceRetentionDays'> = approvedReviewClockPolicy
 ): Date {
 	return addDays(caseClosedAt, policy.evidenceRetentionDays);
 }

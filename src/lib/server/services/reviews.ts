@@ -9,7 +9,7 @@ import {
 	requireDeclarations,
 	type ReviewClockPolicy,
 	type ReviewDeclarations,
-	provisionalReviewClockPolicy
+	approvedReviewClockPolicy
 } from '$lib/domain/reviews/policy';
 import type { AppEnvironment } from '$lib/server/config/environment';
 import type { Database } from '$lib/server/db';
@@ -52,7 +52,7 @@ interface PolicyConfiguration extends ReviewClockPolicy {
 }
 
 const defaultPolicyConfiguration: PolicyConfiguration = {
-	...provisionalReviewClockPolicy,
+	...approvedReviewClockPolicy,
 	publicServiceDatePrecision: 'month'
 };
 
@@ -531,6 +531,7 @@ export class ReviewService {
 				publishedAt: reviewPublication.publishedAt,
 				expiresAt: reviewPublication.expiresAt,
 				editedAt: reviewPublication.editedAt,
+				interimRestrictedAt: reviewPublication.interimRestrictedAt,
 				lifecycle: reviewPublication.lifecycle
 			})
 			.from(placeReview)

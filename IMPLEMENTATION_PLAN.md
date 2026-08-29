@@ -86,6 +86,7 @@ Treat the following as implementation constraints unless legal review directs ot
 - Allow the author to withdraw a review at any time. Withdrawal removes it from public reads without changing the ranking or deleting complaint/audit facts that have a documented retention basis. Account erasure removes public attribution and review content unless a narrowly documented legal-claims hold requires temporary restricted retention; such a hold never keeps the review public.
 - Store the exact service date for eligibility and case review, but display only a privacy-preserving localized representation provisionally limited to month and year. Do not expose receipt, booking, precise-time, or location evidence publicly.
 - A report alone does not prove illegality and does not automatically remove or demote a review. Preserve visibility unless an objectively documented interim restriction is necessary; provide human review where facts, law, credibility, or competing evidence require judgment, and apply the same policy regardless of whether the review is favorable or unfavorable.
+- Use the approved product/engineering moderation clocks: 14 days after notice submission for party statements/evidence; 30 days after notice submission for the initial decision; 30 days after a decision to submit redress; 30 days after redress submission for the redress decision; seven days per notifier case token with rate-limited non-enumerating recovery; two calendar years per review publication generation; and evidence deletion 90 days after final case closure. Persist decision and redress deadlines so queue/overdue behavior is auditable. Phase 9 must still prove hosted delivery, scheduler, and durable deletion performance against these targets.
 
 The AGCM document is still a draft and describes reasonable and proportionate authenticity measures, traceability, anomaly review, transparent moderation, and an opportunity for both sides to provide facts. The initial MVP uses verified accounts, explicit declarations, immutable provenance, rate limits, anomaly signals for triage, and evidence-on-challenge rather than mandatory receipts or booking proof. This is a **changeable compliance assumption**, not a conclusion that declarations alone satisfy every applicable duty.
 
@@ -303,7 +304,7 @@ Enforce these defaults through scheduled jobs and tests; final periods remain su
 | Active account, visited places, personal comments, rankings, and comparisons | While the account is active or until the user deletes the comment or the category/account is deleted |
 | Public review text and immutable versions | While the applicable publication generation is live; after withdrawal, expiry, removal, substitution, or account erasure, delete or irreversibly redact content after the final case/redress window unless a documented legal-claims hold applies. Counsel must approve the exact short period before beta. |
 | Abandoned or rejected evidence uploads | Delete within seven days unless linked to an accepted notice or active case |
-| Restricted complaint/appeal evidence blobs | Provisional deletion 90 days after final case closure or the applicable redress window, whichever is later; shorten where possible and let counsel approve any legal-claims exception |
+| Restricted complaint/appeal evidence blobs | Delete 90 days after final case closure; a documented legal-claims hold is the only exception and remains subject to counsel approval and access review |
 | Review notice, decision, notification, and append-only audit facts | Retain the minimum non-content record needed for DSA/consumer-law accountability under a counsel-approved period; separate this from evidence-blob retention and never retain secret links or unnecessary identity fields |
 | User-specific recommendation factors and replaceable snapshots | Until superseded, category/account deletion, or 90 days after last relevant use |
 | Recommendation exposures required for the 90-day conversion | 120 days |
@@ -1201,6 +1202,24 @@ composer remains responsible for the independently entered 30-day service-date e
   from rankings, recommendations, visited membership, and private comments. The guide also makes
   explicit that decision scope and duration are currently recorded accountability fields rather
   than executable selectors or automatic timers.
+- Approved and centralized the moderation clock matrix: 14-day bilateral submission, 30-day initial
+  decision, two-calendar-year publication, 90-day post-closure evidence retention, seven-day notifier
+  token, 30-day redress submission, and 30-day redress decision. Persisted redress deadlines and
+  added queue overdue visibility. A rate-limited, non-enumerating recovery route issues a fresh
+  seven-day notifier link so the shorter token does not truncate the redress window.
+- Resolved the remaining human-exercise defects without deleting their evidence: optional file
+  metadata is rejected before notice creation; anonymous success copy no longer promises a case
+  link; party dates use localized readable rendering; decided cases hide the ordinary statement
+  form and put evidence below redress; party decisions disclose scope, duration, ground, policy,
+  material facts, automation, and redress timing; notifier named actions preserve authorization;
+  and database uniqueness prevents concurrent-tab duplicate redress while the migration marks any
+  pre-existing duplicates as historical. Moderation feedback is local to its form, assignment is
+  human-readable and highlights the current moderator, navigation returns to the queue, interim
+  restrictions can be lifted explicitly, and author management distinguishes interim restriction
+  and labels edit navigation correctly. Verification passed Svelte autofixer, zero-warning Svelte
+  diagnostics, 94 unit/component tests, 25 PostgreSQL integration tests, a production build, and all
+  three localized production-build browser checks; affected human rows remain explicitly marked for
+  retest in the Phase 6 report.
 
 **Open questions to answer before Phase 7:**
 
@@ -1211,7 +1230,7 @@ composer remains responsible for the independently entered 30-day service-date e
 - How is that order delivered: page/cursor size, maximum browsable depth, stable tie-breaking, snapshot/version consistency across pages, and invalidation behavior?
 - Where do unsupported or newly imported places appear, if anywhere, and how are visited items interleaved without implying confidence the model does not have?
 - What local latency, memory, artifact-size, and quality thresholds must the Phase 7 implementation meet before hotels are added?
-- Did local synthetic human case exercises confirm that acknowledgement, bilateral submission/evidence, human decision, notification-preview, redress, and reinstatement paths are usable; that comparable cases receive consistent policy treatment; and that public users, each case party, catalogue curators, moderators, and administrators see only their authorized material? Record provisional timings as diagnostics, but do not claim operational SLA compliance before the approved targets and hosted providers exist.
+- Do the targeted human retests confirm the remediated anonymous-notice, invalid-evidence, full-decision, local-feedback, notifier-redress, and concurrent-redress paths, while comparable cases continue to receive consistent treatment and every audience sees only its authorized material? The targets are now approved, but local timing remains diagnostic; hosted SLA compliance is a Phase 9 gate.
 - Which moderation states are public, author-only, notifier-only, or moderator-only, and did accessibility testing confirm that “disputed” and “removed” do not imply an unreviewed allegation is true?
 - Did edit/substitution and catalogue-merge concurrency tests preserve one current review per effective author/place without losing reported-version history or allowing an expired/removed generation to reappear?
 

@@ -2,11 +2,15 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { and, asc, count, desc, eq, gt, inArray, isNull, lte, sql } from 'drizzle-orm';
 import {
 	addDays,
+	approvedReviewClockPolicy,
 	evidenceDeletionDeadline,
 	normalizeCaseText,
-	normalizeNoticeExplanation,
-	provisionalReviewClockPolicy
+	normalizeNoticeExplanation
 } from '$lib/domain/reviews/policy';
+import {
+	EVIDENCE_MAX_FILES_PER_CASE,
+	validateEvidenceMetadata
+} from '$lib/domain/reviews/evidence';
 import type { AppEnvironment } from '$lib/server/config/environment';
 import type { Database } from '$lib/server/db';
 import {
@@ -36,12 +40,7 @@ import {
 	DomainValidationError,
 	NotFoundError
 } from '$lib/server/domain/errors';
-import {
-	EVIDENCE_ALLOWED_MEDIA_TYPES,
-	EVIDENCE_MAX_FILES_PER_CASE,
-	EVIDENCE_MAX_FILE_BYTES,
-	type RestrictedEvidenceStore
-} from '$lib/server/providers/evidence';
+import type { RestrictedEvidenceStore } from '$lib/server/providers/evidence';
 import type { ReviewOutboxPurpose } from '$lib/server/providers/contracts';
 import {
 	MemoryFixedWindowRateLimiter,
@@ -103,12 +102,15 @@ export class ReviewModerationService {
 				ownerAssertion: reviewNotice.ownerAssertion,
 				priority: reviewNotice.priority,
 				assignedModeratorId: reviewNotice.assignedModeratorId,
+				assignedModeratorName: user.name,
+				assignedModeratorEmail: user.email,
 				submissionDeadline: reviewNotice.submissionDeadline,
 				decisionDueAt: reviewNotice.decisionDueAt,
 				createdAt: reviewNotice.createdAt,
 				versionId: reviewNotice.versionId
 			})
 			.from(reviewNotice)
+			.leftJoin(user, eq(user.id, reviewNotice.assignedModeratorId))
 			.where(
 				inArray(reviewNotice.status, [
 					'received',
@@ -118,13 +120,35 @@ export class ReviewModerationService {
 				])
 			)
 			.orderBy(desc(reviewNotice.priority), asc(reviewNotice.createdAt));
+		const redressRows = await this.database
+			.select({
+				noticeId: reviewRedressRequest.noticeId,
+				decisionDueAt: reviewRedressRequest.decisionDueAt
+			})
+			.from(reviewRedressRequest)
+			.where(
+				and(
+					inArray(reviewRedressRequest.status, ['submitted', 'under-review']),
+					isNull(reviewRedressRequest.duplicateOfId)
+				)
+			)
+			.orderBy(asc(reviewRedressRequest.decisionDueAt));
+		const redressDueByNotice = new Map<string, Date>();
+		for (const redress of redressRows) {
+			if (!redressDueByNotice.has(redress.noticeId)) {
+				redressDueByNotice.set(redress.noticeId, redress.decisionDueAt);
+			}
+		}
 		return rows.map((row) => ({
 			...row,
+			assignedToActor: row.assignedModeratorId === actorUserId,
+			redressDecisionDueAt: redressDueByNotice.get(row.id),
 			overdue: Boolean(
 				(row.status === 'awaiting-submissions' &&
 					row.submissionDeadline &&
 					row.submissionDeadline <= now) ||
-				(row.status === 'under-review' && row.decisionDueAt && row.decisionDueAt <= now)
+				(row.status === 'under-review' && row.decisionDueAt && row.decisionDueAt <= now) ||
+				(redressDueByNotice.get(row.id) && redressDueByNotice.get(row.id)! <= now)
 			)
 		}));
 	}
@@ -176,10 +200,12 @@ export class ReviewModerationService {
 				createdAt: reviewNotice.createdAt,
 				versionId: reviewNotice.versionId,
 				versionBody: reviewVersion.body,
-				pseudonym: reviewVersion.pseudonymSnapshot
+				pseudonym: reviewVersion.pseudonymSnapshot,
+				interimRestrictedAt: reviewPublication.interimRestrictedAt
 			})
 			.from(reviewNotice)
 			.innerJoin(reviewVersion, eq(reviewVersion.id, reviewNotice.versionId))
+			.innerJoin(reviewPublication, eq(reviewPublication.id, reviewNotice.publicationId))
 			.where(eq(reviewNotice.id, noticeId))
 			.limit(1);
 		if (!record) throw new NotFoundError('Review case was not found');
@@ -220,7 +246,33 @@ export class ReviewModerationService {
 				.where(eq(reviewModerationEvent.noticeId, noticeId))
 				.orderBy(asc(reviewModerationEvent.createdAt))
 		]);
-		return { ...record, submissions, evidence, decisions, redress, events };
+		const assignmentUserIds = events
+			.map((item) => item.reasonCode.match(/^assigned-to:(.+)$/)?.[1])
+			.filter((value): value is string => Boolean(value));
+		const identities = assignmentUserIds.length
+			? await this.database
+					.select({ id: user.id, name: user.name, email: user.email })
+					.from(user)
+					.where(inArray(user.id, assignmentUserIds))
+			: [];
+		const identityById = new Map(identities.map((identity) => [identity.id, identity]));
+		return {
+			...record,
+			submissions,
+			evidence,
+			decisions,
+			redress,
+			events: events.map((item) => {
+				const targetId = item.reasonCode.match(/^assigned-to:(.+)$/)?.[1];
+				const identity = targetId ? identityById.get(targetId) : undefined;
+				return {
+					...item,
+					presentationReason: identity
+						? `Assigned to ${identity.name} (${identity.email})`
+						: item.reasonCode
+				};
+			})
+		};
 	}
 
 	async bootstrapModerator(input: {
@@ -442,7 +494,7 @@ export class ReviewModerationService {
 						noticeId: semanticDuplicate.id,
 						partyRole: 'notifier',
 						tokenHash: sha256(rawToken),
-						expiresAt: addDays(now, 7),
+						expiresAt: addDays(now, approvedReviewClockPolicy.notifierTokenLifetimeDays),
 						createdAt: now
 					});
 				}
@@ -471,8 +523,8 @@ export class ReviewModerationService {
 				idempotencyKey: input.idempotencyKey,
 				deduplicationKey,
 				acknowledgedAt: now,
-				submissionDeadline: addDays(now, provisionalReviewClockPolicy.partySubmissionWindowDays),
-				decisionDueAt: addDays(now, 30),
+				submissionDeadline: addDays(now, approvedReviewClockPolicy.partySubmissionWindowDays),
+				decisionDueAt: addDays(now, approvedReviewClockPolicy.initialDecisionDays),
 				createdAt: now,
 				updatedAt: now
 			});
@@ -482,7 +534,7 @@ export class ReviewModerationService {
 					noticeId,
 					partyRole: 'notifier',
 					tokenHash: sha256(rawToken),
-					expiresAt: addDays(now, 7),
+					expiresAt: addDays(now, approvedReviewClockPolicy.notifierTokenLifetimeDays),
 					createdAt: now
 				});
 			}
@@ -544,6 +596,55 @@ export class ReviewModerationService {
 		return this.caseProjection(await this.caseTarget(noticeId), 'notifier');
 	}
 
+	async requestNotifierCaseAccess(input: {
+		noticeId: string;
+		email: string;
+		caseActionUrl: (token: string) => string;
+	}) {
+		const email = input.email.trim().toLocaleLowerCase('en-US');
+		const rate = await this.limiter.consume({
+			purpose: 'review-case-access',
+			key: `${this.environment}:${input.noticeId}:${sha256(email)}`,
+			policy: reviewRateLimitPolicies['review-case-access']
+		});
+		if (!rate.allowed || !/^\S+@\S+\.\S+$/.test(email)) return { accepted: true };
+		const [target] = await this.database
+			.select({ id: reviewNotice.id, reviewId: reviewPublication.reviewId })
+			.from(reviewNotice)
+			.innerJoin(reviewPublication, eq(reviewPublication.id, reviewNotice.publicationId))
+			.where(
+				and(eq(reviewNotice.id, input.noticeId), eq(reviewNotice.notifierEmailHash, sha256(email)))
+			)
+			.limit(1);
+		if (!target) return { accepted: true };
+		const now = this.clock();
+		const rawToken = randomBytes(24).toString('base64url');
+		const tokenId = this.id();
+		await this.database.transaction(async (transaction) => {
+			await transaction.insert(reviewCaseAccessToken).values({
+				id: tokenId,
+				noticeId: target.id,
+				partyRole: 'notifier',
+				tokenHash: sha256(rawToken),
+				expiresAt: addDays(now, approvedReviewClockPolicy.notifierTokenLifetimeDays),
+				createdAt: now
+			});
+			await this.queueNotification(transaction, {
+				noticeId: target.id,
+				reviewId: target.reviewId,
+				recipientRole: 'notifier',
+				recipientReference: email,
+				purpose: 'review-case-access',
+				deliveryKey: tokenId,
+				variables: {
+					caseReference: target.id,
+					actionUrl: input.caseActionUrl(rawToken)
+				}
+			});
+		});
+		return { accepted: true };
+	}
+
 	async submitPartyStatement(input: {
 		noticeId: string;
 		partyRole: PartyRole;
@@ -561,6 +662,9 @@ export class ReviewModerationService {
 		if (!rate.allowed) throw new ConflictError('Too many case submissions');
 		const now = this.clock();
 		const target = await this.caseTarget(input.noticeId);
+		if (target.status === 'decided' || target.status === 'closed') {
+			throw new ConflictError('Statements cannot be added after a case decision');
+		}
 		if (!target.submissionDeadline || target.submissionDeadline < now) {
 			throw new ConflictError('The case submission window has closed');
 		}
@@ -592,11 +696,20 @@ export class ReviewModerationService {
 		notifierToken?: string;
 	}) {
 		await this.authorizeParty(input);
-		if (!EVIDENCE_ALLOWED_MEDIA_TYPES.has(input.mediaType)) {
-			throw new DomainValidationError('Evidence media type is not allowed');
-		}
-		if (input.bytes.byteLength < 1 || input.bytes.byteLength > EVIDENCE_MAX_FILE_BYTES) {
-			throw new DomainValidationError('Evidence file size is outside the allowed range');
+		const target = await this.caseTarget(input.noticeId);
+		if (target.status === 'closed')
+			throw new ConflictError('Evidence cannot be added to a closed case');
+		let metadata: ReturnType<typeof validateEvidenceMetadata>;
+		try {
+			metadata = validateEvidenceMetadata({
+				mediaType: input.mediaType,
+				sizeBytes: input.bytes.byteLength,
+				filename: input.filename
+			});
+		} catch (cause) {
+			throw new DomainValidationError(
+				cause instanceof Error ? cause.message : 'Evidence file is invalid'
+			);
 		}
 		const [{ value }] = await this.database
 			.select({ value: count() })
@@ -627,16 +740,14 @@ export class ReviewModerationService {
 					noticeId: input.noticeId,
 					uploaderRole: input.partyRole,
 					blobHandle: handle,
-					originalFilename: input.filename
-						? required(input.filename.replace(/[\\/]/g, '_'), 'Filename', 1, 200)
-						: undefined,
+					originalFilename: metadata.filename,
 					mediaType: input.mediaType,
 					sizeBytes: input.bytes.byteLength,
 					checksum: sha256(input.bytes),
 					scanState: 'pending',
 					purpose: required(input.purpose, 'Evidence purpose', 3, 200),
 					accessClassification: 'restricted-case-evidence',
-					expiresAt: addDays(now, provisionalReviewClockPolicy.evidenceRetentionDays),
+					expiresAt: null,
 					createdAt: now
 				})
 				.returning();
@@ -841,10 +952,13 @@ export class ReviewModerationService {
 	}
 
 	async setInterimRestriction(actorUserId: string, noticeId: string, reasonCode: string) {
-		await this.requireModerator(actorUserId);
+		const actorRole = await this.requireModerator(actorUserId);
 		const now = this.clock();
 		return this.database.transaction(async (transaction) => {
 			const target = await this.caseTarget(noticeId, transaction);
+			if (target.interimRestrictedAt) {
+				throw new ConflictError('This review already has an active interim restriction');
+			}
 			await transaction
 				.update(reviewPublication)
 				.set({
@@ -857,12 +971,41 @@ export class ReviewModerationService {
 				reviewId: target.reviewId,
 				publicationId: target.publicationId,
 				versionId: target.versionId,
-				actorType: 'review_moderator',
+				actorType: actorRole,
 				actorReference: actorUserId,
 				action: 'interim-restriction',
 				reasonCode
 			});
 			return { restrictedAt: now };
+		});
+	}
+
+	async clearInterimRestriction(actorUserId: string, noticeId: string, reasonCode: string) {
+		const actorRole = await this.requireModerator(actorUserId);
+		const now = this.clock();
+		return this.database.transaction(async (transaction) => {
+			const target = await this.caseTarget(noticeId, transaction);
+			if (!target.interimRestrictedAt) {
+				throw new ConflictError('This review has no active interim restriction');
+			}
+			await transaction
+				.update(reviewPublication)
+				.set({
+					interimRestrictedAt: null,
+					visibilityReason: required(reasonCode, 'Restriction removal reason')
+				})
+				.where(eq(reviewPublication.id, target.publicationId));
+			await this.event(transaction, {
+				noticeId,
+				reviewId: target.reviewId,
+				publicationId: target.publicationId,
+				versionId: target.versionId,
+				actorType: actorRole,
+				actorReference: actorUserId,
+				action: 'interim-restriction-lifted',
+				reasonCode
+			});
+			return { unrestrictedAt: now };
 		});
 	}
 
@@ -930,7 +1073,11 @@ export class ReviewModerationService {
 				decidedByUserId: actorUserId,
 				reviewedByUserId: input.reviewedByUserId,
 				supersedesDecisionId: previous?.id,
-				decidedAt: now
+				decidedAt: now,
+				redressSubmissionDeadline: addDays(
+					now,
+					approvedReviewClockPolicy.redressSubmissionWindowDays
+				)
 			});
 			const publicationChange =
 				input.outcome === 'remove'
@@ -1011,8 +1158,12 @@ export class ReviewModerationService {
 			policy: reviewRateLimitPolicies['review-redress']
 		});
 		if (!rate.allowed) throw new ConflictError('Redress attempt limit reached');
+		const now = this.clock();
 		const [decision] = await this.database
-			.select({ id: reviewModerationDecision.id })
+			.select({
+				id: reviewModerationDecision.id,
+				redressSubmissionDeadline: reviewModerationDecision.redressSubmissionDeadline
+			})
 			.from(reviewModerationDecision)
 			.where(
 				and(
@@ -1022,6 +1173,9 @@ export class ReviewModerationService {
 			)
 			.limit(1);
 		if (!decision) throw new NotFoundError('Decision was not found');
+		if (decision.redressSubmissionDeadline < now) {
+			throw new ConflictError('The redress submission window has closed');
+		}
 		const [record] = await this.database
 			.insert(reviewRedressRequest)
 			.values({
@@ -1031,10 +1185,14 @@ export class ReviewModerationService {
 				partyRole: input.partyRole,
 				statement: normalizeCaseText(input.statement, 'Redress statement'),
 				idempotencyKey: required(input.idempotencyKey, 'Idempotency key'),
-				createdAt: this.clock()
+				createdAt: now,
+				decisionDueAt: addDays(now, approvedReviewClockPolicy.redressDecisionDays)
 			})
 			.onConflictDoNothing()
 			.returning();
+		if (!record) {
+			throw new ConflictError('Redress was already requested for this decision');
+		}
 		return record;
 	}
 
@@ -1210,7 +1368,8 @@ export class ReviewModerationService {
 				versionId: reviewNotice.versionId,
 				reviewId: reviewPublication.reviewId,
 				authorId: placeReview.authorId,
-				expiresAt: reviewPublication.expiresAt
+				expiresAt: reviewPublication.expiresAt,
+				interimRestrictedAt: reviewPublication.interimRestrictedAt
 			})
 			.from(reviewNotice)
 			.innerJoin(reviewPublication, eq(reviewPublication.id, reviewNotice.publicationId))
@@ -1263,8 +1422,15 @@ export class ReviewModerationService {
 				.select({
 					id: reviewModerationDecision.id,
 					outcome: reviewModerationDecision.outcome,
+					scope: reviewModerationDecision.scope,
+					duration: reviewModerationDecision.duration,
+					ground: reviewModerationDecision.ground,
+					policyVersionId: reviewModerationDecision.policyVersionId,
 					reasonedExplanation: reviewModerationDecision.reasonedExplanation,
-					decidedAt: reviewModerationDecision.decidedAt
+					factsReliedOn: reviewModerationDecision.factsReliedOn,
+					automationDisclosure: reviewModerationDecision.automationDisclosure,
+					decidedAt: reviewModerationDecision.decidedAt,
+					redressSubmissionDeadline: reviewModerationDecision.redressSubmissionDeadline
 				})
 				.from(reviewModerationDecision)
 				.where(eq(reviewModerationDecision.noticeId, record.id))
@@ -1275,13 +1441,15 @@ export class ReviewModerationService {
 					decisionId: reviewRedressRequest.decisionId,
 					statement: reviewRedressRequest.statement,
 					status: reviewRedressRequest.status,
-					createdAt: reviewRedressRequest.createdAt
+					createdAt: reviewRedressRequest.createdAt,
+					decisionDueAt: reviewRedressRequest.decisionDueAt
 				})
 				.from(reviewRedressRequest)
 				.where(
 					and(
 						eq(reviewRedressRequest.noticeId, record.id),
-						eq(reviewRedressRequest.partyRole, party)
+						eq(reviewRedressRequest.partyRole, party),
+						isNull(reviewRedressRequest.duplicateOfId)
 					)
 				)
 				.orderBy(asc(reviewRedressRequest.createdAt))
@@ -1293,9 +1461,19 @@ export class ReviewModerationService {
 			allegedGround: record.allegedGround,
 			createdAt: record.createdAt,
 			submissionDeadline: record.submissionDeadline,
+			submissionOpen:
+				(record.status === 'received' ||
+					record.status === 'awaiting-submissions' ||
+					record.status === 'under-review') &&
+				Boolean(record.submissionDeadline && record.submissionDeadline >= this.clock()),
 			submissions,
 			evidence,
-			decisions,
+			decisions: decisions.map((decision) => ({
+				...decision,
+				redressOpen:
+					decision.redressSubmissionDeadline >= this.clock() &&
+					!redress.some((request) => request.decisionId === decision.id)
+			})),
 			redress
 		};
 	}
@@ -1308,6 +1486,7 @@ export class ReviewModerationService {
 			recipientRole: PartyRole;
 			recipientReference: string;
 			purpose: ReviewOutboxPurpose;
+			deliveryKey?: string;
 			variables: Record<string, string>;
 		}
 	) {
@@ -1315,11 +1494,9 @@ export class ReviewModerationService {
 		if (!recipientReference) throw new Error('Review notification recipient is required');
 		const now = this.clock();
 		const outboxId = this.id();
-		const decisionSuffix = input.variables.decisionReference
-			? `:${input.variables.decisionReference}`
-			: '';
-		const idempotencyKey = `${input.noticeId}:${input.recipientRole}:${input.purpose}${decisionSuffix}`;
-		await transaction
+		const deliveryKey = input.deliveryKey ?? input.variables.decisionReference ?? '';
+		const idempotencyKey = `${input.noticeId}:${input.recipientRole}:${input.purpose}:${deliveryKey}`;
+		const [queued] = await transaction
 			.insert(transactionalOutbox)
 			.values({
 				id: outboxId,
@@ -1330,7 +1507,9 @@ export class ReviewModerationService {
 				availableAt: now,
 				createdAt: now
 			})
-			.onConflictDoNothing();
+			.onConflictDoNothing()
+			.returning({ id: transactionalOutbox.id });
+		if (!queued) return;
 		await transaction
 			.insert(reviewNotification)
 			.values({
@@ -1339,6 +1518,7 @@ export class ReviewModerationService {
 				reviewId: input.reviewId,
 				recipientRole: input.recipientRole,
 				purpose: input.purpose,
+				deliveryKey,
 				templateVersion: 'v1',
 				outboxJobId: outboxId,
 				createdAt: now
