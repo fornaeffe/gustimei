@@ -13,8 +13,9 @@ import {
 	productAnalyticsEvent,
 	recommendationAttribution,
 	rankingList,
-	rankingSession,
 	rankingRevision,
+	rankingRevisionEvidence,
+	rankingSession,
 	user
 } from '$lib/server/db/schema';
 import { CatalogueRepository } from '$lib/server/repositories/catalogue';
@@ -406,6 +407,95 @@ describe('ranking, comments, provenance, and policy-enforced evidence', () => {
 		expect(await rankings.deleteCategory('user-1', 'restaurant')).toBe(true);
 		const remainingComments = await db.select().from(personalPlaceComment);
 		expect(remainingComments).toEqual([]);
+	});
+
+	it('preserves unique revision ordering across successive persisted insertion sessions', async () => {
+		await seedCatalogue('synthetic', [
+			fixturePlace(1, 'One'),
+			fixturePlace(2, 'Two'),
+			fixturePlace(3, 'Three'),
+			fixturePlace(4, 'Four')
+		]);
+		await seedParticipation();
+		const rankings = new RankingRepository(db);
+		await rankings.getOrCreateList({
+			id: 'list-1',
+			ownerId: 'user-1',
+			category: 'restaurant',
+			now
+		});
+		for (const placeId of ['osm:node:1', 'osm:node:2']) {
+			await rankings.addVisitedPlace({
+				ownerId: 'user-1',
+				listId: 'list-1',
+				placeId,
+				capture,
+				now
+			});
+		}
+
+		const initialSession = RankingSession.initial({
+			id: 'session-initial',
+			listId: 'list-1',
+			placeIds: ['osm:node:1', 'osm:node:2']
+		});
+		initialSession.submit('left');
+		await rankings.saveSession('user-1', initialSession, capture, now);
+		const initialRevision = createRankingRevision({
+			id: 'revision-1',
+			listId: 'list-1',
+			category: 'restaurant',
+			revision: 1,
+			activePlaceIds: initialSession.placeIdsSnapshot,
+			evidence: initialSession.evidence,
+			provenance: 'synthetic',
+			publishedAt: now.toISOString()
+		});
+		await rankings.publishRevision('user-1', initialRevision, capture);
+
+		for (const [index, placeId] of ['osm:node:3', 'osm:node:4'].entries()) {
+			await rankings.addVisitedPlace({
+				ownerId: 'user-1',
+				listId: 'list-1',
+				placeId,
+				capture,
+				now
+			});
+			const base = await rankings.loadCurrentRevision('user-1', 'list-1');
+			if (!base) throw new Error('Expected a persisted base revision');
+			const session = RankingSession.insertion({
+				id: `session-insertion-${index + 1}`,
+				listId: 'list-1',
+				baseRevision: base,
+				newPlaceId: placeId
+			});
+			while (session.nextComparison()) session.submit('left');
+			await rankings.saveSession('user-1', session, capture, now);
+			const revision = createRankingRevision({
+				id: `revision-${index + 2}`,
+				listId: 'list-1',
+				category: 'restaurant',
+				revision: index + 2,
+				activePlaceIds: session.placeIdsSnapshot,
+				evidence: session.evidenceForNextRevision(base),
+				provenance: 'synthetic',
+				publishedAt: new Date(now.getTime() + index + 1).toISOString()
+			});
+			await rankings.publishRevision('user-1', revision, capture);
+			const reloaded = await rankings.loadCurrentRevision('user-1', 'list-1');
+			expect(reloaded).toEqual(revision);
+			const sequences = [
+				...(reloaded?.activeEvidence.map((item) => item.sequence) ?? []),
+				...(reloaded?.excludedEvidence.map((item) => item.evidence.sequence) ?? [])
+			];
+			expect(new Set(sequences).size).toBe(sequences.length);
+		}
+
+		const links = await db
+			.select({ sequence: rankingRevisionEvidence.revisionSequence })
+			.from(rankingRevisionEvidence)
+			.where(eq(rankingRevisionEvidence.revisionId, 'revision-3'));
+		expect(new Set(links.map((item) => item.sequence)).size).toBe(links.length);
 	});
 
 	it('enforces the database comment limit even when the service boundary is bypassed', async () => {

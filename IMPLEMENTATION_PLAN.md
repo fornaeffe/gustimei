@@ -1230,6 +1230,16 @@ composer remains responsible for the independently entered 30-day service-date e
   500 boundary. Local and production startup now perform a read-only migration-parity check and
   require migrations to be applied explicitly. Automated verification passed; staff browser access
   remains pending a refresh/retest.
+- Post-completion insertion testing found that comparison sequences were correctly rebased while a
+  successor revision was built but only their session-local values were reconstructed after database
+  reload. Successive insertions could therefore produce duplicate evidence sequences and fail final
+  publication. Revision-local evidence sequence is now persisted on the immutable revision/evidence
+  link with positive and per-revision uniqueness constraints; migration 0010 deterministically
+  backfills existing revisions, and a database regression covers two successive persisted insertions.
+- Follow-up full-list rebuild testing was performed without restarting the development server after
+  migration 0010. Its cached pre-migration Drizzle schema omitted `revision_sequence` on publication,
+  so PostgreSQL correctly rolled back the successor revision. The prior revision and all 41 unique
+  rebuild answers remained intact; restarting Vite loaded the migrated schema without a database reset.
 
 **Open questions to answer before Phase 7:**
 

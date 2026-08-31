@@ -40,14 +40,17 @@ function permitsDataClass(capture: CaptureContext, dataClass: 'real' | 'syntheti
 	return dataClass === 'real';
 }
 
-function persistedEvidence(row: typeof comparisonEvidence.$inferSelect): ComparisonEvidence {
+function persistedEvidence(
+	row: typeof comparisonEvidence.$inferSelect,
+	revisionSequence = row.sequence
+): ComparisonEvidence {
 	return {
 		id: row.id,
 		logicalPair: [row.logicalFirstPlaceId, row.logicalSecondPlaceId],
 		leftPlaceId: row.leftPlaceId,
 		rightPlaceId: row.rightPlaceId,
 		reason: row.reason,
-		sequence: row.sequence,
+		sequence: revisionSequence,
 		outcome: row.outcome,
 		active: row.active === 1,
 		...(row.supersedesEvidenceId ? { supersedesEvidenceId: row.supersedesEvidenceId } : {})
@@ -779,6 +782,7 @@ export class RankingRepository {
 				...revision.activeEvidence.map((item) => ({
 					revisionId: revision.id,
 					comparisonId: item.id,
+					revisionSequence: item.sequence,
 					disposition: 'active' as const,
 					exclusionReason: null,
 					conflictingEvidenceIds: [] as string[]
@@ -786,6 +790,7 @@ export class RankingRepository {
 				...revision.excludedEvidence.map((item) => ({
 					revisionId: revision.id,
 					comparisonId: item.evidence.id,
+					revisionSequence: item.evidence.sequence,
 					disposition: 'excluded' as const,
 					exclusionReason: item.reason,
 					conflictingEvidenceIds: [...item.conflictingEvidenceIds]
@@ -853,12 +858,12 @@ export class RankingRepository {
 		}
 		const activeEvidence = evidenceRows
 			.filter((item) => item.link.disposition === 'active')
-			.map((item) => persistedEvidence(item.comparison))
+			.map((item) => persistedEvidence(item.comparison, item.link.revisionSequence))
 			.sort((first, second) => first.sequence - second.sequence);
 		const excludedEvidence = evidenceRows
 			.filter((item) => item.link.disposition === 'excluded')
 			.map((item) => ({
-				evidence: persistedEvidence(item.comparison),
+				evidence: persistedEvidence(item.comparison, item.link.revisionSequence),
 				reason: item.link.exclusionReason!,
 				conflictingEvidenceIds: item.link.conflictingEvidenceIds
 			}))

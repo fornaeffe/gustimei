@@ -364,6 +364,7 @@ export const rankingRevisionEvidence = pgTable(
 		comparisonId: text('comparison_id')
 			.notNull()
 			.references(() => comparisonEvidence.id, { onDelete: 'restrict' }),
+		revisionSequence: integer('revision_sequence').notNull(),
 		disposition: revisionEvidenceDispositionEnum('disposition').notNull(),
 		exclusionReason: evidenceExclusionReasonEnum('exclusion_reason'),
 		conflictingEvidenceIds: jsonb('conflicting_evidence_ids')
@@ -373,6 +374,11 @@ export const rankingRevisionEvidence = pgTable(
 	},
 	(table) => [
 		primaryKey({ columns: [table.revisionId, table.comparisonId] }),
+		uniqueIndex('ranking_revision_evidence_sequence_uq').on(
+			table.revisionId,
+			table.revisionSequence
+		),
+		check('ranking_revision_evidence_sequence_ck', sql`${table.revisionSequence} > 0`),
 		check(
 			'ranking_revision_evidence_reason_ck',
 			sql`(${table.disposition} = 'active' and ${table.exclusionReason} is null) or (${table.disposition} = 'excluded' and ${table.exclusionReason} is not null)`
