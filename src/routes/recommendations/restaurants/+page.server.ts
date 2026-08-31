@@ -43,19 +43,16 @@ async function context(userId: string) {
 export const load: PageServerLoad = async (event) => {
 	const user = requireUser(event);
 	const current = await context(user.id);
-	const locality = event.url.searchParams.get('locality')?.trim().slice(0, 120) ?? '';
-	const cursor = event.url.searchParams.get('cursor') ?? undefined;
 	try {
 		return {
-			locality,
+			mapTileUrl: runtimeConfig.mapTileUrl,
 			page: await recommendations.list({
 				userId: user.id,
 				category: 'restaurant',
 				dataClass: current.dataClass,
 				revision: current.revision,
 				visitedPlaceIds: current.visitedPlaceIds,
-				locality,
-				cursor
+				all: true
 			})
 		};
 	} catch (cause) {

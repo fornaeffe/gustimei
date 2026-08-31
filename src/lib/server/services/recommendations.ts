@@ -199,6 +199,7 @@ export class RecommendationService {
 		visitedPlaceIds: readonly string[];
 		locality?: string;
 		cursor?: string;
+		all?: boolean;
 	}) {
 		const requested = decodeCursor(input.cursor);
 		if (input.cursor && !requested)
@@ -257,7 +258,7 @@ export class RecommendationService {
 					place.addressLabel?.toLocaleLowerCase('it').includes(scope)
 			);
 		const offset = requested?.offset ?? 0;
-		const page = ordered.slice(offset, offset + RECOMMENDATION_PAGE_SIZE);
+		const page = input.all ? ordered : ordered.slice(offset, offset + RECOMMENDATION_PAGE_SIZE);
 		const nextOffset = offset + page.length;
 		return {
 			artifactId: artifact.id,
@@ -266,7 +267,7 @@ export class RecommendationService {
 			results: page.map((place, index) => ({ ...place, predictedPosition: offset + index + 1 })),
 			total: ordered.length,
 			nextCursor:
-				nextOffset < ordered.length
+				!input.all && nextOffset < ordered.length
 					? encodeCursor({ artifactId: artifact.id, offset: nextOffset, scope, rankingSnapshot })
 					: undefined
 		};

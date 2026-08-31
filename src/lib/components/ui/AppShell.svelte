@@ -36,7 +36,7 @@
 		</a>
 		<nav class="site-nav" aria-label={m.primary_navigation()}>
 			{#if user}
-				<a href={resolve(localizeHref('/dashboard', { locale }) as Pathname)}>
+				<a href={resolve(localizeHref('/recommendations/restaurants', { locale }) as Pathname)}>
 					<Icon icon={Compass} size={18} />{m.nav_discover()}
 				</a>
 				<a href={resolve(localizeHref('/settings/profile', { locale }) as Pathname)}>

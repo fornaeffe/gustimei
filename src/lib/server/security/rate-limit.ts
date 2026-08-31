@@ -6,7 +6,8 @@ export type RateLimitPurpose =
 	| 'review-case-access'
 	| 'review-evidence-upload'
 	| 'review-moderator-action'
-	| 'review-redress';
+	| 'review-redress'
+	| 'geocoding';
 
 export interface RateLimitPolicy {
 	limit: number;
@@ -30,7 +31,7 @@ export interface RateLimiter {
 }
 
 export const reviewRateLimitPolicies: Readonly<
-	Record<Exclude<RateLimitPurpose, 'auth'>, RateLimitPolicy>
+	Record<Exclude<RateLimitPurpose, 'auth' | 'geocoding'>, RateLimitPolicy>
 > = {
 	'review-author-mutation': { limit: 10, windowMs: 60 * 60_000 },
 	'review-notice': { limit: 5, windowMs: 60 * 60_000 },
@@ -39,6 +40,11 @@ export const reviewRateLimitPolicies: Readonly<
 	'review-evidence-upload': { limit: 5, windowMs: 24 * 60 * 60_000 },
 	'review-moderator-action': { limit: 100, windowMs: 60 * 60_000 },
 	'review-redress': { limit: 3, windowMs: 30 * 24 * 60 * 60_000 }
+};
+
+export const geocodingRateLimitPolicy: RateLimitPolicy = {
+	limit: 30,
+	windowMs: 60 * 60_000
 };
 
 interface WindowState {

@@ -11,7 +11,7 @@ import { localizedPath, safeRedirectPath } from '$lib/server/http/locale';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = ({ locals, url }) => {
-	if (locals.user) redirect(303, localizedPath('/dashboard'));
+	if (locals.user) redirect(303, localizedPath('/recommendations/restaurants'));
 	return { redirectTo: url.searchParams.get('redirectTo') ?? '' };
 };
 
@@ -38,6 +38,9 @@ export const actions = {
 			if (isUnverifiedAuthError(error)) redirect(303, localizedPath('/auth/check-email'));
 			return fail(400, { values, error: 'generic' });
 		}
-		redirect(303, safeRedirectPath(event.url, data.get('redirectTo'), '/dashboard'));
+		redirect(
+			303,
+			safeRedirectPath(event.url, data.get('redirectTo'), '/recommendations/restaurants')
+		);
 	}
 } satisfies Actions;

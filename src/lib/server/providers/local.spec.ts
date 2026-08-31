@@ -6,7 +6,9 @@ const config: RuntimeConfig = {
 	appEnvironment: 'test',
 	databaseUrl: 'postgres://gustimei:test@localhost/gustimei_test',
 	origin: 'http://127.0.0.1:3000',
-	betterAuthSecret: 'a-test-secret-with-at-least-32-characters'
+	betterAuthSecret: 'a-test-secret-with-at-least-32-characters',
+	mapTileUrl: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+	geocodingBaseUrl: 'https://nominatim.openstreetmap.org'
 };
 
 describe('local provider adapters', () => {

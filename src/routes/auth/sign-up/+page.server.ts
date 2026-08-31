@@ -10,7 +10,7 @@ import { currentLocale, localizedAbsoluteUrl, localizedPath } from '$lib/server/
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = ({ locals }) => {
-	if (locals.user) redirect(303, localizedPath('/dashboard'));
+	if (locals.user) redirect(303, localizedPath('/recommendations/restaurants'));
 };
 
 export const actions = {

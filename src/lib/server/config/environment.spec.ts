@@ -14,7 +14,9 @@ describe('loadEnvironment', () => {
 			appEnvironment: 'test',
 			databaseUrl: validEnvironment.DATABASE_URL,
 			origin: validEnvironment.ORIGIN,
-			betterAuthSecret: validEnvironment.BETTER_AUTH_SECRET
+			betterAuthSecret: validEnvironment.BETTER_AUTH_SECRET,
+			mapTileUrl: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+			geocodingBaseUrl: 'https://nominatim.openstreetmap.org'
 		});
 	});
 
@@ -41,5 +43,32 @@ describe('loadEnvironment', () => {
 		expect(() =>
 			loadEnvironment({ ...validEnvironment, APP_ENV: undefined, NODE_ENV: 'production' })
 		).toThrow('ORIGIN must use https in production');
+	});
+
+	it('accepts configurable OSM-derived tile and geocoding providers', () => {
+		const config = loadEnvironment({
+			...validEnvironment,
+			OSM_TILE_URL: 'https://tiles.example.test/{z}/{x}/{y}.png',
+			GEOCODING_BASE_URL: 'https://geocoder.example.test/nominatim/'
+		});
+		expect(config.mapTileUrl).toBe('https://tiles.example.test/{z}/{x}/{y}.png');
+		expect(config.geocodingBaseUrl).toBe('https://geocoder.example.test/nominatim');
+	});
+
+	it('rejects tile URLs without the required coordinate placeholders', () => {
+		expect(() =>
+			loadEnvironment({ ...validEnvironment, OSM_TILE_URL: 'https://tiles.example.test/map.png' })
+		).toThrow('OSM_TILE_URL must include {z}, {x}, and {y} placeholders');
+	});
+
+	it('requires HTTPS map providers in production', () => {
+		expect(() =>
+			loadEnvironment({
+				...validEnvironment,
+				APP_ENV: 'production',
+				ORIGIN: 'https://gustimei.example.test',
+				OSM_TILE_URL: 'http://tiles.example.test/{z}/{x}/{y}.png'
+			})
+		).toThrow('Map and geocoding providers must use https in production');
 	});
 });

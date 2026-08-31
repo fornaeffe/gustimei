@@ -9,6 +9,8 @@ export interface RecommendationCandidatePlace {
 	category: RankingCategory;
 	displayLocality: string;
 	addressLabel?: string;
+	latitude: number;
+	longitude: number;
 	updatedAt: Date;
 }
 
@@ -28,6 +30,8 @@ export class RecommendationRepository {
 				category: effectivePlace.category,
 				displayLocality: effectivePlace.displayLocality,
 				addressLabel: effectivePlace.addressLabel,
+				latitude: effectivePlace.latitude,
+				longitude: effectivePlace.longitude,
 				updatedAt: effectivePlace.updatedAt
 			})
 			.from(effectivePlace)
