@@ -34,7 +34,9 @@ look like a negative quality judgment. Visited is an orthogonal check/double-rin
 for every recommendation level. A textual legend and popup labels duplicate all visual meanings.
 
 At zoom levels below 13, the server groups every visible restaurant into deterministic geographic
-grid cells and returns exact cluster counts and bounds. Cluster clicks zoom into their contents;
+grid cells sized to leave roughly one standard cluster radius between cell centers and returns exact
+cluster counts and bounds. Cells containing one restaurant remain exact, individually interactive
+restaurant markers rather than clusters. Cluster clicks zoom into their contents;
 clusters summarize visited and ranked restaurants, while top recommendations and visited restaurants
 remain individually emphasized. At zoom 13 and above the server returns individual places, capped at
 2,000; exceptionally dense views fall back to progressively finer clusters. Move requests are

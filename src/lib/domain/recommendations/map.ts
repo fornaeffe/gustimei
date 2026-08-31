@@ -14,17 +14,18 @@ export type MapRecommendationStatus = 'top' | 'ranked' | 'unranked';
 
 export const INDIVIDUAL_RESTAURANT_ZOOM = 13;
 export const MAX_INDIVIDUAL_RESTAURANTS = 2_000;
+const TARGET_VIEWPORT_CLUSTER_CELLS = 600;
 
 export function clusterCellSize(zoom: number) {
 	if (zoom < INDIVIDUAL_RESTAURANT_ZOOM) {
-		return 2 / 2 ** Math.max(0, zoom - 5);
+		return 3 / 2 ** Math.max(0, zoom - 5);
 	}
 	return Math.max(0.001, 0.008 / 2 ** Math.max(0, zoom - INDIVIDUAL_RESTAURANT_ZOOM));
 }
 
 export function viewportClusterCellSize(bounds: MapBounds, zoom: number) {
 	const area = Math.max(0, bounds.north - bounds.south) * Math.max(0, bounds.east - bounds.west);
-	return Math.max(clusterCellSize(zoom), Math.sqrt(area / 1_500));
+	return Math.max(clusterCellSize(zoom), Math.sqrt(area / TARGET_VIEWPORT_CLUSTER_CELLS));
 }
 
 export function recommendationStatus(

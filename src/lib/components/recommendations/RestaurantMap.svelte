@@ -44,7 +44,7 @@
 
 	type RestaurantViewport =
 		| { mode: 'places'; places: RestaurantMapPoint[] }
-		| { mode: 'clusters'; clusters: RestaurantMapCluster[] };
+		| { mode: 'clusters'; clusters: RestaurantMapCluster[]; places: RestaurantMapPoint[] };
 
 	interface GeocodingResult {
 		id: string;
@@ -189,6 +189,10 @@
 		return { visitedCount, rankedCount, topRecommendationCount };
 	}
 
+	function clusterSize(count: number) {
+		return count >= 1_000 ? 38 : count >= 100 ? 34 : 30;
+	}
+
 	function renderViewport() {
 		if (!leaflet || !map || !viewport || !catalogueLayer || !emphasisLayer) return;
 		catalogueLayer.clearLayers();
@@ -207,13 +211,24 @@
 			}
 			return;
 		}
+		const singletonIds = new Set(viewport.places.map((place) => place.placeId));
+		for (const place of viewport.places) {
+			const position = positionById.get(place.placeId);
+			addRestaurantMarker(
+				place,
+				recommendationStatus(position, nearby.length),
+				position,
+				catalogueLayer
+			);
+		}
 		for (const cluster of viewport.clusters) {
 			const summary = clusterContent(cluster);
+			const size = clusterSize(cluster.count);
 			const icon = leaflet.divIcon({
 				className: '',
 				html: `<span class="restaurant-cluster${summary.topRecommendationCount ? ' restaurant-cluster--top' : ''}${summary.visitedCount ? ' restaurant-cluster--visited' : ''}" aria-hidden="true"><strong>${cluster.count}</strong>${summary.visitedCount ? `<small>✓ ${summary.visitedCount}</small>` : ''}</span>`,
-				iconSize: [48, 48],
-				iconAnchor: [24, 24]
+				iconSize: [size, size],
+				iconAnchor: [size / 2, size / 2]
 			});
 			const marker = leaflet.marker([cluster.latitude, cluster.longitude], {
 				icon,
@@ -252,7 +267,10 @@
 		}
 		const emphasized = places.filter((place) => {
 			const position = positionById.get(place.placeId);
-			return place.visited || recommendationStatus(position, nearby.length) === 'top';
+			return (
+				!singletonIds.has(place.placeId) &&
+				(place.visited || recommendationStatus(position, nearby.length) === 'top')
+			);
 		});
 		for (const place of emphasized) {
 			const position = positionById.get(place.placeId);

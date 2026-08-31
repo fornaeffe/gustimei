@@ -46,9 +46,9 @@ describe('map recommendation scope', () => {
 	});
 
 	it('uses progressively smaller clustering cells as users zoom in', () => {
-		expect(clusterCellSize(5)).toBe(2);
-		expect(clusterCellSize(9)).toBe(0.125);
-		expect(clusterCellSize(12)).toBe(0.015625);
+		expect(clusterCellSize(5)).toBe(3);
+		expect(clusterCellSize(9)).toBe(0.1875);
+		expect(clusterCellSize(12)).toBe(0.0234375);
 		expect(clusterCellSize(15)).toBe(0.002);
 	});
 

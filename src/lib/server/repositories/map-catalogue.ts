@@ -34,7 +34,7 @@ export interface RestaurantMapCluster {
 
 export type RestaurantViewport =
 	| { mode: 'places'; places: RestaurantMapPoint[] }
-	| { mode: 'clusters'; clusters: RestaurantMapCluster[] };
+	| { mode: 'clusters'; clusters: RestaurantMapCluster[]; places: RestaurantMapPoint[] };
 
 export class MapCatalogueRepository {
 	constructor(private readonly database: Database) {}
@@ -95,6 +95,10 @@ export class MapCatalogueRepository {
 					sql<number>`floor((${effectivePlace.longitude} + 180) / ${size})::integer`.as(
 						'longitude_cell'
 					),
+				placeId: effectivePlace.placeId,
+				name: effectivePlace.name,
+				addressLabel: effectivePlace.addressLabel,
+				displayLocality: effectivePlace.displayLocality,
 				latitude: effectivePlace.latitude,
 				longitude: effectivePlace.longitude
 			})
@@ -107,6 +111,10 @@ export class MapCatalogueRepository {
 				latitudeCell: cells.latitudeCell,
 				longitudeCell: cells.longitudeCell,
 				count: sql<number>`count(*)::integer`,
+				placeId: sql<string>`min(${cells.placeId})`,
+				name: sql<string>`min(${cells.name})`,
+				addressLabel: sql<string | null>`min(${cells.addressLabel})`,
+				displayLocality: sql<string>`min(${cells.displayLocality})`,
 				latitude: sql<number>`avg(${cells.latitude})::double precision`,
 				longitude: sql<number>`avg(${cells.longitude})::double precision`,
 				south: sql<number>`min(${cells.latitude})::double precision`,
@@ -120,13 +128,25 @@ export class MapCatalogueRepository {
 			.limit(2_500);
 		return {
 			mode: 'clusters',
-			clusters: rows.map((row) => ({
-				id: `${row.latitudeCell}:${row.longitudeCell}`,
-				count: row.count,
-				latitude: row.latitude,
-				longitude: row.longitude,
-				bounds: { south: row.south, west: row.west, north: row.north, east: row.east }
-			}))
+			clusters: rows
+				.filter((row) => row.count > 1)
+				.map((row) => ({
+					id: `${row.latitudeCell}:${row.longitudeCell}`,
+					count: row.count,
+					latitude: row.latitude,
+					longitude: row.longitude,
+					bounds: { south: row.south, west: row.west, north: row.north, east: row.east }
+				})),
+			places: rows
+				.filter((row) => row.count === 1)
+				.map((row) => ({
+					placeId: row.placeId,
+					name: row.name,
+					addressLabel: row.addressLabel ?? undefined,
+					displayLocality: row.displayLocality,
+					latitude: row.latitude,
+					longitude: row.longitude
+				}))
 		} satisfies RestaurantViewport;
 	}
 }

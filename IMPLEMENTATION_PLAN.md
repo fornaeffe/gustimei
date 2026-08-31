@@ -1335,8 +1335,9 @@ full-catalogue performance remain provisional, not blockers for implementing the
   subtle because it describes model coverage rather than restaurant quality. Encode visited state
   independently with a check and double ring so neither meaning relies on colour alone.
 - At regional zoom levels, aggregate the complete visible catalogue into server-side grid clusters;
-  show exact counts and visited/ranked summaries, keep top recommendations and visited restaurants
-  emphasized above clusters, and load individual restaurants at street-level zoom. Fall back to
+  show exact counts and visited/ranked summaries, render singleton cells as exact restaurant points,
+  keep top recommendations and visited restaurants emphasized above visually subdued, well-spaced
+  clusters, and load individual restaurants at street-level zoom. Fall back to
   finer clusters when a dense street-level viewport exceeds the 2,000-point client budget.
 - Proxy explicit-submit location searches through an application-owned geocoder boundary. The local
   default uses public Nominatim only for Italy-bounded, non-autocomplete searches, with a unique

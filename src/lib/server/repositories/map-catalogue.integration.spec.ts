@@ -74,7 +74,7 @@ describe('map catalogue viewport', () => {
 		expect(result.places.every((place) => place.addressLabel?.includes('Via Test'))).toBe(true);
 	});
 
-	it('represents every restaurant through exact clusters at regional zoom', async () => {
+	it('clusters groups but preserves singleton cells as exact restaurant points', async () => {
 		const repository = new MapCatalogueRepository(db);
 		const result = await repository.viewport({
 			dataClass: 'synthetic',
@@ -83,6 +83,8 @@ describe('map catalogue viewport', () => {
 		});
 		expect(result.mode).toBe('clusters');
 		if (result.mode !== 'clusters') throw new Error('Expected clustered map places');
-		expect(result.clusters.reduce((total, cluster) => total + cluster.count, 0)).toBe(3);
+		expect(result.clusters.reduce((total, cluster) => total + cluster.count, 0)).toBe(2);
+		expect(result.places).toHaveLength(1);
+		expect(result.places[0]).toMatchObject({ name: 'Three', latitude: 45.4642, longitude: 9.19 });
 	});
 });
