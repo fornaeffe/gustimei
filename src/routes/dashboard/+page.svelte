@@ -68,9 +68,12 @@
 		<div>
 			<Icon icon={Compass} size={28} />
 			<h2>{m.dashboard_recommendations_title()}</h2>
-			<span class="status-chip">{m.dashboard_recommendations_locked()}</span>
 			<p>{m.dashboard_recommendations_body()}</p>
 		</div>
+		<Button href={localizeHref('/recommendations/restaurants', { locale })} variant="secondary">
+			{m.dashboard_recommendations_title()}
+			<Icon icon={ArrowRight} size={18} />
+		</Button>
 	</article>
 	<article class="surface-card dashboard-card">
 		<div>

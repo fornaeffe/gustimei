@@ -1,9 +1,7 @@
-- A user should not be able to write a review for a place not yet added to his/her visited places
 - There should be a UI component that should display the name or e-mail or (in future) avatar for the current logged user, discreet but easily findable/retrievable.
 - There is too much difference between different font sizes: large titles are too large compared to smallest text. Keep a small number of typography sizes and reduce the size of largest ones.
 - In ranking/restaurants, when typing inside the restaurant name or locality field, when the UI loads results the focus is lost, but the user may still be typing. The focus should not be lost if the update is triggered while still typing.
 - In ranking/restaurants, restaurant name and locality fields should be aligned.
-- In places/[placeId] there should be a button to mark the place as visited, if it is not in the user's visited places bucket. If it is already visited, a UI component should mark it as such.
 - Extend the reusable section-local `FormFeedback` pattern from review case/moderation forms to the remaining app forms so error, success, and warning feedback is consistently adjacent to the action that produced it.
 - Restaurant data should show the restaurant address if available in the external data source, even in the search results.
 - Form feedback when reporting a review should explain clearly which field is problematic and why, when rejecting a notice.

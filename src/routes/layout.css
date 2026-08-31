@@ -855,6 +855,44 @@ progress::-moz-progress-bar {
 .place-result > .button {
 	width: 100%;
 }
+.recommendations {
+	width: min(100%, 68rem);
+	margin-inline: auto;
+}
+.recommendation-explanation {
+	background: var(--surface-private);
+}
+.recommendation-explanation h2 {
+	font-family: var(--font-sans);
+	font-size: 1.35rem;
+	font-weight: 800;
+}
+.recommendation-explanation p:last-child {
+	margin-bottom: 0;
+}
+.recommendation-filter {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	align-items: end;
+	gap: var(--space-4);
+}
+.recommendation-count {
+	margin: 0;
+	color: var(--text-secondary);
+}
+.recommendation-grid {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: var(--space-4);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.recommendation-position {
+	color: var(--accent);
+	font-size: 0.82rem;
+	font-weight: 800;
+}
 .selection-bucket {
 	position: sticky;
 	top: var(--space-5);
@@ -1146,7 +1184,9 @@ progress::-moz-progress-bar {
 	}
 	.selection-layout,
 	.catalogue-search,
-	.place-grid {
+	.place-grid,
+	.recommendation-grid,
+	.recommendation-filter {
 		grid-template-columns: 1fr;
 	}
 	.selection-bucket {

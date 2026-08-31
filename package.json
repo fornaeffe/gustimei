@@ -41,6 +41,7 @@
 		"catalogue:roles": "vite-node scripts/catalogue-roles.ts",
 		"review:roles": "vite-node scripts/review-roles.ts",
 		"review:policy:synthetic": "vite-node scripts/install-synthetic-review-policy.ts",
+		"recommendations:rebuild": "vite-node scripts/rebuild-recommendations.ts",
 		"auth:schema": "better-auth generate --config src/lib/server/auth.ts --output src/lib/server/db/auth.schema.ts --yes"
 	},
 	"devDependencies": {

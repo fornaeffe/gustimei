@@ -1261,6 +1261,38 @@ composer remains responsible for the independently entered 30-day service-date e
 
 **Exit:** users who pass the provisionally calibrated evidence gate receive an explainable predicted order of visited and unseen restaurants, filterable by locality without altering their global restaurant list; all other users see an honest useful next step. Phase 9 beta evidence must confirm or revise the gate before general release.
 
+**Implemented 2026-08-31:** Phase 7 is functionally implemented against local/test providers. The
+accepted artifact, rebuild, candidate-universe, cursor, serving-gate, fallback, locality,
+explanation, review/comment-isolation, visited-conversion, and analytics contracts are recorded in
+[`docs/phase-7-recommendations.md`](docs/phase-7-recommendations.md). Restaurant artifacts are
+versioned, reproducible, contribution-policy-labelled, real/synthetic-separated, atomically
+promoted, and invalidated from evidence/catalogue fingerprints. The default authenticated route
+serves the stable supported order in 24-result pages, distinguishes predicted from personal
+positions, labels visited places, offers insertion through “already visited,” and records only
+rendered eligible exposures plus one 90-day conversion. Below the provisional 5-place/3-tier/4-
+supported-place gate, users receive the community prior or an explicit insufficient-evidence next
+step. Public reviews and private comments remain outside every artifact, score, candidate,
+explanation, and attribution path. Place pages now expose visited membership and review composition
+requires visited membership at both load and publish boundaries.
+
+Automated unit verification passes 100 tests, including new artifact reproducibility,
+real/synthetic isolation, deterministic order, serving gate, and review-shaped mutation isolation
+coverage. Svelte diagnostics and the official Svelte autofixer report zero issues. The generated
+PostgreSQL migration adds deduplicated exposure/conversion attribution; migration reset and all 27
+database integration tests pass. ESLint, Prettier, the production build, and the reproducible Phase 1
+benchmark also pass. The established leakage-safe Phase 1 benchmark remains the provisional quality
+evidence. Full-Italy latency, 24-result-page comprehension, 1,000-supported-candidate depth,
+explanation comprehension, and external threshold validity are non-blocking provisional decisions
+to retest in Phase 9.
+
+**Answers carried into Phase 8:** the candidate contract is the top 1,000 active places by
+distinct-user support plus the user's active visited places; locality filters this already-scored
+order; cursors bind artifact and ranking snapshots; raw support/confidence is not exposed; and the
+category contract already separates restaurant engine selection, artifact namespace, evidence,
+candidate category, and serving gate. Phase 8 may reuse these contracts for hotels while applying
+its separately selected model and independently validating its gate. Human comprehension and
+full-catalogue performance remain provisional, not blockers for implementing the shared hotel path.
+
 **Open questions to answer before Phase 8:**
 
 - Did the chosen candidate-universe, cursor/pagination, and stable-order contract remain understandable and performant with the full local Italy restaurant catalogue?

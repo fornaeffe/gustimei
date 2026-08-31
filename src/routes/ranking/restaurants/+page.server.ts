@@ -12,6 +12,7 @@ import { RankingRepository } from '$lib/server/repositories/rankings';
 import { stringField } from '$lib/server/security/auth-forms';
 import { PersonalCommentService } from '$lib/server/services/personal-comments';
 import { ProductAnalyticsService } from '$lib/server/services/product-analytics';
+import { RecommendationAttributionService } from '$lib/server/services/recommendation-attribution';
 import { RankingService } from '$lib/server/services/rankings';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -21,6 +22,7 @@ const rankingRepository = new RankingRepository(db);
 const rankings = new RankingService(rankingRepository, participation, runtimeConfig.appEnvironment);
 const comments = new PersonalCommentService(new PersonalCommentRepository(db));
 const analytics = new ProductAnalyticsService(db);
+const recommendationAttribution = new RecommendationAttributionService(db, analytics);
 
 function safeError(error: unknown) {
 	if (
@@ -95,6 +97,15 @@ export const actions = {
 			);
 			const selected = await rankings.listVisitedPlaces(user.id, 'restaurant');
 			const capture = await rankings.captureContext(user.id);
+			if (result.added) {
+				await recommendationAttribution.attributeVisitedConversion({
+					userId: user.id,
+					category: 'restaurant',
+					placeId: stringField(form, 'placeId'),
+					cohortAssignmentId: capture.cohortAssignmentId,
+					provenance: capture.provenance
+				});
+			}
 			await analytics.record({
 				userId: user.id,
 				cohortAssignmentId: capture.cohortAssignmentId,

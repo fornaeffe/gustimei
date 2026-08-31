@@ -12,6 +12,8 @@ export type ProductEventName =
 	| 'comparison-submitted'
 	| 'comparison-undone'
 	| 'ranking-completed'
+	| 'recommendation-exposed'
+	| 'recommendation-converted'
 	| 'review-prompt-shown'
 	| 'review-prompt-dismissed';
 
@@ -24,7 +26,8 @@ const allowedMetadata = new Set([
 	'answeredCount',
 	'estimatedTotal',
 	'orderCoverage',
-	'hasUnresolved'
+	'hasUnresolved',
+	'exposureCount'
 ]);
 
 export class ProductAnalyticsService {

@@ -96,6 +96,7 @@ export class PolicyEnforcedRecommendationEvidenceSource implements Recommendatio
 				userId: candidate.userId,
 				category: candidate.revision.category,
 				revisionId: candidate.revision.id,
+				provenance: candidate.revision.provenance,
 				purpose,
 				policyVersion: decision.policyVersion,
 				recommendationEngineVersion:

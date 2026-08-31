@@ -72,6 +72,7 @@ export interface ArtifactInvalidationInput {
 	userId: string;
 	category: RankingCategory;
 	revisionId: string;
+	provenance: RankingRevision['provenance'];
 	purpose: ContributionPurpose;
 	policyVersion: string;
 	recommendationEngineVersion: (typeof RECOMMENDATION_ENGINE_VERSION_BY_CATEGORY)[RankingCategory];
@@ -97,4 +98,45 @@ export interface RecommendationScore {
 	score: number;
 	visited: boolean;
 	supported: boolean;
+}
+
+export const RECOMMENDATION_ARTIFACT_SCHEMA_VERSION = 1 as const;
+export const RECOMMENDATION_PAGE_SIZE = 24 as const;
+export const RECOMMENDATION_MAX_BROWSABLE_DEPTH = 1_000 as const;
+export const PERSONALIZATION_GATE = {
+	rankedPlaces: 5,
+	resolvedTiers: 3,
+	supportedRankedPlaces: 4,
+	minimumCommunitySupport: 4
+} as const;
+
+export interface RecommendationArtifactRanking {
+	userId: string;
+	tiers: string[][];
+}
+
+export interface RecommendationArtifact {
+	schemaVersion: typeof RECOMMENDATION_ARTIFACT_SCHEMA_VERSION;
+	id: string;
+	category: RankingCategory;
+	dataClass: 'real' | 'synthetic';
+	engineVersion: (typeof RECOMMENDATION_ENGINE_VERSION_BY_CATEGORY)[RankingCategory];
+	contributionPolicyVersion: string;
+	evidenceFingerprint: string;
+	catalogueFingerprint: string;
+	generatedAt: string;
+	observationCount: number;
+	contributorCount: number;
+	rankings: RecommendationArtifactRanking[];
+	placeSupport: Record<string, number>;
+}
+
+export type RecommendationMode = 'personalized' | 'community-prior' | 'insufficient-evidence';
+
+export interface RecommendationServingGate {
+	mode: RecommendationMode;
+	rankedPlaces: number;
+	resolvedTiers: number;
+	supportedRankedPlaces: number;
+	required: typeof PERSONALIZATION_GATE;
 }

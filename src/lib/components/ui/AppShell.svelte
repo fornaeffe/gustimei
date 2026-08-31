@@ -17,11 +17,9 @@
 	let locale = $derived(getLocale());
 	let otherLocale = $derived<ProductLocale>(locale === 'en' ? 'it' : 'en');
 	let languageHref = $derived(
-		resolve(
-			localizeHref(deLocalizeHref(page.url.pathname + page.url.search), {
-				locale: otherLocale
-			}) as Pathname
-		)
+		localizeHref(deLocalizeHref(page.url.pathname + page.url.search), {
+			locale: otherLocale
+		})
 	);
 </script>
 
@@ -51,7 +49,7 @@
 			{/if}
 			<a
 				class="language-switch"
-				href={languageHref}
+				href={resolve(languageHref as Pathname)}
 				hreflang={otherLocale}
 				lang={otherLocale}
 				data-sveltekit-reload

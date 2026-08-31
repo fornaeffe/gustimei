@@ -5,7 +5,7 @@
 	import StatePanel from '$lib/components/ui/StatePanel.svelte';
 	import ReviewCard from '$lib/components/reviews/ReviewCard.svelte';
 	import * as m from '$lib/paraglide/messages';
-	let { data } = $props();
+	let { data, form } = $props();
 	let locale = $derived(getLocale());
 	let dateFormatter = $derived(new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }));
 </script>
@@ -25,6 +25,16 @@
 		locality={data.place.displayLocality}
 	/>
 	{#if data.place.addressLabel}<p>{data.place.addressLabel}</p>{/if}
+	{#if data.visited}
+		<span class="status-chip">{m.visited()}</span>
+	{:else if data.authenticated}
+		<form method="POST" action="?/addVisited">
+			<Button type="submit">{m.mark_already_visited()}</Button>
+		</form>
+		{#if form?.section === 'visited' && form?.added}
+			<p class="form-status" role="status">{m.visited()}</p>
+		{/if}
+	{/if}
 	<p class="attribution">
 		<a
 			href={`https://www.openstreetmap.org/${data.place.source.elementType}/${data.place.source.elementId}`}
@@ -39,11 +49,13 @@
 				<h2 id="reviews-title">{m.public_reviews()}</h2>
 				<p>{m.public_reviews_intro()}</p>
 			</div>
-			<Button
-				href={localizeHref(`/places/${encodeURIComponent(data.place.placeId)}/reviews/new`, {
-					locale
-				})}>{m.write_review()}</Button
-			>
+			{#if data.visited}
+				<Button
+					href={localizeHref(`/places/${encodeURIComponent(data.place.placeId)}/reviews/new`, {
+						locale
+					})}>{m.write_review()}</Button
+				>
+			{/if}
 		</header>
 		{#if data.reviews.items.length === 0}
 			<StatePanel title={m.no_public_reviews()} description={m.public_reviews_intro()} />

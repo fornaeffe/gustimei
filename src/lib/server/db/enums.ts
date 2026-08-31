@@ -73,6 +73,8 @@ export const productEventNameEnum = pgEnum('product_event_name', [
 	'comparison-submitted',
 	'comparison-undone',
 	'ranking-completed',
+	'recommendation-exposed',
+	'recommendation-converted',
 	'review-prompt-shown',
 	'review-prompt-dismissed'
 ]);

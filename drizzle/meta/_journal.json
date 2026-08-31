@@ -64,6 +64,13 @@
       "when": 1787986290256,
       "tag": "0008_square_giant_man",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1788184843933,
+      "tag": "0009_flaky_james_howlett",
+      "breakpoints": true
     }
   ]
 }

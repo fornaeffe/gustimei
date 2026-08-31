@@ -11,6 +11,7 @@ import {
 	localityBoundary,
 	personalPlaceComment,
 	productAnalyticsEvent,
+	recommendationAttribution,
 	rankingList,
 	rankingSession,
 	rankingRevision,
@@ -26,6 +27,7 @@ import { RankingRepository, type CaptureContext } from '$lib/server/repositories
 import { DatabaseRecommendationEvidenceSource } from '$lib/server/repositories/recommendation-evidence';
 import { PersonalCommentService } from '$lib/server/services/personal-comments';
 import { ProductAnalyticsService } from '$lib/server/services/product-analytics';
+import { RecommendationAttributionService } from '$lib/server/services/recommendation-attribution';
 
 const now = new Date('2026-08-14T12:00:00.000Z');
 const connection = createDatabase(process.env.DATABASE_URL!);
@@ -106,6 +108,75 @@ beforeEach(async () => {
 
 afterAll(async () => {
 	await connection.close();
+});
+
+describe('recommendation exposure attribution', () => {
+	it('records rendered real exposures and attributes at most one 90-day conversion', async () => {
+		await seedCatalogue('synthetic', [fixturePlace(1, 'Supported place')]);
+		await seedParticipation();
+		const analytics = new ProductAnalyticsService(
+			db,
+			() => now,
+			() => crypto.randomUUID()
+		);
+		const attribution = new RecommendationAttributionService(db, analytics, () => now);
+
+		expect(
+			await attribution.recordRenderedExposures({
+				userId: 'user-1',
+				category: 'restaurant',
+				cohortAssignmentId: capture.cohortAssignmentId,
+				provenance: 'internal-testing',
+				artifactId: 'artifact-1',
+				rankingRevisionId: 'revision-1',
+				eligibleUnvisitedPlaceIds: ['osm:node:1', 'osm:node:1']
+			})
+		).toBe(1);
+		expect(
+			await attribution.attributeVisitedConversion({
+				userId: 'user-1',
+				category: 'restaurant',
+				placeId: 'osm:node:1',
+				cohortAssignmentId: capture.cohortAssignmentId,
+				provenance: 'internal-testing'
+			})
+		).toBe(true);
+		expect(
+			await attribution.attributeVisitedConversion({
+				userId: 'user-1',
+				category: 'restaurant',
+				placeId: 'osm:node:1',
+				cohortAssignmentId: capture.cohortAssignmentId,
+				provenance: 'internal-testing'
+			})
+		).toBe(false);
+		expect(await db.select().from(recommendationAttribution)).toHaveLength(1);
+		expect(
+			(await db.select().from(productAnalyticsEvent)).map((event) => event.name).sort()
+		).toEqual(['recommendation-converted', 'recommendation-exposed']);
+	});
+
+	it('does not record synthetic exposures or conversions', async () => {
+		await seedCatalogue('synthetic', [fixturePlace(1, 'Synthetic place')]);
+		await seedParticipation();
+		const attribution = new RecommendationAttributionService(
+			db,
+			new ProductAnalyticsService(db, () => now),
+			() => now
+		);
+
+		expect(
+			await attribution.recordRenderedExposures({
+				userId: 'user-1',
+				category: 'restaurant',
+				cohortAssignmentId: capture.cohortAssignmentId,
+				provenance: 'synthetic',
+				artifactId: 'synthetic-artifact',
+				eligibleUnvisitedPlaceIds: ['osm:node:1']
+			})
+		).toBe(0);
+		expect(await db.select().from(recommendationAttribution)).toHaveLength(0);
+	});
 });
 
 describe('catalogue persistence and local search', () => {

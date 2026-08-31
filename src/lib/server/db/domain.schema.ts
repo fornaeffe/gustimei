@@ -96,6 +96,42 @@ export const productAnalyticsEvent = pgTable(
 	(table) => [index('product_analytics_event_name_time_idx').on(table.name, table.occurredAt)]
 );
 
+export const recommendationAttribution = pgTable(
+	'recommendation_attribution',
+	{
+		userId: text('user_id')
+			.notNull()
+			.references(() => user.id, { onDelete: 'cascade' }),
+		category: rankingCategoryEnum('category').notNull(),
+		placeId: text('place_id')
+			.notNull()
+			.references(() => place.id, { onDelete: 'restrict' }),
+		cohortAssignmentId: text('cohort_assignment_id')
+			.notNull()
+			.references(() => participationAssignment.id, { onDelete: 'restrict' }),
+		artifactId: text('artifact_id').notNull(),
+		rankingRevisionId: text('ranking_revision_id'),
+		firstExposedAt: timestamp('first_exposed_at', { withTimezone: true, mode: 'date' }).notNull(),
+		mostRecentExposedAt: timestamp('most_recent_exposed_at', {
+			withTimezone: true,
+			mode: 'date'
+		}).notNull(),
+		convertedAt: timestamp('converted_at', { withTimezone: true, mode: 'date' })
+	},
+	(table) => [
+		primaryKey({ columns: [table.userId, table.category, table.placeId] }),
+		index('recommendation_attribution_conversion_idx').on(
+			table.category,
+			table.convertedAt,
+			table.mostRecentExposedAt
+		),
+		check(
+			'recommendation_attribution_period_ck',
+			sql`${table.mostRecentExposedAt} >= ${table.firstExposedAt} and (${table.convertedAt} is null or ${table.convertedAt} >= ${table.mostRecentExposedAt})`
+		)
+	]
+);
+
 export const rankingList = pgTable(
 	'ranking_list',
 	{

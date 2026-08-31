@@ -9,6 +9,8 @@ import type {
 	TransactionalEmail
 } from './contracts';
 import type { RuntimeConfig } from '$lib/server/config/environment';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { dirname, join, resolve, sep } from 'node:path';
 
 export class LocalEmailProvider implements EmailProvider {
 	readonly outbox: TransactionalEmail[] = [];
@@ -45,6 +47,44 @@ export class MemoryArtifactStore implements ArtifactStore {
 
 	async delete(key: string) {
 		this.#artifacts.delete(key);
+	}
+}
+
+/** Durable local/test artifact storage with same-directory atomic replacement. */
+export class FileArtifactStore implements ArtifactStore {
+	readonly #root: string;
+
+	constructor(root = resolve('.data', 'artifacts')) {
+		this.#root = resolve(root);
+	}
+
+	#path(key: string) {
+		const target = resolve(this.#root, ...key.split('/'));
+		if (target !== this.#root && !target.startsWith(`${this.#root}${sep}`)) {
+			throw new Error('Artifact key escapes the configured root');
+		}
+		return target;
+	}
+
+	async put(key: string, value: Uint8Array) {
+		const target = this.#path(key);
+		await mkdir(dirname(target), { recursive: true });
+		const temporary = join(dirname(target), `.${crypto.randomUUID()}.tmp`);
+		await writeFile(temporary, value, { flag: 'wx' });
+		await rename(temporary, target);
+	}
+
+	async get(key: string) {
+		try {
+			return new Uint8Array(await readFile(this.#path(key)));
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+			throw error;
+		}
+	}
+
+	async delete(key: string) {
+		await rm(this.#path(key), { force: true });
 	}
 }
 
