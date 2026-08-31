@@ -52,7 +52,7 @@ Success therefore depends more on ranking completion, data quality, and recommen
 9. **Coverage threshold:** keep initial OSM coverage audits intentionally loose. Exclude or quarantine only records or systemic gaps that would clearly break the product, create unusable identities, or deeply bias ranking/recommendation behavior. Record limitations rather than blocking development on catalogue completeness.
 10. **Ranking threshold:** ranking may start with two visited places; one pairwise choice is sufficient to form the smallest meaningful ordered list. Recommendation eligibility is a separate threshold to determine experimentally and must not prevent users from maintaining a two-place personal list.
 11. **Uncertainty:** provide “Skip / cannot compare” as a first-class outcome. It records missing preference evidence, keeps both places in the visited list, and is never interpreted as a reason to remove either place.
-12. **Default recommendation view:** use an interactive OpenStreetMap-based map as the standard Discover view. Show the selected category's eligible recommendation universe with visited status, and recompute the displayed nearby rank by filtering the stable global predicted order to the current viewport. Highlight exactly the first `ceil(10%)` of that nearby order and expose the complete viewport order in a collapsible accessible list. “Full” still means the complete stable order within the explicitly defined support/catalogue candidate contract; the map must not imply that unsupported imported places received meaningful scores. Location search moves the map but does not change list identity or model scores.
+12. **Default recommendation view:** use an interactive OpenStreetMap-based map as the standard Discover view. Show every active catalogue place for the selected category, while treating recommendation membership as a separate overlay: unranked places remain discoverable but must never appear to have a meaningful score. Recompute displayed nearby recommendation positions by filtering the stable global predicted order to the current viewport, highlight exactly the first `ceil(10%)` of that nearby order, and expose the complete ranked viewport order in a collapsible accessible list. Visited state must remain visible independently of recommendation state. Location search moves the map but does not change list identity or model scores; use viewport loading and clustering where needed rather than sending the full national catalogue to the browser.
 13. **Tie repair:** an explicit tie remains direct user evidence, but it is not permanently immune to later contradictory transitive evidence. If later answers conflict with a tied tier, prompt a targeted repair using the tied-tier insertion policy; never split the tier silently.
 14. **Cycle and contradiction recovery:** resolve preference cycles by asking a targeted clarifying comparison. Until that clarification is completed, retain the newest answer and temporarily leave the oldest conflicting ranking evidence out of the active order. Prompt the user to rerank the involved places; do not decay preferences merely because time has passed.
 15. **Ranking-session size:** the MVP does not cap personal-list size or split large selection buckets into shorter ranking sessions. Measure large-list behavior and revisit this only if the ranking spike or beta usage demonstrates a need.
@@ -1313,22 +1313,31 @@ full-catalogue performance remain provisional, not blockers for implementing the
 
 ### Phase 7.5 — Map-first restaurant discovery
 
-**Status (2026-08-31): implemented; automated verification complete, human map usability remains provisional.**
+**Status (2026-08-31): implemented, including full-catalogue viewport clustering; automated verification complete, human map usability remains provisional.**
 
 - Replace the restaurant recommendation grid as the standard authenticated Discover destination with
   a Leaflet map using an OSM base layer, standard pointer/touch/keyboard navigation and visible OSM
   attribution. Keep tile and geocoder URLs runtime-configurable so Phase 9 can switch providers
   without rebuilding application or recommendation logic.
-- Load the same bounded, supported Phase 7 candidate universe and its stable global order. Include
-  catalogue coordinates and addresses in the serving projection; never assign ranks to unsupported
-  catalogue entries merely to populate the map.
+- Load every active restaurant in the visible catalogue viewport through an application-owned map
+  endpoint while retaining the bounded, supported Phase 7 candidate universe as a separate stable
+  recommendation overlay. Include catalogue coordinates and addresses in the serving projection;
+  never assign ranks to unsupported catalogue entries merely to populate the map.
 - Define “nearby” as the current map viewport. Filtering preserves the stable global recommendation
   order, nearby positions are one-based within the viewport, and the highlighted group is exactly
   `ceil(10% of nearby results)` with a minimum of one when the viewport is non-empty.
 - Hover tooltips and tap/click popups show the restaurant name, address/locality, visited state, and
-  the nearby rank only when the restaurant is in the highlighted top ten percent. Use a collapsible,
-  keyboard-operable ordered list as both an accessible map companion and a precise view of every
-  nearby position.
+  recommendation-coverage state. Show the nearby position for ranked restaurants and label the
+  highlighted top ten percent explicitly. Use a collapsible, keyboard-operable ordered list as both
+  an accessible map companion and a precise view of every ranked nearby position.
+- Keep three recommendation states visually distinguishable: highlighted top ten percent, ranked
+  but outside that group, and no recommendation data. Make the latter distinction intentionally
+  subtle because it describes model coverage rather than restaurant quality. Encode visited state
+  independently with a check and double ring so neither meaning relies on colour alone.
+- At regional zoom levels, aggregate the complete visible catalogue into server-side grid clusters;
+  show exact counts and visited/ranked summaries, keep top recommendations and visited restaurants
+  emphasized above clusters, and load individual restaurants at street-level zoom. Fall back to
+  finer clusters when a dense street-level viewport exceeds the 2,000-point client budget.
 - Proxy explicit-submit location searches through an application-owned geocoder boundary. The local
   default uses public Nominatim only for Italy-bounded, non-autocomplete searches, with a unique
   identifying user agent, application and provider rate limits, in-memory caching, timeouts, result
@@ -1344,6 +1353,9 @@ records the provider boundary, OSM service-policy constraints, ranking semantics
 fallback, and deferred human checks. Unit coverage fixes viewport ordering, antimeridian handling,
 top-decile rounding, geocoder normalization/caching/attribution headers, and configurable provider
 validation. Svelte diagnostics and the official Svelte autofixer report no issues.
+An authenticated development smoke test against the imported Italy catalogue returns non-empty
+cluster payloads from `/api/restaurants/map`; if a newly added route returns the app's HTML 404 in
+development, first check for concurrent Vite processes bound separately to IPv4 and IPv6 loopback.
 
 **Provisional human checks for Phase 9:** confirm mobile marker density and touch target comfort,
 map-versus-list comprehension, initial whole-candidate-universe framing, search-result wording, dark

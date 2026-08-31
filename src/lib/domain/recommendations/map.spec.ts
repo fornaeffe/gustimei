@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { isPlaceInBounds, nearbyRecommendationOrder, topNearbyCount } from './map';
+import {
+	clusterCellSize,
+	isPlaceInBounds,
+	nearbyRecommendationOrder,
+	recommendationStatus,
+	topNearbyCount,
+	viewportClusterCellSize
+} from './map';
 
 describe('map recommendation scope', () => {
 	it('preserves global recommendation order while filtering to the viewport', () => {
@@ -29,5 +36,24 @@ describe('map recommendation scope', () => {
 				{ south: -1, west: 170, north: 1, east: -170 }
 			)
 		).toBe(true);
+	});
+
+	it('keeps top, ranked, and unranked recommendation states distinct', () => {
+		expect(recommendationStatus(1, 11)).toBe('top');
+		expect(recommendationStatus(2, 11)).toBe('top');
+		expect(recommendationStatus(3, 11)).toBe('ranked');
+		expect(recommendationStatus(undefined, 11)).toBe('unranked');
+	});
+
+	it('uses progressively smaller clustering cells as users zoom in', () => {
+		expect(clusterCellSize(5)).toBe(2);
+		expect(clusterCellSize(9)).toBe(0.125);
+		expect(clusterCellSize(12)).toBe(0.015625);
+		expect(clusterCellSize(15)).toBe(0.002);
+	});
+
+	it('coarsens hostile or unusually large viewports to a bounded cluster budget', () => {
+		const size = viewportClusterCellSize({ south: -20, west: -30, north: 20, east: 30 }, 12);
+		expect(size).toBeGreaterThan(1);
 	});
 });

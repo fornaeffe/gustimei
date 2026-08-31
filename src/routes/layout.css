@@ -935,6 +935,97 @@ progress::-moz-progress-bar {
 .map-search-results small {
 	color: var(--text-secondary);
 }
+.map-legend {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: var(--space-3) var(--space-5);
+	padding-block: var(--space-3);
+}
+.map-legend > span {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.45rem;
+	color: var(--text-secondary);
+	font-size: 0.82rem;
+}
+.legend-marker,
+.restaurant-marker {
+	display: inline-grid;
+	place-items: center;
+	border-radius: 50%;
+	font-style: normal;
+	font-weight: 900;
+}
+.legend-marker {
+	width: 1.35rem;
+	height: 1.35rem;
+	font-size: 0.72rem;
+}
+.legend-marker--top,
+.restaurant-marker--top {
+	border: 2px solid #8b4307;
+	background: #f2a64f;
+	color: #3b2008;
+}
+.legend-marker--ranked,
+.restaurant-marker--ranked {
+	border: 2px solid #0e5944;
+	background: #67c39c;
+	color: #103c30;
+}
+.legend-marker--unranked,
+.restaurant-marker--unranked {
+	border: 2px dashed #65716b;
+	background: #fffdf8;
+	color: #52615a;
+}
+.legend-marker--visited {
+	border: 3px double #4a386d;
+	background: #fffdf8;
+	color: #4a386d;
+}
+.restaurant-marker {
+	width: 100%;
+	height: 100%;
+	box-shadow: 0 2px 6px rgb(0 0 0 / 0.28);
+}
+.restaurant-marker--visited {
+	border-color: #4a386d;
+	border-style: double;
+	border-width: 4px;
+	box-shadow:
+		0 0 0 2px #fff,
+		0 2px 7px rgb(0 0 0 / 0.35);
+}
+.restaurant-cluster {
+	display: grid;
+	place-items: center;
+	align-content: center;
+	width: 3rem;
+	height: 3rem;
+	border: 3px solid #52615a;
+	border-radius: 50%;
+	background: color-mix(in srgb, #fffdf8 90%, transparent);
+	color: #1d2b26;
+	box-shadow: 0 3px 10px rgb(0 0 0 / 0.28);
+	line-height: 1;
+}
+.restaurant-cluster strong {
+	font-size: 0.92rem;
+}
+.restaurant-cluster small {
+	margin-top: 0.18rem;
+	font-size: 0.62rem;
+}
+.restaurant-cluster--top {
+	border-color: #a65008;
+}
+.restaurant-cluster--visited {
+	box-shadow:
+		0 0 0 3px #4a386d,
+		0 3px 10px rgb(0 0 0 / 0.3);
+}
 .map-stage {
 	position: relative;
 }
@@ -960,6 +1051,10 @@ progress::-moz-progress-bar {
 	padding: var(--space-3) var(--space-4);
 	box-shadow: var(--shadow-card);
 }
+.map-loading--error {
+	background: var(--danger-soft);
+	color: var(--danger);
+}
 .map-popup {
 	display: grid;
 	gap: 0.35rem;
@@ -977,8 +1072,16 @@ progress::-moz-progress-bar {
 	font-size: 0.82rem;
 }
 .map-popup__rank {
-	color: #a65008;
 	font-size: 0.82rem;
+}
+.map-popup__rank--top {
+	color: #8b4307;
+}
+.map-popup__rank--ranked {
+	color: #176b55;
+}
+.map-popup__rank--unranked {
+	color: #52615a;
 }
 .nearby-recommendations {
 	padding: 0;
@@ -1349,6 +1452,10 @@ progress::-moz-progress-bar {
 	.recommendation-filter,
 	.map-search {
 		grid-template-columns: 1fr;
+	}
+	.map-legend {
+		align-items: flex-start;
+		flex-direction: column;
 	}
 	.restaurant-map {
 		height: 31rem;

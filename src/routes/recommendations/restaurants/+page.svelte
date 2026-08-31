@@ -44,11 +44,10 @@
 			title={m.insufficient_recommendation_title()}
 			description={m.insufficient_recommendation_body()}
 		/>
-	{:else}
-		<RestaurantMap
-			places={data.page.results}
-			tileUrl={data.mapTileUrl}
-			artifactId={data.page.artifactId}
-		/>
 	{/if}
+	<RestaurantMap
+		places={data.page.results}
+		tileUrl={data.mapTileUrl}
+		artifactId={data.page.artifactId}
+	/>
 </section>

@@ -10,6 +10,31 @@ export interface PositionedPlace {
 	longitude: number;
 }
 
+export type MapRecommendationStatus = 'top' | 'ranked' | 'unranked';
+
+export const INDIVIDUAL_RESTAURANT_ZOOM = 13;
+export const MAX_INDIVIDUAL_RESTAURANTS = 2_000;
+
+export function clusterCellSize(zoom: number) {
+	if (zoom < INDIVIDUAL_RESTAURANT_ZOOM) {
+		return 2 / 2 ** Math.max(0, zoom - 5);
+	}
+	return Math.max(0.001, 0.008 / 2 ** Math.max(0, zoom - INDIVIDUAL_RESTAURANT_ZOOM));
+}
+
+export function viewportClusterCellSize(bounds: MapBounds, zoom: number) {
+	const area = Math.max(0, bounds.north - bounds.south) * Math.max(0, bounds.east - bounds.west);
+	return Math.max(clusterCellSize(zoom), Math.sqrt(area / 1_500));
+}
+
+export function recommendationStatus(
+	nearbyPosition: number | undefined,
+	nearbyRecommendationCount: number
+): MapRecommendationStatus {
+	if (nearbyPosition === undefined) return 'unranked';
+	return nearbyPosition <= topNearbyCount(nearbyRecommendationCount) ? 'top' : 'ranked';
+}
+
 export function isPlaceInBounds(place: PositionedPlace, bounds: MapBounds) {
 	const withinLatitude = place.latitude >= bounds.south && place.latitude <= bounds.north;
 	const withinLongitude =
