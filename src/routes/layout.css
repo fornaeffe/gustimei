@@ -814,55 +814,10 @@ input[type='radio'] {
 	color: var(--text-secondary);
 	font-size: 0.82rem;
 }
-.recommendation-explanation {
-	background: var(--surface-private);
-}
-.recommendation-explanation h2 {
-	font-family: var(--font-sans);
-	font-size: 1.35rem;
-	font-weight: 800;
-}
-.recommendation-explanation p:last-child {
-	margin-bottom: 0;
-}
-.map-recommendations h1 {
-	font-size: clamp(1.35rem, 3vw, 2rem);
-}
 .map-recommendations {
 	position: relative;
 	height: calc(100vh - 4.5rem);
 	overflow: hidden;
-}
-.map-page-heading {
-	position: absolute;
-	top: var(--space-4);
-	left: var(--space-4);
-	z-index: 401;
-	max-width: min(32rem, calc(100% - 2rem));
-	border: 1px solid var(--border);
-	border-radius: var(--radius-md);
-	background: color-mix(in srgb, var(--surface-raised) 94%, transparent);
-	padding: var(--space-3) var(--space-4);
-	box-shadow: var(--shadow-card);
-}
-.map-page-heading h1,
-.map-page-heading p {
-	margin: 0;
-}
-.map-page-heading .eyebrow {
-	margin-bottom: 0.15rem;
-}
-.map-recommendations > .recommendation-explanation {
-	position: absolute;
-	top: var(--space-4);
-	right: var(--space-4);
-	z-index: 402;
-	max-width: 25rem;
-	padding: var(--space-3) var(--space-4);
-}
-.recommendation-explanation summary {
-	cursor: pointer;
-	font-weight: 800;
 }
 .map-discovery {
 	position: relative;
@@ -870,7 +825,7 @@ input[type='radio'] {
 }
 .map-search {
 	position: absolute;
-	top: 7.5rem;
+	top: var(--space-4);
 	left: var(--space-4);
 	z-index: 401;
 	width: min(28rem, calc(100% - 2rem));
@@ -881,7 +836,7 @@ input[type='radio'] {
 }
 .map-search-results {
 	position: absolute;
-	top: 14rem;
+	top: 7.5rem;
 	left: var(--space-4);
 	z-index: 403;
 	width: min(28rem, calc(100% - 2rem));
@@ -1040,21 +995,42 @@ input[type='radio'] {
 }
 .map-popup {
 	display: grid;
-	gap: 0.35rem;
+	gap: var(--space-2);
+	min-width: 15rem;
+	max-width: 20rem;
 	color: #1d2b26;
 }
 .map-popup p {
 	margin: 0;
 }
+.map-popup__eyebrow {
+	color: #52615a;
+	font-size: 0.72rem;
+	font-weight: 800;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+}
 .map-popup__title {
-	font-size: 1rem;
+	font-size: 1.05rem;
 	font-weight: 800;
 }
-.map-popup__state {
+.map-popup__address {
 	color: #52615a;
 	font-size: 0.82rem;
 }
+.map-popup__states,
+.map-popup__actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-2);
+}
+.map-popup__state,
 .map-popup__rank {
+	border-radius: 999px;
+	background: #eef3f0;
+	padding: 0.2rem 0.5rem;
+	color: #52615a;
 	font-size: 0.82rem;
 }
 .map-popup__rank--top {
@@ -1066,6 +1042,17 @@ input[type='radio'] {
 .map-popup__rank--unranked {
 	color: #52615a;
 }
+.map-popup__actions form {
+	margin: 0;
+}
+.map-popup__actions .button {
+	min-height: 2.25rem;
+	padding: 0.45rem 0.7rem;
+}
+.map-popup__status {
+	color: #52615a;
+	font-size: 0.82rem;
+}
 .nearby-recommendations {
 	position: absolute;
 	right: var(--space-4);
@@ -1074,37 +1061,6 @@ input[type='radio'] {
 	width: min(26rem, calc(100% - 2rem));
 	padding: 0;
 	overflow: hidden;
-}
-.restaurant-preview {
-	position: absolute;
-	left: var(--space-4);
-	bottom: 7.5rem;
-	z-index: 404;
-	display: grid;
-	gap: var(--space-3);
-	width: min(24rem, calc(100% - 2rem));
-	padding: var(--space-5);
-}
-.restaurant-preview h2,
-.restaurant-preview p {
-	margin: 0;
-}
-.restaurant-preview__close {
-	position: absolute;
-	top: var(--space-2);
-	right: var(--space-2);
-	width: 2.5rem;
-	height: 2.5rem;
-	border: 0;
-	border-radius: 999px;
-	background: var(--surface-subtle);
-	font-size: 1.4rem;
-	cursor: pointer;
-}
-.restaurant-preview__states {
-	display: flex;
-	flex-wrap: wrap;
-	gap: var(--space-2);
 }
 .ranking-invitation {
 	position: absolute;
@@ -1188,6 +1144,19 @@ input[type='radio'] {
 .nearby-recommendations > .field__hint,
 .nearby-recommendations > p {
 	color: var(--text-secondary);
+}
+.nearby-recommendations__explanation {
+	display: grid;
+	gap: var(--space-2);
+	margin: 0 var(--space-5) var(--space-3);
+	border-radius: var(--radius-sm);
+	background: var(--surface-private);
+	padding: var(--space-3);
+}
+.nearby-recommendations__explanation p {
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: 0.82rem;
 }
 .nearby-recommendations > .field__hint,
 .nearby-recommendations > p {
@@ -1498,18 +1467,11 @@ input[type='radio'] {
 	.map-search {
 		grid-template-columns: 1fr;
 	}
-	.map-page-heading {
-		top: var(--space-2);
-		left: var(--space-2);
-	}
-	.map-page-heading p,
-	.map-page-heading .eyebrow,
-	.map-recommendations > .recommendation-explanation,
 	.map-legend {
 		display: none;
 	}
 	.map-search {
-		top: 5rem;
+		top: var(--space-2);
 		left: var(--space-2);
 		width: calc(100% - 1rem);
 	}
@@ -1517,7 +1479,7 @@ input[type='radio'] {
 		display: none;
 	}
 	.map-search-results {
-		top: 10rem;
+		top: 6rem;
 		left: var(--space-2);
 		width: calc(100% - 1rem);
 	}
@@ -1526,13 +1488,6 @@ input[type='radio'] {
 	}
 	.map-recommendations {
 		height: calc(100vh - 7.8rem);
-	}
-	.restaurant-preview {
-		left: var(--space-2);
-		bottom: 4.75rem;
-		width: calc(100% - 1rem);
-		max-height: 45vh;
-		overflow-y: auto;
 	}
 	.nearby-recommendations {
 		right: var(--space-2);

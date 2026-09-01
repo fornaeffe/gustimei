@@ -1367,11 +1367,14 @@ development, first check for concurrent Vite processes bound separately to IPv4 
   destinations: Discover, My ranking, Reviews, and Settings. Authenticated root navigation now opens
   Discover, and the account destination exposes a discreet signed-in identity. Removed the dashboard
   route, its component test, obsolete dashboard copy/styles, and the percentage progress component.
-- Made Discover an immersive viewport-height workspace. Location search, recommendation explanation,
-  collapsed viewport order, restaurant preview, visited action, and the single dominant ranking
-  invitation are compact overlays/sheets. Marker hover, click/tap, and the keyboard companion list
-  open the same preview. Address/locality, visited state, recommendation support/top-decile state,
-  place details, review entry, and in-context visited marking remain independent.
+- Made Discover an immersive viewport-height workspace. Location search and the single dominant
+  ranking invitation are compact overlays, while the recommendation-source explanation is integrated
+  into the collapsed nearby-order sheet instead of occupying a separate floating card.
+  The marker popup is the sole restaurant preview: marker hover, click/tap, and the keyboard companion
+  list open it with address/locality, visited state, recommendation support/top-decile state, in-context
+  visited marking, review entry, and private-note access. The restaurant name is its place-detail link;
+  there is no separate preview card or redundant details link. Removed the non-essential Discover
+  heading card so the location search and map retain the available visual space.
 - Visited marking no longer redirects into ranking from Discover or restaurant details. The UI updates
   immediately after a successful enhanced action and only exposes ranking work once it is useful.
   A dismissible invitation and quiet navigation badge distinguish pending work from an error.

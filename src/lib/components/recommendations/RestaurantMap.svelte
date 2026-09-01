@@ -1,6 +1,7 @@
 <script lang="ts">
 	import 'leaflet/dist/leaflet.css';
-	import { enhance } from '$app/forms';
+	import { applyAction, deserialize, enhance } from '$app/forms';
+	import { invalidateAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import type { Pathname } from '$app/types';
 	import type { SubmitFunction } from '@sveltejs/kit';
@@ -8,6 +9,7 @@
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import { untrack } from 'svelte';
 	import { getLocale, localizeHref } from '$lib/paraglide/runtime';
+	import type { RecommendationServingGate } from '$lib/domain/recommendations/contracts';
 	import {
 		isPlaceInBounds,
 		nearbyRecommendationOrder,
@@ -70,7 +72,8 @@
 		tileUrl,
 		artifactId,
 		visitedPlaceIds,
-		rankingInvitation
+		rankingInvitation,
+		recommendationGate
 	}: {
 		places: RecommendationPlace[];
 		tileUrl: string;
@@ -82,6 +85,7 @@
 			pendingCount: number;
 			openSession?: { id: string };
 		};
+		recommendationGate: RecommendationServingGate;
 	} = $props();
 	let map: LeafletMap | undefined;
 	let leaflet: typeof import('leaflet') | undefined;
@@ -102,9 +106,23 @@
 	let localVisitedIds = untrack(() => new SvelteSet(visitedPlaceIds));
 	let pendingRankingCount = $state(untrack(() => rankingInvitation.pendingCount));
 	let rankingInvitationDismissed = $state(untrack(() => rankingInvitation.dismissed));
-	let visitedAcknowledgement = $state('');
+	let visitedAcknowledgementPlaceId = $state<string>();
 	let listExpanded = $state(false);
 	let locale = $derived(getLocale());
+	let recommendationExplanationTitle = $derived(
+		recommendationGate.mode === 'personalized'
+			? m.personalized_order_title()
+			: recommendationGate.mode === 'community-prior'
+				? m.community_order_title()
+				: m.insufficient_recommendation_title()
+	);
+	let recommendationExplanationBody = $derived(
+		recommendationGate.mode === 'personalized'
+			? m.personalized_order_body()
+			: recommendationGate.mode === 'community-prior'
+				? m.community_order_body({ count: recommendationGate.rankedPlaces })
+				: m.insufficient_recommendation_body()
+	);
 	const markers = new SvelteMap<string, Marker>();
 	const reportedExposures = new SvelteSet<string>();
 	const rankedPlaces = $derived(places.filter((place) => place.supported));
@@ -114,16 +132,67 @@
 			...places.filter((place) => place.visited).map((place) => place.placeId)
 		])
 	);
-	let selectedRecommendation = $derived(
-		selectedPlace ? places.find((place) => place.placeId === selectedPlace?.placeId) : undefined
-	);
-
 	function placeAddress(place: { addressLabel?: string; displayLocality: string }) {
 		return place.addressLabel || place.displayLocality;
 	}
 
 	function placeHref(placeId: string) {
 		return localizeHref(`/places/${encodeURIComponent(placeId)}`, { locale });
+	}
+
+	function reviewHref(placeId: string) {
+		return resolve(
+			localizeHref(
+				`/places/${encodeURIComponent(placeId)}/reviews/new?returnTo=${encodeURIComponent('/recommendations/restaurants')}`,
+				{ locale }
+			) as Pathname
+		);
+	}
+
+	async function submitVisited(
+		event: SubmitEvent,
+		place: RestaurantMapPoint | RecommendationPlace,
+		status: HTMLElement,
+		button: HTMLButtonElement
+	) {
+		event.preventDefault();
+		const form = event.currentTarget as HTMLFormElement;
+		button.disabled = true;
+		status.textContent = '';
+		try {
+			const response = await fetch(form.action, {
+				method: 'POST',
+				body: new FormData(form),
+				headers: { 'x-sveltekit-action': 'true' }
+			});
+			const result = deserialize(await response.text());
+			if (result.type === 'success') {
+				const wasVisited = visitedIds.has(place.placeId);
+				localVisitedIds.add(place.placeId);
+				if (!wasVisited) {
+					pendingRankingCount = rankingInvitation.hasRevision
+						? pendingRankingCount + 1
+						: localVisitedIds.size >= 2
+							? localVisitedIds.size
+							: 0;
+				}
+				visitedAcknowledgementPlaceId = place.placeId;
+				pendingOpenPlaceId = place.placeId;
+				renderViewport();
+				await invalidateAll();
+				return;
+			}
+			if (result.type === 'failure') {
+				status.textContent =
+					typeof result.data?.error === 'string' ? result.data.error : m.error_title();
+				return;
+			}
+			await applyAction(result);
+		} catch {
+			status.textContent = m.error_title();
+		} finally {
+			button.disabled = false;
+		}
 	}
 
 	function currentBounds(): MapBounds | undefined {
@@ -175,18 +244,25 @@
 	) {
 		const content = document.createElement('div');
 		content.className = 'map-popup';
+		const eyebrow = document.createElement('span');
+		eyebrow.className = 'map-popup__eyebrow';
+		eyebrow.textContent = m.restaurant();
+		content.append(eyebrow);
 		const link = document.createElement('a');
 		link.href = placeHref(place.placeId);
 		link.className = 'map-popup__title';
 		link.textContent = place.name;
 		content.append(link);
 		const address = document.createElement('p');
+		address.className = 'map-popup__address';
 		address.textContent = placeAddress(place);
 		content.append(address);
-		const state = document.createElement('p');
+		const states = document.createElement('div');
+		states.className = 'map-popup__states';
+		const state = document.createElement('span');
 		state.className = 'map-popup__state';
 		state.textContent = visitedIds.has(place.placeId) ? `✓ ${m.visited()}` : m.not_visited();
-		content.append(state);
+		states.append(state);
 		const recommendation = document.createElement('strong');
 		recommendation.className = `map-popup__rank map-popup__rank--${status}`;
 		recommendation.textContent =
@@ -195,7 +271,46 @@
 				: status === 'ranked'
 					? `${m.map_ranked_restaurant()} · ${m.map_nearby_rank({ position: nearbyPosition ?? 1 })}`
 					: m.map_unranked_restaurant();
-		content.append(recommendation);
+		states.append(recommendation);
+		content.append(states);
+
+		const actions = document.createElement('div');
+		actions.className = 'map-popup__actions';
+		const actionStatus = document.createElement('p');
+		actionStatus.className = 'map-popup__status';
+		actionStatus.setAttribute('role', 'status');
+		if (visitedIds.has(place.placeId)) {
+			const review = document.createElement('a');
+			review.className = 'button button--secondary';
+			review.href = reviewHref(place.placeId);
+			review.textContent = m.write_review();
+			actions.append(review);
+			const note = document.createElement('a');
+			note.href = `${placeHref(place.placeId)}#personal-note`;
+			note.textContent = m.private_note_title();
+			actions.append(note);
+			if (visitedAcknowledgementPlaceId === place.placeId) {
+				actionStatus.textContent = m.map_mark_visited_success();
+			}
+		} else {
+			const form = document.createElement('form');
+			form.method = 'POST';
+			form.action = '?/addVisited';
+			const placeId = document.createElement('input');
+			placeId.type = 'hidden';
+			placeId.name = 'placeId';
+			placeId.value = place.placeId;
+			const button = document.createElement('button');
+			button.className = 'button';
+			button.type = 'submit';
+			button.textContent = m.mark_already_visited();
+			form.append(placeId, button);
+			form.addEventListener('submit', (event) => {
+				void submitVisited(event, place, actionStatus, button);
+			});
+			actions.append(form);
+		}
+		content.append(actions, actionStatus);
 		return content;
 	}
 
@@ -233,10 +348,12 @@
 			keyboard: true,
 			riseOnHover: true
 		});
-		marker.bindTooltip(popupContent(place, status, nearbyPosition), { direction: 'top' });
-		marker.bindPopup(popupContent(place, status, nearbyPosition), { minWidth: 220 });
-		marker.on('mouseover', () => selectPlace(place));
-		marker.on('click', () => selectPlace(place));
+		marker.bindPopup(popupContent(place, status, nearbyPosition), { minWidth: 240 });
+		marker.on('mouseover', () => {
+			selectPlace(place);
+			marker.openPopup();
+		});
+		marker.on('popupopen', () => selectPlace(place));
 		marker.addTo(layer);
 		markers.set(place.placeId, marker);
 		if (pendingOpenPlaceId === place.placeId) {
@@ -426,23 +543,6 @@
 		markers.get(place.placeId)?.openPopup();
 	}
 
-	const enhanceVisited: SubmitFunction = ({ formData }) => {
-		const placeId = String(formData.get('placeId') ?? '');
-		return async ({ result, update }) => {
-			if (result.type === 'success') {
-				localVisitedIds.add(placeId);
-				pendingRankingCount = rankingInvitation.hasRevision
-					? pendingRankingCount + 1
-					: localVisitedIds.size >= 2
-						? localVisitedIds.size
-						: 0;
-				visitedAcknowledgement = m.map_mark_visited_success();
-				renderViewport();
-			}
-			await update({ reset: false });
-		};
-	};
-
 	const enhanceDismissRanking: SubmitFunction =
 		() =>
 		async ({ result, update }) => {
@@ -582,58 +682,6 @@
 		{/if}
 	</div>
 
-	{#if selectedPlace}
-		<aside class="surface-card restaurant-preview" aria-labelledby="restaurant-preview-title">
-			<button
-				class="restaurant-preview__close"
-				type="button"
-				onclick={() => {
-					selectedPlace = undefined;
-					saveSnapshot();
-				}}
-				aria-label={m.close_dialog()}>×</button
-			>
-			<p class="eyebrow">{m.restaurant()}</p>
-			<h2 id="restaurant-preview-title">{selectedPlace.name}</h2>
-			<p>{placeAddress(selectedPlace)}</p>
-			<div class="restaurant-preview__states">
-				<span class="status-chip"
-					>{visitedIds.has(selectedPlace.placeId) ? `✓ ${m.visited()}` : m.not_visited()}</span
-				>
-				{#if selectedRecommendation?.supported}<span class="status-chip"
-						>{nearby.slice(0, topCount).some((place) => place.placeId === selectedPlace?.placeId)
-							? m.map_top_nearby()
-							: m.map_ranked_restaurant()}</span
-					>{:else}<span class="status-chip">{m.map_unranked_restaurant()}</span>{/if}
-			</div>
-			{#if !visitedIds.has(selectedPlace.placeId)}
-				<form method="POST" action="?/addVisited" use:enhance={enhanceVisited}>
-					<input type="hidden" name="placeId" value={selectedPlace.placeId} />
-					<button class="button" type="submit">{m.mark_already_visited()}</button>
-				</form>
-			{:else}
-				<div class="cluster">
-					<a
-						class="button button--secondary"
-						href={resolve(
-							localizeHref(
-								`/places/${encodeURIComponent(selectedPlace.placeId)}/reviews/new?returnTo=${encodeURIComponent('/recommendations/restaurants')}`,
-								{ locale }
-							) as Pathname
-						)}>{m.write_review()}</a
-					>
-					<a href={resolve(`${placeHref(selectedPlace.placeId)}#personal-note` as Pathname)}
-						>{m.private_note_title()}</a
-					>
-				</div>
-			{/if}
-			<a href={resolve(placeHref(selectedPlace.placeId) as Pathname)}>{m.map_preview_details()}</a>
-			{#if visitedAcknowledgement}<p class="form-status" role="status">
-					{visitedAcknowledgement}
-				</p>{/if}
-		</aside>
-	{/if}
-
 	{#if (pendingRankingCount > 0 || rankingInvitation.openSession) && !rankingInvitationDismissed}
 		<aside class="surface-card ranking-invitation" aria-labelledby="ranking-invitation-title">
 			<div>
@@ -664,6 +712,11 @@
 			<span>{m.map_nearby_list()}</span>
 			<small>{m.map_nearby_count({ count: nearby.length })}</small>
 		</summary>
+		<div class="nearby-recommendations__explanation">
+			<strong>{recommendationExplanationTitle}</strong>
+			<p>{recommendationExplanationBody}</p>
+			<p class="field__hint">{m.review_isolation_explanation()}</p>
+		</div>
 		<p class="field__hint">{m.map_supported_scope_help()}</p>
 		{#if nearby.length === 0}
 			<p>{m.map_nearby_empty()}</p>
