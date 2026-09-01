@@ -10,14 +10,21 @@
 
 <svelte:head><title>{m.map_discover_title()} — {m.product_name()}</title></svelte:head>
 
-<section class="stack recommendations map-recommendations" aria-labelledby="recommendations-title">
-	<header>
+<section class="recommendations map-recommendations" aria-labelledby="recommendations-title">
+	<header class="map-page-heading">
 		<p class="eyebrow"><Icon icon={Compass} size={16} />{m.predicted_order_label()}</p>
 		<h1 id="recommendations-title">{m.map_discover_title()}</h1>
-		<p class="lede">{m.map_discover_intro()}</p>
+		<p>{m.map_discover_short_intro()}</p>
 	</header>
 
-	<div class="surface-card recommendation-explanation">
+	<details class="surface-card recommendation-explanation">
+		<summary
+			>{data.page.gate.mode === 'personalized'
+				? m.personalized_order_title()
+				: data.page.gate.mode === 'community-prior'
+					? m.community_order_title()
+					: m.insufficient_recommendation_title()}</summary
+		>
 		<h2>
 			{data.page.gate.mode === 'personalized'
 				? m.personalized_order_title()
@@ -33,7 +40,7 @@
 					: m.insufficient_recommendation_body()}
 		</p>
 		<p class="field__hint">{m.review_isolation_explanation()}</p>
-	</div>
+	</details>
 
 	{#if form?.section === 'visited' && form?.error}
 		<p class="form-status form-status--error" role="alert">{form.error}</p>
@@ -49,5 +56,7 @@
 		places={data.page.results}
 		tileUrl={data.mapTileUrl}
 		artifactId={data.page.artifactId}
+		visitedPlaceIds={data.visitedPlaceIds}
+		rankingInvitation={data.rankingInvitation}
 	/>
 </section>

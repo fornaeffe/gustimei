@@ -17,3 +17,4 @@ bun.lockb
 
 # Product specification is deliberately prose-formatted.
 /IMPLEMENTATION_PLAN.md
+/docs/adr/DRAFT-drag-and-drop.md

@@ -1,5 +1,7 @@
 # GustiMei UX Specification — Map-first continuous discovery and ranking
 
+**Status (2026-09-01): implemented for restaurants. Automated verification is complete; authenticated map usability remains a human-test gate.**
+
 ## 1. UX concept
 
 GustiMei should be organized around a continuous cycle:
@@ -12,10 +14,10 @@ The **map is the primary everyday workspace**. Ranking is a focused secondary ac
 
 The principal UX states — **visited**, **ranked**, **recommended**, and **reviewed** — must remain independent:
 
-* **Visited** means that the user says they have visited the place.
-* **Ranked** means that sufficient preference evidence exists to position the place, wholly or partially, in the user's private ranking.
-* **Recommended** refers to the recommendation engine's predicted order and is not a user rating.
-* **Reviewed** means that the user has separately published a public textual review.
+- **Visited** means that the user says they have visited the place.
+- **Ranked** means that sufficient preference evidence exists to position the place, wholly or partially, in the user's private ranking.
+- **Recommended** refers to the recommendation engine's predicted order and is not a user rating.
+- **Reviewed** means that the user has separately published a public textual review.
 
 ---
 
@@ -101,12 +103,12 @@ Locale, public pseudonym, privacy/data controls, authentication and account mana
 
 The map is the primary environment for:
 
-* discovering places;
-* checking recommendation status;
-* locating known restaurants;
-* marking restaurants as visited;
-* opening restaurant details;
-* entering the ranking workflow when prompted.
+- discovering places;
+- checking recommendation status;
+- locating known restaurants;
+- marking restaurants as visited;
+- opening restaurant details;
+- entering the ranking workflow when prompted.
 
 It should maximize geographic context while keeping frequently used controls immediately available.
 
@@ -135,10 +137,10 @@ The location search is intended principally to **move the map**.
 
 It should:
 
-* remain visually compact;
-* accept explicit location searches;
-* display a small set of candidate locations where necessary;
-* move/zoom the map to the selected result.
+- remain visually compact;
+- accept explicit location searches;
+- display a small set of candidate locations where necessary;
+- move/zoom the map to the selected result.
 
 ---
 
@@ -152,13 +154,12 @@ When expanded, it shows the recommendation order for the relevant visible area a
 
 The list should:
 
-* remain synchronized with the map viewport;
-* expose recommendation position clearly;
-* distinguish visited places independently;
-* distinguish recommended/ranked places from places for which no meaningful recommendation exists;
-* permit keyboard-only use as an accessible alternative to marker interaction;
-* allow selecting a restaurant to locate/highlight it on the map and open its preview.
-
+- remain synchronized with the map viewport;
+- expose recommendation position clearly;
+- distinguish visited places independently;
+- distinguish recommended/ranked places from places for which no meaningful recommendation exists;
+- permit keyboard-only use as an accessible alternative to marker interaction;
+- allow selecting a restaurant to locate/highlight it on the map and open its preview.
 
 ---
 
@@ -166,8 +167,8 @@ The list should:
 
 A restaurant marker can be:
 
-* hovered with a pointer;
-* tapped/clicked.
+- hovered with a pointer;
+- tapped/clicked.
 
 These actions open the same conceptual **restaurant preview**.
 
@@ -183,11 +184,11 @@ It should contain only enough information and actions to support fast map-based 
 
 ## Required information
 
-* restaurant name;
-* address and/or locality;
-* link/action to open the full restaurant page;
-* visited/unvisited state;
-* recommendation state.
+- restaurant name;
+- address and/or locality;
+- link/action to open the full restaurant page;
+- visited/unvisited state;
+- recommendation state.
 
 For recommended restaurants, indicate whether the restaurant belongs to the highlighted **top 10% of nearby recommendations**.
 
@@ -199,10 +200,10 @@ Primary contextual action:
 
 After activation:
 
-* update the marker immediately when safely possible;
-* update the preview to its visited state;
-* update the ranking-invitation state;
-* do not automatically force the user into ranking or review composition.
+- update the marker immediately when safely possible;
+- update the preview to its visited state;
+- update the ranking-invitation state;
+- do not automatically force the user into ranking or review composition.
 
 A lightweight acknowledgement may appear, but the user should be able to continue exploring immediately.
 
@@ -253,10 +254,10 @@ It should become more noticeable as pending work accumulates, but should not beh
 
 Possible manifestations include:
 
-* notification badge on **My ranking**;
-* small persistent chip/button over the map;
-* compact banner;
-* an item in the recommendation/list panel.
+- notification badge on **My ranking**;
+- small persistent chip/button over the map;
+- compact banner;
+- an item in the recommendation/list panel.
 
 These may be combined carefully, but the interface should have **one dominant ranking CTA**, not several competing alerts.
 
@@ -280,9 +281,9 @@ The ranking affordance may technically appear as soon as useful ranking work exi
 
 Its visual prominence should depend on factors such as:
 
-* number of visited but unresolved/unplaced restaurants;
-* existence of an interrupted ranking session;
-* existence of a targeted repair request.
+- number of visited but unresolved/unplaced restaurants;
+- existence of an interrupted ranking session;
+- existence of a targeted repair request.
 
 An interrupted session should generally take precedence:
 
@@ -312,11 +313,11 @@ If an open resumable session exists, resume it.
 
 Otherwise determine the smallest appropriate ranking operation from the current ranking state:
 
-* initial ordering;
-* insertion of new places;
-* resolution of unplaced places;
-* targeted repair;
-* wider rebuild only where required.
+- initial ordering;
+- insertion of new places;
+- resolution of unplaced places;
+- targeted repair;
+- wider rebuild only where required.
 
 This decision is made by the ranking domain/engine and should generally be invisible to the user.
 
@@ -344,11 +345,11 @@ Neither card should appear preselected or visually privileged.
 
 Each card shows a deliberately comparable subset of information:
 
-* name;
-* locality;
-* category-appropriate metadata already considered reliable;
-* standard non-photo fallback where licensed imagery is absent;
-* optional owner-only access to the user's private memory note.
+- name;
+- locality;
+- category-appropriate metadata already considered reliable;
+- standard non-photo fallback where licensed imagery is absent;
+- optional owner-only access to the user's private memory note.
 
 Private comments remain collapsed initially so comment length cannot bias layout.
 
@@ -358,12 +359,12 @@ No recommendation position, public review count, review sentiment, or community 
 
 Required actions:
 
-* choose left restaurant;
-* choose right restaurant;
-* **Tie / About the same**;
-* **Skip / Can't compare**;
-* Undo previous choice;
-* Leave / continue later.
+- choose left restaurant;
+- choose right restaurant;
+- **Tie / About the same**;
+- **Skip / Can't compare**;
+- Undo previous choice;
+- Leave / continue later.
 
 Card click/tap may choose that restaurant, but explicit labeled controls must remain available.
 
@@ -418,21 +419,21 @@ The restaurant page provides information that would overload the map preview.
 
 ### Identity and catalogue information
 
-* name;
-* address/locality;
-* available relevant catalogue information;
-* map/location context;
-* OSM attribution where applicable.
+- name;
+- address/locality;
+- available relevant catalogue information;
+- map/location context;
+- OSM attribution where applicable.
 
 ### Personal state
 
 For authenticated users:
 
-* Visited / Not visited;
-* action to mark visited;
-* editable private personal comment where applicable;
-* current relationship to the personal ranking where useful.
-* the belonging to the top 10% of local, regional, national or worldwide recommendation list for the user (display only the widest scope information) if applicable
+- Visited / Not visited;
+- action to mark visited;
+- editable private personal comment where applicable;
+- current relationship to the personal ranking where useful.
+- the belonging to the top 10% of local, regional, national or worldwide recommendation list for the user (display only the widest scope information) if applicable
 
 ### Public reviews
 
@@ -458,16 +459,16 @@ From either the restaurant preview or restaurant page, the user can enter the ex
 
 When the review is committed successfully, return the user to the logical origin:
 
-* map preview → map;
-* restaurant page → restaurant page;
-* review management → review management.
+- map preview → map;
+- restaurant page → restaurant page;
+- review management → review management.
 
 For the map-origin case, preserve as much of the map state as practicable:
 
-* centre;
-* zoom;
-* selected restaurant;
-* recommendation-list state.
+- centre;
+- zoom;
+- selected restaurant;
+- recommendation-list state.
 
 Returning from reviewing should therefore feel like closing a temporary task rather than restarting discovery.
 
@@ -483,11 +484,11 @@ The **My ranking** page is the durable representation of the user's own preferen
 
 It provides:
 
-* the ranked list of visited restaurants;
-* tied tiers;
-* unresolved/unplaced places where applicable;
-* filtered positions when locality filtering is active;
-* maintenance controls.
+- the ranked list of visited restaurants;
+- tied tiers;
+- unresolved/unplaced places where applicable;
+- filtered positions when locality filtering is active;
+- maintenance controls.
 
 ## 17.2 Ranked list
 
@@ -525,12 +526,12 @@ The user should be able to move freely among map, restaurant detail, review comp
 
 Especially preserve:
 
-* map centre and zoom;
-* selected category;
-* recommendation-list expanded/collapsed state;
-* selected restaurant where reasonable;
-* active ranking session server-side;
-* harmless unsent review text according to the existing scoped snapshot policy.
+- map centre and zoom;
+- selected category;
+- recommendation-list expanded/collapsed state;
+- selected restaurant where reasonable;
+- active ranking session server-side;
+- harmless unsent review text according to the existing scoped snapshot policy.
 
 Do not preserve sensitive evidence, tokens, notifier details, or restricted moderation data in general browser state.
 
@@ -542,12 +543,12 @@ The same conceptual architecture should remain on mobile rather than switching t
 
 Recommended composition:
 
-* map fills the viewport;
-* navigation becomes compact;
-* location search floats near the top (if praticable, make it collapsible to a single search icon);
-* restaurant preview becomes a bottom sheet/popover;
-* recommendation list expands as a bottom sheet;
-* ranking invitation occupies a compact persistent location without obscuring map interaction.
+- map fills the viewport;
+- navigation becomes compact;
+- location search floats near the top (if praticable, make it collapsible to a single search icon);
+- restaurant preview becomes a bottom sheet/popover;
+- recommendation list expands as a bottom sheet;
+- ranking invitation occupies a compact persistent location without obscuring map interaction.
 
 Restaurant preview sheets should leave enough map visible to preserve geographic orientation.
 

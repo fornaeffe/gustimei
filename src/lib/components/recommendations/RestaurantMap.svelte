@@ -1,7 +1,12 @@
 <script lang="ts">
 	import 'leaflet/dist/leaflet.css';
+	import { enhance } from '$app/forms';
+	import { resolve } from '$app/paths';
+	import type { Pathname } from '$app/types';
+	import type { SubmitFunction } from '@sveltejs/kit';
 	import type { LayerGroup, Map as LeafletMap, Marker } from 'leaflet';
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
+	import { untrack } from 'svelte';
 	import { getLocale, localizeHref } from '$lib/paraglide/runtime';
 	import {
 		isPlaceInBounds,
@@ -53,12 +58,31 @@
 		longitude: number;
 		bounds: [number, number, number, number];
 	}
+	interface MapSnapshot {
+		center: [number, number];
+		zoom: number;
+		selectedPlaceId?: string;
+		listExpanded: boolean;
+	}
 
 	let {
 		places,
 		tileUrl,
-		artifactId
-	}: { places: RecommendationPlace[]; tileUrl: string; artifactId: string } = $props();
+		artifactId,
+		visitedPlaceIds,
+		rankingInvitation
+	}: {
+		places: RecommendationPlace[];
+		tileUrl: string;
+		artifactId: string;
+		visitedPlaceIds: string[];
+		rankingInvitation: {
+			hasRevision: boolean;
+			dismissed: boolean;
+			pendingCount: number;
+			openSession?: { id: string };
+		};
+	} = $props();
 	let map: LeafletMap | undefined;
 	let leaflet: typeof import('leaflet') | undefined;
 	let catalogueLayer: LayerGroup | undefined;
@@ -74,12 +98,24 @@
 	let viewportController: AbortController | undefined;
 	let viewportSequence = 0;
 	let pendingOpenPlaceId: string | undefined;
+	let selectedPlace = $state<RestaurantMapPoint | RecommendationPlace>();
+	let localVisitedIds = untrack(() => new SvelteSet(visitedPlaceIds));
+	let pendingRankingCount = $state(untrack(() => rankingInvitation.pendingCount));
+	let rankingInvitationDismissed = $state(untrack(() => rankingInvitation.dismissed));
+	let visitedAcknowledgement = $state('');
+	let listExpanded = $state(false);
 	let locale = $derived(getLocale());
 	const markers = new SvelteMap<string, Marker>();
 	const reportedExposures = new SvelteSet<string>();
 	const rankedPlaces = $derived(places.filter((place) => place.supported));
 	const visitedIds = $derived(
-		new SvelteSet(places.filter((place) => place.visited).map((place) => place.placeId))
+		new SvelteSet([
+			...localVisitedIds,
+			...places.filter((place) => place.visited).map((place) => place.placeId)
+		])
+	);
+	let selectedRecommendation = $derived(
+		selectedPlace ? places.find((place) => place.placeId === selectedPlace?.placeId) : undefined
 	);
 
 	function placeAddress(place: { addressLabel?: string; displayLocality: string }) {
@@ -99,6 +135,33 @@
 			north: bounds.getNorth(),
 			east: bounds.getEast()
 		};
+	}
+
+	function readSnapshot() {
+		try {
+			return JSON.parse(sessionStorage.getItem('gustimei:restaurant-map') ?? '') as MapSnapshot;
+		} catch {
+			return undefined;
+		}
+	}
+
+	function saveSnapshot() {
+		if (!map) return;
+		const center = map.getCenter();
+		sessionStorage.setItem(
+			'gustimei:restaurant-map',
+			JSON.stringify({
+				center: [center.lat, center.lng],
+				zoom: map.getZoom(),
+				selectedPlaceId: selectedPlace?.placeId,
+				listExpanded
+			} satisfies MapSnapshot)
+		);
+	}
+
+	function selectPlace(place: RestaurantMapPoint | RecommendationPlace) {
+		selectedPlace = place;
+		saveSnapshot();
 	}
 
 	function nearbyPositionById() {
@@ -172,6 +235,8 @@
 		});
 		marker.bindTooltip(popupContent(place, status, nearbyPosition), { direction: 'top' });
 		marker.bindPopup(popupContent(place, status, nearbyPosition), { minWidth: 220 });
+		marker.on('mouseover', () => selectPlace(place));
+		marker.on('click', () => selectPlace(place));
 		marker.addTo(layer);
 		markers.set(place.placeId, marker);
 		if (pendingOpenPlaceId === place.placeId) {
@@ -326,6 +391,10 @@
 			const result = (await response.json()) as RestaurantViewport;
 			if (sequence !== viewportSequence) return;
 			viewport = result;
+			if (pendingOpenPlaceId) {
+				const restored = result.places.find((place) => place.placeId === pendingOpenPlaceId);
+				if (restored) selectedPlace = restored;
+			}
 			mapState = 'ready';
 			recordVisibleExposures();
 			renderViewport();
@@ -351,10 +420,35 @@
 	}
 
 	function showPlace(place: RecommendationPlace) {
+		selectPlace(place);
 		pendingOpenPlaceId = place.placeId;
 		map?.flyTo([place.latitude, place.longitude], Math.max(map.getZoom(), 15));
 		markers.get(place.placeId)?.openPopup();
 	}
+
+	const enhanceVisited: SubmitFunction = ({ formData }) => {
+		const placeId = String(formData.get('placeId') ?? '');
+		return async ({ result, update }) => {
+			if (result.type === 'success') {
+				localVisitedIds.add(placeId);
+				pendingRankingCount = rankingInvitation.hasRevision
+					? pendingRankingCount + 1
+					: localVisitedIds.size >= 2
+						? localVisitedIds.size
+						: 0;
+				visitedAcknowledgement = m.map_mark_visited_success();
+				renderViewport();
+			}
+			await update({ reset: false });
+		};
+	};
+
+	const enhanceDismissRanking: SubmitFunction =
+		() =>
+		async ({ result, update }) => {
+			if (result.type === 'success') rankingInvitationDismissed = true;
+			await update({ reset: false, invalidateAll: false });
+		};
 
 	async function searchLocation(event: SubmitEvent) {
 		event.preventDefault();
@@ -383,9 +477,14 @@
 		void import('leaflet').then((module) => {
 			if (disposed) return;
 			leaflet = module;
+			const snapshot = readSnapshot();
+			if (snapshot) {
+				pendingOpenPlaceId = snapshot.selectedPlaceId;
+				listExpanded = snapshot.listExpanded;
+			}
 			map = module.map(element, {
-				center: [42.5, 12.5],
-				zoom: 5,
+				center: snapshot?.center ?? [42.5, 12.5],
+				zoom: snapshot?.zoom ?? 5,
 				minZoom: 4,
 				maxBounds: [
 					[34, 3],
@@ -404,13 +503,14 @@
 				.addTo(map);
 			catalogueLayer = module.layerGroup().addTo(map);
 			emphasisLayer = module.layerGroup().addTo(map);
-			if (places.length > 0) {
+			if (!snapshot && places.length > 0) {
 				map.fitBounds(
 					module.latLngBounds(places.map((place) => [place.latitude, place.longitude])),
 					{ maxZoom: 12, padding: [24, 24] }
 				);
 			}
 			const onMove = () => {
+				saveSnapshot();
 				if (moveTimer) clearTimeout(moveTimer);
 				moveTimer = setTimeout(updateMapContents, 220);
 			};
@@ -482,7 +582,84 @@
 		{/if}
 	</div>
 
-	<details class="surface-card nearby-recommendations" open>
+	{#if selectedPlace}
+		<aside class="surface-card restaurant-preview" aria-labelledby="restaurant-preview-title">
+			<button
+				class="restaurant-preview__close"
+				type="button"
+				onclick={() => {
+					selectedPlace = undefined;
+					saveSnapshot();
+				}}
+				aria-label={m.close_dialog()}>×</button
+			>
+			<p class="eyebrow">{m.restaurant()}</p>
+			<h2 id="restaurant-preview-title">{selectedPlace.name}</h2>
+			<p>{placeAddress(selectedPlace)}</p>
+			<div class="restaurant-preview__states">
+				<span class="status-chip"
+					>{visitedIds.has(selectedPlace.placeId) ? `✓ ${m.visited()}` : m.not_visited()}</span
+				>
+				{#if selectedRecommendation?.supported}<span class="status-chip"
+						>{nearby.slice(0, topCount).some((place) => place.placeId === selectedPlace?.placeId)
+							? m.map_top_nearby()
+							: m.map_ranked_restaurant()}</span
+					>{:else}<span class="status-chip">{m.map_unranked_restaurant()}</span>{/if}
+			</div>
+			{#if !visitedIds.has(selectedPlace.placeId)}
+				<form method="POST" action="?/addVisited" use:enhance={enhanceVisited}>
+					<input type="hidden" name="placeId" value={selectedPlace.placeId} />
+					<button class="button" type="submit">{m.mark_already_visited()}</button>
+				</form>
+			{:else}
+				<div class="cluster">
+					<a
+						class="button button--secondary"
+						href={resolve(
+							localizeHref(
+								`/places/${encodeURIComponent(selectedPlace.placeId)}/reviews/new?returnTo=${encodeURIComponent('/recommendations/restaurants')}`,
+								{ locale }
+							) as Pathname
+						)}>{m.write_review()}</a
+					>
+					<a href={resolve(`${placeHref(selectedPlace.placeId)}#personal-note` as Pathname)}
+						>{m.private_note_title()}</a
+					>
+				</div>
+			{/if}
+			<a href={resolve(placeHref(selectedPlace.placeId) as Pathname)}>{m.map_preview_details()}</a>
+			{#if visitedAcknowledgement}<p class="form-status" role="status">
+					{visitedAcknowledgement}
+				</p>{/if}
+		</aside>
+	{/if}
+
+	{#if (pendingRankingCount > 0 || rankingInvitation.openSession) && !rankingInvitationDismissed}
+		<aside class="surface-card ranking-invitation" aria-labelledby="ranking-invitation-title">
+			<div>
+				<strong id="ranking-invitation-title"
+					>{rankingInvitation.openSession
+						? m.ranking_continue()
+						: m.ranking_places_to_rank({ count: pendingRankingCount })}</strong
+				>
+				<p>{m.ranking_invitation_body()}</p>
+			</div>
+			<form method="POST" action="?/startRanking">
+				<button class="button" type="submit"
+					>{rankingInvitation.openSession ? m.ranking_continue() : m.ranking_update()}</button
+				>
+			</form>
+			<form method="POST" action="?/dismissRanking" use:enhance={enhanceDismissRanking}>
+				<button class="button button--quiet" type="submit">{m.ranking_dismiss()}</button>
+			</form>
+		</aside>
+	{/if}
+
+	<details
+		class="surface-card nearby-recommendations"
+		bind:open={listExpanded}
+		ontoggle={saveSnapshot}
+	>
 		<summary>
 			<span>{m.map_nearby_list()}</span>
 			<small>{m.map_nearby_count({ count: nearby.length })}</small>

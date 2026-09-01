@@ -38,6 +38,54 @@ function participation() {
 }
 
 describe('ranking service rebuild sessions', () => {
+	it('starts the smallest useful insertion instead of rebuilding a stable ranking', async () => {
+		const repository = {
+			findOpenSession: vi.fn().mockResolvedValue(undefined),
+			listVisitedPlaceIds: vi.fn().mockResolvedValue(['a', 'b', 'c']),
+			loadCurrentRevision: vi.fn().mockResolvedValue(baseRevision),
+			saveSession: vi.fn().mockResolvedValue(undefined)
+		};
+		const service = new RankingService(
+			repository as unknown as RankingRepository,
+			participation(),
+			'development',
+			() => now,
+			() => 'insertion-session'
+		);
+
+		const session = await service.startUsefulSession('user-1', 'list-1');
+
+		expect(session.summary()).toMatchObject({
+			id: 'insertion-session',
+			purpose: 'insertion',
+			baseRevisionId: 'revision-1'
+		});
+		expect(session.nextComparison()).toEqual(expect.objectContaining({ rightPlaceId: 'c' }));
+		expect(repository.saveSession).toHaveBeenCalledOnce();
+	});
+
+	it('resumes existing ranking work before creating another operation', async () => {
+		const open = RankingSession.insertion({
+			id: 'open-session',
+			listId: 'list-1',
+			baseRevision,
+			newPlaceId: 'c'
+		});
+		const repository = {
+			findOpenSession: vi.fn().mockResolvedValue(open),
+			listVisitedPlaceIds: vi.fn(),
+			loadCurrentRevision: vi.fn()
+		};
+		const service = new RankingService(
+			repository as unknown as RankingRepository,
+			participation(),
+			'development'
+		);
+
+		expect(await service.startUsefulSession('user-1', 'list-1')).toBe(open);
+		expect(repository.listVisitedPlaceIds).not.toHaveBeenCalled();
+	});
+
 	it('captures the current revision when starting a full-list re-sort', async () => {
 		const repository = {
 			findOpenSession: vi.fn().mockResolvedValue(undefined),

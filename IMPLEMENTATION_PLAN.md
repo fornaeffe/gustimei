@@ -1347,7 +1347,8 @@ full-catalogue performance remain provisional, not blockers for implementing the
   viewport, retaining Phase 7 artifact eligibility and deduplication rules. Reviews and personal
   comments remain excluded from map ranking and exposure logic.
 - Make this route the post-sign-in, already-authenticated, verification-completion, and primary
-  Discover navigation destination. Retain the dashboard route as a management overview.
+  Discover navigation destination. ADR 0006 supersedes the earlier dashboard-management decision;
+  the durable My ranking, Reviews, and Settings destinations now provide those management surfaces.
 
 **Implemented architecture and verification:** [`docs/phase-7-map-discovery.md`](docs/phase-7-map-discovery.md)
 records the provider boundary, OSM service-policy constraints, ranking semantics, accessibility
@@ -1357,6 +1358,44 @@ validation. Svelte diagnostics and the official Svelte autofixer report no issue
 An authenticated development smoke test against the imported Italy catalogue returns non-empty
 cluster payloads from `/api/restaurants/map`; if a newly added route returns the app's HTML 404 in
 development, first check for concurrent Vite processes bound separately to IPv4 and IPv6 loopback.
+
+### Phase 7.6 — ADR 0006 continuous map-first UX
+
+**Status (2026-09-01): implemented for restaurants; automated verification complete, authenticated desktop/mobile usability remains provisional.**
+
+- Replaced the onboarding-like dashboard/visited-selection architecture with four stable authenticated
+  destinations: Discover, My ranking, Reviews, and Settings. Authenticated root navigation now opens
+  Discover, and the account destination exposes a discreet signed-in identity. Removed the dashboard
+  route, its component test, obsolete dashboard copy/styles, and the percentage progress component.
+- Made Discover an immersive viewport-height workspace. Location search, recommendation explanation,
+  collapsed viewport order, restaurant preview, visited action, and the single dominant ranking
+  invitation are compact overlays/sheets. Marker hover, click/tap, and the keyboard companion list
+  open the same preview. Address/locality, visited state, recommendation support/top-decile state,
+  place details, review entry, and in-context visited marking remain independent.
+- Visited marking no longer redirects into ranking from Discover or restaurant details. The UI updates
+  immediately after a successful enhanced action and only exposes ranking work once it is useful.
+  A dismissible invitation and quiet navigation badge distinguish pending work from an error.
+- Added `RankingService.startUsefulSession` as the small backend accommodation for the new UX. It
+  resumes open work first, otherwise chooses targeted repair, the oldest unplaced-place insertion,
+  or initial ordering. Explicit full-list rebuilding remains a separate secondary action; no schema,
+  evidence type, or backwards-compatibility layer was added.
+- Rebuilt My ranking as the durable private list. It displays ordinal/tied tiers, a separately labelled
+  unplaced/unresolved section that never invents positions, private-note access, useful-work CTA,
+  explicit full re-ranking, place removal, and category deletion. Ranking completion now shows only
+  a compact summary with Back to map as the primary continuation.
+- Expanded restaurant details with editable private notes, personal-ranking position/unplaced state,
+  OSM location context, and the widest currently available applicable recommendation badge (national
+  top ten percent). Public reviews remain a separate section and action.
+- Preserve harmless Discover context in scoped session storage: map center/zoom, selected restaurant,
+  and companion-list expansion. Active ranking sessions remain server-owned; no evidence, tokens,
+  review notifier data, or moderation data enters browser state.
+- Integrated relevant TODOs: removed the obsolete debounced ranking-catalogue search (and its focus/
+  alignment defects), consistently show available addresses, and added the signed-in identity affordance.
+  The draft drag-and-drop ADR remains deliberately unimplemented.
+- Verification: official Svelte documentation informed routing/state/form/snapshot/accessibility choices;
+  every edited Svelte component passes the official autofixer. `svelte-check`, 112 unit tests, and the
+  production build pass. ESLint/Prettier pass, and all 3 production-build Playwright checks pass in
+  English and Italian. Authenticated desktop/mobile visual usability remains a Phase 9 human check.
 
 **Provisional human checks for Phase 9:** confirm mobile marker density and touch target comfort,
 map-versus-list comprehension, initial whole-candidate-universe framing, search-result wording, dark

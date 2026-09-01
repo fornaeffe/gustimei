@@ -1,4 +1,5 @@
 import { error, fail, isRedirect, redirect } from '@sveltejs/kit';
+import { deriveRankingProjection } from '$lib/domain/ranking/revision';
 import { runtimeConfig } from '$lib/server/config';
 import { db } from '$lib/server/db';
 import { requireUser } from '$lib/server/http/auth-guard';
@@ -36,6 +37,7 @@ async function context(userId: string) {
 		list,
 		visitedPlaceIds,
 		revision,
+		openSession: list ? await rankingRepository.findOpenSession(userId, list.id) : undefined,
 		dataClass: capture.provenance === 'synthetic' ? ('synthetic' as const) : ('real' as const)
 	};
 }
@@ -46,6 +48,26 @@ export const load: PageServerLoad = async (event) => {
 	try {
 		return {
 			mapTileUrl: runtimeConfig.mapTileUrl,
+			visitedPlaceIds: current.visitedPlaceIds,
+			rankingInvitation: {
+				hasRevision: Boolean(current.revision),
+				dismissed: event.cookies.get('ranking_invitation_dismissed') === '1',
+				pendingCount: current.revision
+					? Math.max(
+							current.visitedPlaceIds.filter(
+								(placeId) => !current.revision!.activePlaceIds.includes(placeId)
+							).length,
+							['repair', 'continue-ranking'].includes(
+								deriveRankingProjection(current.revision).nextAction.type
+							)
+								? 1
+								: 0
+						)
+					: current.visitedPlaceIds.length >= 2
+						? current.visitedPlaceIds.length
+						: 0,
+				openSession: current.openSession?.summary()
+			},
 			page: await recommendations.list({
 				userId: user.id,
 				category: 'restaurant',
@@ -106,18 +128,39 @@ export const actions = {
 					cohortAssignmentId: current.capture.cohortAssignmentId,
 					provenance: current.capture.provenance
 				});
-				if (current.list?.currentRevisionId) {
-					const session = await rankings.startInsertionSession(user.id, current.list.id, placeId);
-					redirect(303, localizedPath(`/ranking/restaurants/session/${session.id}`));
-				}
 			}
 			return { section: 'visited', added: result.added, placeId };
 		} catch (error) {
-			if (isRedirect(error)) throw error;
 			return fail(400, {
 				section: 'visited',
 				error: error instanceof Error ? error.message : 'The place could not be added'
 			});
 		}
+	},
+	startRanking: async (event) => {
+		const user = requireUser(event);
+		try {
+			const list = await rankingRepository.findList(user.id, 'restaurant');
+			if (!list) return fail(400, { section: 'ranking', error: 'Add visited restaurants first' });
+			const session = await rankings.startUsefulSession(user.id, list.id);
+			redirect(303, localizedPath(`/ranking/restaurants/session/${session.id}`));
+		} catch (cause) {
+			if (isRedirect(cause)) throw cause;
+			return fail(400, {
+				section: 'ranking',
+				error: cause instanceof Error ? cause.message : 'Ranking could not be started'
+			});
+		}
+	},
+	dismissRanking: async (event) => {
+		requireUser(event);
+		event.cookies.set('ranking_invitation_dismissed', '1', {
+			path: '/',
+			httpOnly: true,
+			sameSite: 'lax',
+			secure: runtimeConfig.appEnvironment === 'production',
+			maxAge: 60 * 60 * 12
+		});
+		return { section: 'ranking', dismissed: true };
 	}
 } satisfies Actions;

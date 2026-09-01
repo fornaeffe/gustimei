@@ -1,13 +1,12 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { resolve } from '$app/paths';
+	import type { Pathname } from '$app/types';
 	import { getLocale, localizeHref } from '$lib/paraglide/runtime';
-	import { Check, Equal, RotateCcw, SkipForward, StickyNote } from '@lucide/svelte';
-	import PersonalComment from '$lib/components/comments/PersonalComment.svelte';
-	import PersonalCommentField from '$lib/components/comments/PersonalCommentField.svelte';
+	import { Check, Equal, RotateCcw, SkipForward } from '@lucide/svelte';
 	import ComparisonPlaceCard from '$lib/components/ranking/ComparisonPlaceCard.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Icon from '$lib/components/ui/Icon.svelte';
-	import ProgressBar from '$lib/components/ui/ProgressBar.svelte';
 	import StatePanel from '$lib/components/ui/StatePanel.svelte';
 	import * as m from '$lib/paraglide/messages';
 
@@ -81,11 +80,18 @@
 				<h1 id="comparison-title">{m.comparison_prompt()}</h1>
 				<p class="lede">{m.comparison_help()}</p>
 			</div>
-			<ProgressBar
-				value={data.session.progress.fraction * 100}
-				label={m.comparison_progress({ remaining: data.session.progress.estimatedRemaining })}
-			/>
+			<div class="ranking-session__progress">
+				<strong
+					>{m.comparison_progress({ remaining: data.session.progress.estimatedRemaining })}</strong
+				>
+				<small>{m.comparison_help()}</small>
+			</div>
 		</header>
+		<a
+			class="button button--quiet ranking-session__leave"
+			href={resolve(localizeHref('/recommendations/restaurants', { locale }) as Pathname)}
+			>{m.leave_ranking()}</a
+		>
 
 		{#if form?.error}
 			<p class="form-status form-status--error" role="alert">{form.error}</p>
@@ -179,101 +185,15 @@
 			<h1 id="ranking-title">{m.ranking_complete_title()}</h1>
 			<p class="lede">{m.ranking_complete_body()}</p>
 		</header>
-		{#if form?.section === 'maintenance' && form.error}
-			<p class="form-status form-status--error" role="alert">{form.error}</p>
-		{/if}
-		<form method="GET" class="surface-card cluster">
-			<label for="ranking-locality">{m.locality_filter()}</label>
-			<input
-				id="ranking-locality"
-				name="locality"
-				value={data.localityFilter}
-				autocomplete="address-level2"
-			/>
-			<Button type="submit" variant="secondary">{m.search_action()}</Button>
-		</form>
-		{#if data.localityFilter}<p class="field__hint">{m.filtered_ranking_help()}</p>{/if}
-
-		<ol class="ranking-tiers">
-			{#each data.ranking.tiers as tier (tier.position)}
-				<li class="surface-card ranking-tier">
-					<span class="ranking-tier__position">
-						{data.localityFilter
-							? m.filtered_position({ position: tier.position })
-							: tier.places.length > 1
-								? m.ranking_tied_position({ position: tier.position })
-								: m.ranking_position({ position: tier.position })}
-					</span>
-					{#each tier.places as place (place.placeId)}
-						<article class="ranked-place">
-							<div>
-								<h2>{place.name}</h2>
-								<p>{place.displayLocality}</p>
-							</div>
-							{#if place.commentBody}
-								<span class="status-chip"
-									><Icon icon={StickyNote} size={14} />{m.private_note_available()}</span
-								>
-							{/if}
-							<details>
-								<summary>{m.private_note_title()}</summary>
-								{#if place.commentBody}
-									<PersonalComment body={place.commentBody} />
-									<form method="POST" action="?/deleteComment" use:enhance>
-										<input type="hidden" name="placeId" value={place.placeId} />
-										<Button type="submit" variant="quiet">{m.delete_private_note()}</Button>
-									</form>
-								{/if}
-								<PersonalCommentField
-									value={place.commentBody ?? ''}
-									placeId={place.placeId}
-									fieldId={`ranking-comment-${place.placeId.replaceAll(':', '-')}`}
-								/>
-							</details>
-							<form
-								method="POST"
-								action="?/removePlace"
-								onsubmit={(event) => {
-									if (!confirm(m.remove_ranked_place_confirm())) event.preventDefault();
-								}}
-							>
-								<input type="hidden" name="placeId" value={place.placeId} />
-								<Button type="submit" variant="danger">{m.remove_ranked_place()}</Button>
-							</form>
-						</article>
-					{/each}
+		<ol class="ranking-completion-summary">
+			{#each data.ranking.tiers.slice(0, 3) as tier (tier.position)}
+				<li>
+					<strong>{tier.position}</strong><span
+						>{tier.places.map((place) => place.name).join(' · ')}</span
+					>
 				</li>
 			{/each}
 		</ol>
-
-		{#if data.ranking.unresolvedGroups.length > 0}
-			<section class="surface-card unresolved-ranking" aria-labelledby="unresolved-title">
-				<h2 id="unresolved-title">{m.unresolved_places()}</h2>
-				<p>{m.unresolved_places_body()}</p>
-				{#each data.ranking.unresolvedGroups as group, index (index)}
-					<ul>
-						{#each group as place (place.placeId)}<li>
-								{place.name} — {place.displayLocality}
-							</li>{/each}
-					</ul>
-				{/each}
-			</section>
-		{/if}
-
-		{#if data.ranking.answers.length > 0}
-			<details class="surface-card">
-				<summary>{m.reconsider_answer()}</summary>
-				<div class="stack">
-					{#each data.ranking.answers as answer (answer.id)}
-						<form method="POST" action="?/reconsider" class="cluster">
-							<input type="hidden" name="evidenceId" value={answer.id} />
-							<span>{answer.leftName} / {answer.rightName}</span>
-							<Button type="submit" variant="quiet">{m.reconsider_answer()}</Button>
-						</form>
-					{/each}
-				</div>
-			</details>
-		{/if}
 
 		{#if data.reviewPrompt && form?.section !== 'reviewPrompt'}
 			<aside class="surface-card review-prompt" aria-labelledby="review-prompt-title">
@@ -297,9 +217,14 @@
 			</aside>
 		{/if}
 
-		<Button href={localizeHref('/ranking/restaurants', { locale })} variant="secondary">
-			{m.back_to_visited_places()}
-		</Button>
+		<div class="cluster">
+			<Button href={localizeHref('/recommendations/restaurants', { locale })}
+				>{m.back_to_map()}</Button
+			>
+			<Button href={localizeHref('/ranking/restaurants', { locale })} variant="secondary"
+				>{m.nav_ranking()}</Button
+			>
+		</div>
 	</section>
 {:else}
 	<StatePanel title={m.ranking_ready()} description={m.phase_five_session_ready()} />

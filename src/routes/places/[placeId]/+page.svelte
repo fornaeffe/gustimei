@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { getLocale, localizeHref } from '$lib/paraglide/runtime';
 	import Button from '$lib/components/ui/Button.svelte';
+	import PersonalComment from '$lib/components/comments/PersonalComment.svelte';
+	import PersonalCommentField from '$lib/components/comments/PersonalCommentField.svelte';
 	import PlaceCard from '$lib/components/ui/PlaceCard.svelte';
 	import StatePanel from '$lib/components/ui/StatePanel.svelte';
 	import ReviewCard from '$lib/components/reviews/ReviewCard.svelte';
@@ -35,7 +37,42 @@
 			<p class="form-status" role="status">{m.visited()}</p>
 		{/if}
 	{/if}
+	{#if data.rankingRelationship}
+		<p class="status-chip">
+			{'unplaced' in data.rankingRelationship
+				? m.personal_ranking_unplaced()
+				: data.rankingRelationship.tied
+					? m.personal_ranking_tied_position({ position: data.rankingRelationship.position })
+					: m.personal_ranking_position({ position: data.rankingRelationship.position })}
+		</p>
+	{/if}
+	{#if data.recommendationTopNational}<p class="status-chip">
+			{m.top_recommendation_national()}
+		</p>{/if}
+	{#if data.visited}
+		<section id="personal-note" class="surface-card stack" aria-labelledby="personal-note-title">
+			<div>
+				<p class="eyebrow">{m.private_note_title()}</p>
+				<h2 id="personal-note-title">{m.private_note_title()}</h2>
+				<p>{m.private_note_explanation()}</p>
+			</div>
+			{#if data.personalComment}<PersonalComment body={data.personalComment} />{/if}
+			<PersonalCommentField
+				value={data.personalComment ?? ''}
+				placeId={data.place.placeId}
+				fieldId="place-personal-note"
+			/>
+			{#if form?.section === 'comment' && form?.saved}<p class="form-status" role="status">
+					{m.save_note()}
+				</p>{/if}
+		</section>
+	{/if}
 	<p class="attribution">
+		<a
+			href={`https://www.openstreetmap.org/#map=17/${data.place.latitude}/${data.place.longitude}`}
+			rel="external">{m.view_on_map()}</a
+		>
+		<span> · </span>
 		<a
 			href={`https://www.openstreetmap.org/${data.place.source.elementType}/${data.place.source.elementId}`}
 			rel="external">{m.catalogue_attribution()}</a

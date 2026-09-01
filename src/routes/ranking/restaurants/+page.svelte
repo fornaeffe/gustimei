@@ -1,130 +1,63 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import { resolve } from '$app/paths';
-	import { navigating } from '$app/state';
 	import type { Pathname } from '$app/types';
 	import { getLocale, localizeHref } from '$lib/paraglide/runtime';
-	import { Search, Trash2 } from '@lucide/svelte';
+	import { ListOrdered, StickyNote, Trash2 } from '@lucide/svelte';
 	import PersonalComment from '$lib/components/comments/PersonalComment.svelte';
 	import PersonalCommentField from '$lib/components/comments/PersonalCommentField.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Icon from '$lib/components/ui/Icon.svelte';
-	import PlaceCard from '$lib/components/ui/PlaceCard.svelte';
 	import StatePanel from '$lib/components/ui/StatePanel.svelte';
 	import * as m from '$lib/paraglide/messages';
 
 	let { data, form } = $props();
 	let locale = $derived(getLocale());
-	let debounceTimer: ReturnType<typeof setTimeout>;
-	let searchPending = $derived(
-		Boolean(navigating.to?.url.pathname.includes('/ranking/restaurants'))
+	let hasUsefulWork = $derived(
+		Boolean(data.openSession) ||
+			data.unplaced.length > 0 ||
+			['repair', 'continue-ranking'].includes(data.projection?.nextAction.type ?? '')
 	);
-
-	function debounceSearch(event: Event) {
-		const form = (event.currentTarget as HTMLInputElement).form;
-		clearTimeout(debounceTimer);
-		debounceTimer = setTimeout(() => form?.requestSubmit(), 400);
-	}
 </script>
 
-<svelte:head><title>{m.selection_title()} — {m.product_name()}</title></svelte:head>
+<svelte:head><title>{m.my_ranking_title()} — {m.product_name()}</title></svelte:head>
 
-<div class="selection-layout">
-	<section class="stack" aria-labelledby="selection-title">
-		<header>
-			<p class="eyebrow">{m.dashboard_primary_title()}</p>
-			<h1 id="selection-title">{m.selection_title()}</h1>
-			<p class="lede">{m.selection_intro()}</p>
-		</header>
-
-		<form method="GET" class="surface-card catalogue-search">
-			<div class="field">
-				<label for="restaurant-query">{m.restaurant_name()}</label>
-				<input
-					id="restaurant-query"
-					name="q"
-					value={data.query.name}
-					oninput={debounceSearch}
-					autocomplete="off"
-				/>
-			</div>
-			<div class="field">
-				<label for="locality-query">{m.locality_filter()}</label>
-				<input
-					id="locality-query"
-					name="locality"
-					value={data.query.locality}
-					oninput={debounceSearch}
-					autocomplete="address-level2"
-					aria-describedby="locality-help"
-				/>
-				<p id="locality-help" class="field__hint">{m.locality_filter_help()}</p>
-			</div>
-			<Button type="submit"><Icon icon={Search} size={18} />{m.search_action()}</Button>
-		</form>
-
-		<div aria-live="polite" aria-busy={searchPending}>
-			{#if searchPending}
-				<StatePanel title={m.search_loading()} description={m.search_prompt()} />
-			{:else if !data.query.name && !data.query.locality}
-				<StatePanel title={m.search_restaurants()} description={m.search_prompt()} />
-			{:else if data.results.length === 0}
-				<StatePanel title={m.search_empty()} description={m.search_empty_body()} />
-			{:else}
-				<div class="place-grid">
-					{#each data.results as place (place.placeId)}
-						<div class="place-result">
-							<PlaceCard
-								name={place.name}
-								category="restaurant"
-								locality={place.displayLocality}
-								visited={place.selected}
-								href={localizeHref(`/places/${encodeURIComponent(place.placeId)}`, { locale })}
-							/>
-							{#if place.selected}
-								<span class="button button--quiet" aria-disabled="true">{m.already_selected()}</span
-								>
-							{:else}
-								<form method="POST" action="?/add" use:enhance>
-									<input type="hidden" name="placeId" value={place.placeId} />
-									<Button type="submit">{m.add_visited_place()}</Button>
-								</form>
-							{/if}
-						</div>
-					{/each}
-				</div>
-			{/if}
+<section class="personal-ranking stack" aria-labelledby="ranking-title">
+	<header class="personal-ranking__header">
+		<div>
+			<p class="eyebrow"><Icon icon={ListOrdered} size={16} />{m.nav_ranking()}</p>
+			<h1 id="ranking-title">{m.my_ranking_title()}</h1>
+			<p class="lede">{m.my_ranking_intro()}</p>
 		</div>
-		<p class="attribution">
-			<a href="https://www.openstreetmap.org/copyright" rel="external"
-				>{m.catalogue_attribution()}</a
-			>
-		</p>
-	</section>
+		{#if hasUsefulWork}
+			<form method="POST" action="?/start">
+				<Button type="submit">{data.openSession ? m.ranking_continue() : m.ranking_update()}</Button
+				>
+			</form>
+		{/if}
+	</header>
 
-	<aside class="selection-bucket stack" aria-labelledby="selected-title">
-		<header>
-			<h2 id="selected-title">{m.selected_places()}</h2>
-			<span class="status-chip">{m.selected_count({ count: data.selected.length })}</span>
-		</header>
-		{#if form?.error}
-			<p class="form-status form-status--error" role="alert">{form.error}</p>
-		{/if}
-		{#if form?.deleted}
-			<p class="form-status" role="status">{m.ranking_deleted()}</p>
-		{/if}
-		{#if data.selected.length === 0}
-			<StatePanel
-				title={m.dashboard_empty_ranking()}
-				description={m.dashboard_empty_ranking_body()}
-			/>
-		{:else}
-			<div class="selected-list">
-				{#each data.selected as place (place.placeId)}
-					<article class="surface-card selected-place">
-						<header>
+	{#if form?.error}<p class="form-status form-status--error" role="alert">{form.error}</p>{/if}
+
+	{#if data.tiers.length === 0}
+		<StatePanel title={m.ranking_empty()} description={m.ranking_empty_body()}>
+			{#snippet action()}<Button href={localizeHref('/recommendations/restaurants', { locale })}
+					>{m.nav_discover()}</Button
+				>{/snippet}
+		</StatePanel>
+	{:else}
+		<ol class="ranking-tiers">
+			{#each data.tiers as tier (tier.position)}
+				<li class="surface-card ranking-tier">
+					<span class="ranking-tier__position"
+						>{tier.places.length > 1
+							? m.ranking_tied_position({ position: tier.position })
+							: m.ranking_position({ position: tier.position })}</span
+					>
+					{#each tier.places as place (place.placeId)}
+						<article class="ranked-place">
 							<div>
-								<h3>
+								<h2>
 									<a
 										href={resolve(
 											localizeHref(`/places/${encodeURIComponent(place.placeId)}`, {
@@ -132,91 +65,79 @@
 											}) as Pathname
 										)}>{place.name}</a
 									>
-								</h3>
-								<p>{place.displayLocality}</p>
+								</h2>
+								<p>{place.addressLabel || place.displayLocality}</p>
 							</div>
-							<form
-								method="POST"
-								action="?/remove"
-								use:enhance
-								onsubmit={(event) => {
-									if (!confirm(m.remove_place_confirm())) event.preventDefault();
-								}}
-							>
-								<input type="hidden" name="placeId" value={place.placeId} />
-								<Button type="submit" variant="quiet" ariaLabel={m.remove_visited_place()}>
-									<Icon icon={Trash2} size={17} />
-								</Button>
-							</form>
-						</header>
-						{#if place.commentBody}
-							<PersonalComment body={place.commentBody} />
-							<form method="POST" action="?/deleteComment" use:enhance>
-								<input type="hidden" name="placeId" value={place.placeId} />
-								<Button type="submit" variant="quiet">{m.delete_private_note()}</Button>
-							</form>
-						{/if}
-						<details>
-							<summary>{place.commentBody ? m.save_note() : m.private_note_title()}</summary>
-							<PersonalCommentField
-								value={place.commentBody ?? ''}
-								placeId={place.placeId}
-								fieldId={`comment-${place.placeId.replaceAll(':', '-')}`}
-							/>
-						</details>
-					</article>
+							{#if place.commentBody}<span class="status-chip"
+									><Icon icon={StickyNote} size={14} />{m.private_note_available()}</span
+								>{/if}
+							<details>
+								<summary>{m.private_note_title()}</summary>
+								{#if place.commentBody}<PersonalComment body={place.commentBody} />{/if}
+								<PersonalCommentField
+									value={place.commentBody ?? ''}
+									placeId={place.placeId}
+									fieldId={`ranking-comment-${place.placeId.replaceAll(':', '-')}`}
+								/>
+								<form
+									method="POST"
+									action="?/removePlace"
+									onsubmit={(event) => {
+										if (!confirm(m.remove_ranked_place_confirm())) event.preventDefault();
+									}}
+								>
+									<input type="hidden" name="placeId" value={place.placeId} />
+									<Button type="submit" variant="danger">{m.remove_ranked_place()}</Button>
+								</form>
+							</details>
+						</article>
+					{/each}
+				</li>
+			{/each}
+		</ol>
+	{/if}
+
+	{#if data.unplaced.length > 0 || data.unresolved.length > 0}
+		<section class="surface-card unresolved-ranking" aria-labelledby="unplaced-title">
+			<h2 id="unplaced-title">{m.not_placed_yet()}</h2>
+			<p>{m.not_placed_yet_body()}</p>
+			<ul class="unplaced-list">
+				{#each [...data.unplaced, ...data.unresolved] as place (place.placeId)}
+					<li>
+						<a
+							href={resolve(
+								localizeHref(`/places/${encodeURIComponent(place.placeId)}`, { locale }) as Pathname
+							)}>{place.name}</a
+						><span>{place.addressLabel || place.displayLocality}</span>
+					</li>
 				{/each}
-			</div>
-		{/if}
+			</ul>
+		</section>
+	{:else if data.tiers.length > 0}
+		<StatePanel title={m.ranking_up_to_date()} description={m.ranking_up_to_date_body()} />
+	{/if}
 
-		<div class="surface-card ranking-cta">
-			<h2>
-				{data.openSession
-					? m.resume_ranking()
-					: data.selected.length >= 2
-						? m.ranking_ready()
-						: m.start_ranking()}
-			</h2>
-			<p>
-				{data.openSession
-					? m.resume_ranking_body({
-							remaining: data.openSession.progress.estimatedRemaining
-						})
-					: data.selected.length >= 2
-						? m.ranking_ready_body()
-						: m.ranking_not_ready()}
-			</p>
-			<form method="POST" action="?/start">
-				<Button type="submit" disabled={data.selected.length < 2}>
-					{data.openSession ? m.resume_ranking() : m.start_ranking()}
-				</Button>
+	{#if data.tiers.length > 0 && !hasUsefulWork}
+		<details class="surface-card ranking-maintenance">
+			<summary>{m.rerank_entire_list()}</summary>
+			<p>{m.rerank_entire_list_body()}</p>
+			<form method="POST" action="?/rebuild">
+				<Button type="submit" variant="secondary">{m.rerank_entire_list()}</Button>
 			</form>
-			{#if data.list?.projection?.nextAction.type === 'repair'}
-				<p>{m.repair_ranking_body()}</p>
-				<form method="POST" action="?/repair">
-					<Button type="submit" variant="secondary">{m.repair_ranking()}</Button>
-				</form>
-			{/if}
-		</div>
-
-		{#if data.list?.currentRevisionId}
-			<div class="surface-card stack">
-				<h2>{m.rebuild_ranking()}</h2>
-				<p>{m.rebuild_ranking_body()}</p>
-				<form method="POST" action="?/start">
-					<Button type="submit" variant="secondary">{m.rebuild_ranking()}</Button>
-				</form>
-				<p>{m.delete_ranking_body()}</p>
-				<form
-					method="POST"
-					action="?/deleteCategory"
-					onsubmit={(event) => {
-						if (!confirm(m.delete_ranking_confirm())) event.preventDefault();
-					}}
+			<hr />
+			<p>{m.delete_ranking_body()}</p>
+			<form
+				method="POST"
+				action="?/deleteCategory"
+				use:enhance
+				onsubmit={(event) => {
+					if (!confirm(m.delete_ranking_confirm())) event.preventDefault();
+				}}
+			>
+				<Button type="submit" variant="danger"
+					><Icon icon={Trash2} size={17} />{m.delete_ranking()}</Button
 				>
-					<Button type="submit" variant="danger">{m.delete_ranking()}</Button>
-				</form>
-			</div>
-		{/if}
-	</aside>
-</div>
+			</form>
+		</details>
+	{/if}
+</section>

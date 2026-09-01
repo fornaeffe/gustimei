@@ -7,4 +7,6 @@
 </script>
 
 <svelte:head><link rel="icon" href={favicon} /></svelte:head>
-<AppShell user={data.user}>{@render children()}</AppShell>
+<AppShell user={data.user} pendingRankingCount={data.pendingRankingCount}
+	>{@render children()}</AppShell
+>

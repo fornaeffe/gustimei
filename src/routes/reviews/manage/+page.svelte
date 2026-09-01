@@ -16,7 +16,7 @@
 	<header>
 		<p class="eyebrow">{m.public_review_title()}</p>
 		<h1>{m.manage_reviews()}</h1>
-		<p class="lede">{m.dashboard_reviews_body()}</p>
+		<p class="lede">{m.reviews_manage_intro()}</p>
 	</header>
 	<ReviewDisclosure />
 	{#if form?.error}<p class="form-status form-status--error" role="alert">{form.error}</p>{/if}

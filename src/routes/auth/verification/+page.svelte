@@ -17,6 +17,6 @@
 	<p>{failed ? m.verification_error_body() : m.verification_success_body()}</p>
 	<Button
 		href={localizeHref(failed ? '/auth/check-email' : '/recommendations/restaurants', { locale })}
-		>{failed ? m.resend_verification() : m.continue_dashboard()}</Button
+		>{failed ? m.resend_verification() : m.continue_discover()}</Button
 	>
 </article>

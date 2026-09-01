@@ -7,20 +7,20 @@ describe('server locale helpers', () => {
 		{
 			url: 'http://localhost:5173/auth/sign-up',
 			locale: 'it',
-			dashboard: '/dashboard',
+			discover: '/recommendations/restaurants',
 			verification: 'http://localhost:5173/auth/verification'
 		},
 		{
 			url: 'http://localhost:5173/en/auth/sign-up',
 			locale: 'en',
-			dashboard: '/en/dashboard',
+			discover: '/en/recommendations/restaurants',
 			verification: 'http://localhost:5173/en/auth/verification'
 		}
 	])('uses the request-scoped locale after Paraglide rewrites $url', async (expected) => {
 		await paraglideMiddleware(new Request(expected.url), ({ request, locale }) => {
 			expect(locale).toBe(expected.locale);
 			expect(currentLocale()).toBe(expected.locale);
-			expect(localizedPath('/dashboard')).toBe(expected.dashboard);
+			expect(localizedPath('/recommendations/restaurants')).toBe(expected.discover);
 			expect(localizedAbsoluteUrl(new URL(request.url), '/auth/verification')).toBe(
 				expected.verification
 			);

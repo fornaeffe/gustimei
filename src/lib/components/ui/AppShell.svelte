@@ -4,7 +4,7 @@
 	import type { Pathname } from '$app/types';
 	import { deLocalizeHref, getLocale, localizeHref } from '$lib/paraglide/runtime';
 	import * as m from '$lib/paraglide/messages';
-	import { Compass, LogIn, Settings2 } from '@lucide/svelte';
+	import { BookOpenText, Compass, ListOrdered, LogIn, Settings2 } from '@lucide/svelte';
 	import type { Snippet } from 'svelte';
 	import Icon from './Icon.svelte';
 	import type { ProductLocale } from '$lib/content/policies';
@@ -12,14 +12,25 @@
 	let {
 		children,
 		user,
+		pendingRankingCount = 0,
 		wide = false
-	}: { children: Snippet; user?: { email: string } | null; wide?: boolean } = $props();
+	}: {
+		children: Snippet;
+		user?: { email: string } | null;
+		pendingRankingCount?: number;
+		wide?: boolean;
+	} = $props();
 	let locale = $derived(getLocale());
 	let otherLocale = $derived<ProductLocale>(locale === 'en' ? 'it' : 'en');
 	let languageHref = $derived(
 		localizeHref(deLocalizeHref(page.url.pathname + page.url.search), {
 			locale: otherLocale
 		})
+	);
+	let productPath = $derived(deLocalizeHref(page.url.pathname));
+	let immersive = $derived(
+		productPath === '/recommendations/restaurants' ||
+			productPath.startsWith('/ranking/restaurants/session/')
 	);
 </script>
 
@@ -39,8 +50,21 @@
 				<a href={resolve(localizeHref('/recommendations/restaurants', { locale }) as Pathname)}>
 					<Icon icon={Compass} size={18} />{m.nav_discover()}
 				</a>
+				<a href={resolve(localizeHref('/ranking/restaurants', { locale }) as Pathname)}>
+					<Icon icon={ListOrdered} size={18} />{m.nav_ranking()}
+					{#if pendingRankingCount > 0}<span class="nav-badge">{pendingRankingCount}</span>{/if}
+				</a>
+				<a href={resolve(localizeHref('/reviews/manage', { locale }) as Pathname)}>
+					<Icon icon={BookOpenText} size={18} />{m.nav_reviews()}
+				</a>
 				<a href={resolve(localizeHref('/settings/profile', { locale }) as Pathname)}>
-					<Icon icon={Settings2} size={18} />{m.nav_settings()}
+					<span class="user-identity" aria-hidden="true"
+						>{user.email.slice(0, 1).toUpperCase()}</span
+					>
+					<span class="user-identity__label"
+						><strong>{m.nav_settings()}</strong><small>{user.email}</small></span
+					>
+					<Icon icon={Settings2} size={18} />
 				</a>
 			{:else}
 				<a href={resolve(localizeHref('/auth/sign-in', { locale }) as Pathname)}>
@@ -60,11 +84,17 @@
 	</div>
 </header>
 
-<main id="main-content" class:page-wide={wide} class="page-shell" tabindex="-1">
+<main
+	id="main-content"
+	class:page-wide={wide}
+	class:page-immersive={immersive}
+	class="page-shell"
+	tabindex="-1"
+>
 	{@render children()}
 </main>
 
-<footer class="site-footer">
+<footer class="site-footer" class:site-footer--hidden={immersive}>
 	<div>
 		<strong>{m.product_name()}</strong>
 		<p>{m.footer_promise()}</p>

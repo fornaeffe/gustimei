@@ -9,10 +9,8 @@ import { ConflictError, DomainValidationError, NotFoundError } from '$lib/server
 import { requireUser } from '$lib/server/http/auth-guard';
 import { localizedPath } from '$lib/server/http/locale';
 import { ParticipationRepository } from '$lib/server/repositories/participation';
-import { PersonalCommentRepository } from '$lib/server/repositories/personal-comments';
 import { RankingRepository } from '$lib/server/repositories/rankings';
 import { stringField } from '$lib/server/security/auth-forms';
-import { PersonalCommentService } from '$lib/server/services/personal-comments';
 import { ProductAnalyticsService } from '$lib/server/services/product-analytics';
 import { RankingService } from '$lib/server/services/rankings';
 import type { Actions, PageServerLoad } from './$types';
@@ -23,7 +21,6 @@ const rankings = new RankingService(
 	new ParticipationRepository(db),
 	runtimeConfig.appEnvironment
 );
-const comments = new PersonalCommentService(new PersonalCommentRepository(db));
 const analytics = new ProductAnalyticsService(db);
 const outcomes = new Set<ComparisonOutcome>(['left', 'right', 'tie', 'skip']);
 
@@ -61,34 +58,15 @@ export const load: PageServerLoad = async (event) => {
 			? currentRevision
 			: undefined;
 	const display = revision ? deriveRankingDisplay(revision) : undefined;
-	const localityFilter =
-		event.url.searchParams.get('locality')?.trim().toLocaleLowerCase().slice(0, 120) ?? '';
-	const displayedTiers = display?.orderedTiers
-		.map((tier) => ({
-			places: tier.placeIds.flatMap((placeId) => {
-				const place = placeById.get(placeId);
-				return place &&
-					(!localityFilter || place.displayLocality.toLocaleLowerCase().includes(localityFilter))
-					? [place]
-					: [];
-			})
-		}))
-		.filter((tier) => tier.places.length > 0)
-		.map((tier, index) => ({ ...tier, position: index + 1 }));
 	const ranking = revision
 		? {
-				projection: deriveRankingProjection(revision),
-				tiers: displayedTiers ?? [],
-				unresolvedGroups: display!.unresolvedPlaceGroups.map((group) =>
-					group.map((placeId) => placeById.get(placeId)).filter((place) => place !== undefined)
-				),
-				answers: revision.activeEvidence
-					.filter((item) => item.outcome !== 'skip')
-					.map((item) => ({
-						id: item.id,
-						leftName: placeById.get(item.leftPlaceId)?.name ?? item.leftPlaceId,
-						rightName: placeById.get(item.rightPlaceId)?.name ?? item.rightPlaceId
-					}))
+				tiers: display!.orderedTiers.map((tier, index) => ({
+					position: index + 1,
+					places: tier.placeIds.flatMap((placeId) => {
+						const place = placeById.get(placeId);
+						return place ? [place] : [];
+					})
+				}))
 			}
 		: undefined;
 
@@ -149,7 +127,6 @@ export const load: PageServerLoad = async (event) => {
 			: undefined,
 		latestEvidenceId: session.latestActiveEvidence()?.id,
 		ranking,
-		localityFilter,
 		reviewPrompt
 	};
 };
@@ -259,55 +236,5 @@ export const actions = {
 			category: 'restaurant'
 		});
 		return { section: 'reviewPrompt', dismissed: true };
-	},
-	saveComment: async (event) => {
-		const user = requireUser(event);
-		const form = await event.request.formData();
-		const placeId = stringField(form, 'placeId');
-		try {
-			await comments.save(user.id, placeId, stringField(form, 'body'));
-			return { section: 'comment', saved: true, placeId };
-		} catch (error) {
-			return fail(400, { section: 'comment', error: safeError(error) });
-		}
-	},
-	deleteComment: async (event) => {
-		const user = requireUser(event);
-		const form = await event.request.formData();
-		await comments.delete(user.id, stringField(form, 'placeId'));
-		return { section: 'comment', deleted: true };
-	},
-	reconsider: async (event) => {
-		const user = requireUser(event);
-		const form = await event.request.formData();
-		try {
-			const current = await rankingRepository.loadSession(user.id, event.params.sessionId);
-			const next = await rankings.startReconsiderSession(
-				user.id,
-				current.listId,
-				stringField(form, 'evidenceId')
-			);
-			redirect(303, localizedPath(`/ranking/restaurants/session/${next.id}`));
-		} catch (error) {
-			if (isRedirect(error)) throw error;
-			return fail(409, { section: 'maintenance', error: safeError(error) });
-		}
-	},
-	removePlace: async (event) => {
-		const user = requireUser(event);
-		const form = await event.request.formData();
-		try {
-			const current = await rankingRepository.loadSession(user.id, event.params.sessionId);
-			await rankings.removeRankedPlace(
-				user.id,
-				current.listId,
-				'restaurant',
-				stringField(form, 'placeId')
-			);
-			redirect(303, localizedPath('/ranking/restaurants'));
-		} catch (error) {
-			if (isRedirect(error)) throw error;
-			return fail(409, { section: 'maintenance', error: safeError(error) });
-		}
 	}
 } satisfies Actions;

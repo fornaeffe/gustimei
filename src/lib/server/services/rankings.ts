@@ -1,6 +1,6 @@
 import { newApplicationId } from '$lib/domain/ids';
 import type { ComparisonOutcome, RankingCategory } from '$lib/domain/ranking/contracts';
-import { createRankingRevision } from '$lib/domain/ranking/revision';
+import { createRankingRevision, deriveRankingProjection } from '$lib/domain/ranking/revision';
 import { RankingSession } from '$lib/domain/ranking/session';
 import type { AppEnvironment } from '$lib/server/config/environment';
 import { ConflictError, DomainValidationError, NotFoundError } from '$lib/server/domain/errors';
@@ -141,6 +141,28 @@ export class RankingService {
 		});
 		await this.rankings.saveSession(ownerId, session, await this.captureContext(ownerId, now), now);
 		return session;
+	}
+
+	async startUsefulSession(ownerId: string, listId: string) {
+		const now = this.clock();
+		const existing = await this.rankings.findOpenSession(ownerId, listId, now);
+		if (existing) return existing;
+		const [placeIds, revision] = await Promise.all([
+			this.rankings.listVisitedPlaceIds(ownerId, listId),
+			this.rankings.loadCurrentRevision(ownerId, listId)
+		]);
+		if (placeIds.length < 2) {
+			throw new DomainValidationError('At least two visited places are required');
+		}
+		if (!revision) return this.startInitialSession(ownerId, listId);
+		const nextAction = deriveRankingProjection(revision).nextAction.type;
+		if (nextAction === 'repair') {
+			return this.startRepairSession(ownerId, listId);
+		}
+		const nextUnplaced = placeIds.find((placeId) => !revision.activePlaceIds.includes(placeId));
+		if (nextUnplaced) return this.startInsertionSession(ownerId, listId, nextUnplaced);
+		if (nextAction === 'continue-ranking') return this.startInitialSession(ownerId, listId);
+		throw new DomainValidationError('Your ranking is already up to date');
 	}
 
 	async startRepairSession(ownerId: string, listId: string) {
