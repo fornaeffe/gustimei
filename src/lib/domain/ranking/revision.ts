@@ -4,6 +4,8 @@ import {
 	type EquivalenceTier,
 	type ExcludedEvidence,
 	type ExclusionReason,
+	type ManualPlacementDestination,
+	type ManualPlacementEvidence,
 	type PlaceId,
 	type RankingDirection,
 	type RankingProjection,
@@ -29,6 +31,16 @@ interface PlacedRevisionInput extends RevisionInput {
 	orderedTiers: readonly EquivalenceTier[];
 	unresolvedRelations: readonly UnresolvedRelation[];
 	invalidatedEvidenceIds?: readonly string[];
+	manualPlacement?: ManualPlacementEvidence;
+}
+
+export interface ManualPlacementPlan {
+	readonly orderedTiers: readonly EquivalenceTier[];
+	readonly destination: ManualPlacementEvidence['destination'];
+	readonly upperTierPlaceIds: readonly PlaceId[];
+	readonly lowerTierPlaceIds: readonly PlaceId[];
+	readonly tiedTierPlaceIds: readonly PlaceId[];
+	readonly retiredComparisonEvidenceIds: readonly string[];
 }
 
 export interface AdjacentTierAdjustment {
@@ -303,6 +315,17 @@ function tierIndexByPlace(tiers: readonly EquivalenceTier[]) {
 	);
 }
 
+function equalTiers(first: readonly EquivalenceTier[], second: readonly EquivalenceTier[]) {
+	return (
+		first.length === second.length &&
+		first.every(
+			(tier, index) =>
+				tier.placeIds.length === second[index].placeIds.length &&
+				tier.placeIds.every((placeId) => second[index].placeIds.includes(placeId))
+		)
+	);
+}
+
 function evidenceMatchesTiers(
 	evidence: ComparisonEvidence,
 	tierIndexes: ReadonlyMap<PlaceId, number>
@@ -321,6 +344,85 @@ export function incompatibleEvidenceIdsForTiers(
 ) {
 	const tierIndexes = tierIndexByPlace(tiers);
 	return evidence.filter((item) => !evidenceMatchesTiers(item, tierIndexes)).map((item) => item.id);
+}
+
+/**
+ * Applies a direct placement to a fully resolved tier sequence. A boundary index refers to the
+ * visible base sequence (0 is before the first tier and length is after the last tier). Removing a
+ * singleton source tier shifts later boundaries left by one. The returned snapshots are the
+ * canonical semantics of the operation; crossed places do not become synthetic comparisons.
+ */
+export function planManualPlacement(
+	revision: RankingRevision,
+	placeId: PlaceId,
+	destination: ManualPlacementDestination
+): ManualPlacementPlan {
+	if (revision.unresolvedRelations.length > 0 || deriveRepairRequirement(revision)) {
+		throw new Error('Manual placement requires a fully resolved ranking');
+	}
+	const sourceTierIndex = revision.orderedTiers.findIndex((tier) =>
+		tier.placeIds.includes(placeId)
+	);
+	if (sourceTierIndex < 0) throw new Error('The moved place is not part of the ranking');
+	const sourceTierWasSingleton = revision.orderedTiers[sourceTierIndex].placeIds.length === 1;
+	const tiers = revision.orderedTiers
+		.map((tier) => ({ placeIds: tier.placeIds.filter((item) => item !== placeId).sort() }))
+		.filter((tier) => tier.placeIds.length > 0);
+
+	let placementDestination: ManualPlacementEvidence['destination'];
+	let upperTierPlaceIds: readonly PlaceId[] = [];
+	let lowerTierPlaceIds: readonly PlaceId[] = [];
+	let tiedTierPlaceIds: readonly PlaceId[] = [];
+	if (destination.type === 'boundary') {
+		if (
+			!Number.isInteger(destination.boundaryIndex) ||
+			destination.boundaryIndex < 0 ||
+			destination.boundaryIndex > revision.orderedTiers.length
+		) {
+			throw new Error('The placement boundary is invalid');
+		}
+		const shiftedIndex =
+			destination.boundaryIndex -
+			(sourceTierWasSingleton && sourceTierIndex < destination.boundaryIndex ? 1 : 0);
+		const insertionIndex = Math.max(0, Math.min(tiers.length, shiftedIndex));
+		tiers.splice(insertionIndex, 0, { placeIds: [placeId] });
+		placementDestination = 'between-tiers';
+		upperTierPlaceIds = tiers[insertionIndex - 1]?.placeIds ?? [];
+		lowerTierPlaceIds = tiers[insertionIndex + 1]?.placeIds ?? [];
+	} else {
+		if (
+			!Number.isInteger(destination.tierIndex) ||
+			destination.tierIndex < 0 ||
+			destination.tierIndex >= revision.orderedTiers.length ||
+			destination.tierIndex === sourceTierIndex
+		) {
+			throw new Error('The destination tier is invalid');
+		}
+		const shiftedIndex =
+			destination.tierIndex -
+			(sourceTierWasSingleton && sourceTierIndex < destination.tierIndex ? 1 : 0);
+		const target = tiers[shiftedIndex];
+		if (!target) throw new Error('The destination tier is invalid');
+		tiedTierPlaceIds = [...target.placeIds];
+		target.placeIds = [...target.placeIds, placeId].sort();
+		placementDestination = 'into-tier';
+	}
+
+	if (equalTiers(tiers, revision.orderedTiers)) {
+		throw new Error('Choose a different ranking position');
+	}
+	const allEvidence = [
+		...revision.activeEvidence,
+		...revision.excludedEvidence.map((item) => item.evidence)
+	];
+	return {
+		orderedTiers: tiers,
+		destination: placementDestination,
+		upperTierPlaceIds,
+		lowerTierPlaceIds,
+		tiedTierPlaceIds,
+		retiredComparisonEvidenceIds: incompatibleEvidenceIdsForTiers(allEvidence, tiers)
+	};
 }
 
 export function planAdjacentTierAdjustment(
@@ -512,6 +614,17 @@ export function createPlacedRankingRevision(input: PlacedRevisionInput): Ranking
 		excludedEvidence: [...selected.excluded, ...invalidated].sort(
 			(first, second) => first.evidence.sequence - second.evidence.sequence
 		),
+		...(input.manualPlacement
+			? {
+					manualPlacement: {
+						...input.manualPlacement,
+						upperTierPlaceIds: [...input.manualPlacement.upperTierPlaceIds],
+						lowerTierPlaceIds: [...input.manualPlacement.lowerTierPlaceIds],
+						tiedTierPlaceIds: [...input.manualPlacement.tiedTierPlaceIds],
+						retiredComparisonEvidenceIds: [...input.manualPlacement.retiredComparisonEvidenceIds]
+					}
+				}
+			: {}),
 		rankingEngineVersion: RANKING_ENGINE_VERSION,
 		provenance: input.provenance,
 		publishedAt: input.publishedAt
@@ -618,15 +731,15 @@ export function deriveRankingProjection(
 	revision: RankingRevision,
 	openSession?: RankingSessionSummary
 ): RankingProjection {
-	const resolvedRelationCount = revision.activeEvidence.filter(
-		(item) => item.outcome !== 'skip'
-	).length;
+	const hasResolvedRelation =
+		revision.activeEvidence.some((item) => item.outcome !== 'skip') ||
+		Boolean(revision.manualPlacement);
 	const orderCoverage =
-		resolvedRelationCount === 0
-			? 'none'
-			: revision.unresolvedRelations.length === 0
-				? 'total'
-				: 'partial';
+		revision.activePlaceIds.length >= 2 && revision.unresolvedRelations.length === 0
+			? 'total'
+			: hasResolvedRelation
+				? 'partial'
+				: 'none';
 	const repairRequirement = deriveRepairRequirement(revision);
 	const nextAction =
 		revision.activePlaceIds.length < 2

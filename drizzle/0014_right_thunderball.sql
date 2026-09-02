@@ -1,0 +1,2 @@
+ALTER TYPE "public"."comparison_reason" ADD VALUE 'order-completion' BEFORE 'adjacent-adjustment';--> statement-breakpoint
+ALTER TYPE "public"."ranking_session_purpose" ADD VALUE 'completion' BEFORE 'rebuild';

@@ -46,13 +46,13 @@ describe('purpose-specific contribution policies', () => {
 
 		for (const purpose of ['community-model-training', 'current-user-personalization'] as const) {
 			const dataset = source.read(purpose);
-			expect(dataset.observations).toHaveLength(1);
+			expect(dataset.rankings).toHaveLength(1);
 			expect(dataset.decisions[0]).toMatchObject({
 				decision: 'include',
 				reason: 'eligible',
 				purpose
 			});
-			expect(dataset.invalidationInputs[0].evidenceFingerprint).toContain('comparison-1');
+			expect(dataset.invalidationInputs[0].evidenceFingerprint).toContain('revision-1');
 		}
 	});
 
@@ -75,10 +75,10 @@ describe('purpose-specific contribution policies', () => {
 		);
 
 		expect(source.read('community-model-training')).toMatchObject({
-			observations: [],
+			rankings: [],
 			exclusionCounts: { 'optional-policy-disabled': 1 }
 		});
-		expect(source.read('current-user-personalization').observations).toHaveLength(1);
+		expect(source.read('current-user-personalization').rankings).toHaveLength(1);
 		expect(ranking.activeEvidence).toEqual(evidence);
 	});
 

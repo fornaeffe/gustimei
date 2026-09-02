@@ -1,9 +1,16 @@
 # ADR 0002: category-specific initial recommendation engines
 
+> Input/artifact construction was superseded on 2026-09-02 by
+> [ADR 0007](0007-first-class-manual-ranking-placement.md): schema 2 consumes authoritative resolved
+> revision tiers and uses category engine version `v2-resolved-tiers`. The model-family selection in
+> this ADR remains in force.
+
 - Status: accepted for implementation, pending internal and private-beta validation
 - Date: 2026-08-14
-- Restaurant version: `recommendation-restaurant-nearest-neighbor-v1`
-- Hotel version: `recommendation-hotel-bradley-terry-v1`
+- Original restaurant version: `recommendation-restaurant-nearest-neighbor-v1`
+- Original hotel version: `recommendation-hotel-bradley-terry-v1`
+- Current resolved-tier versions: `recommendation-restaurant-nearest-neighbor-v2-resolved-tiers`
+  and `recommendation-hotel-bradley-terry-v2-resolved-tiers`
 
 ## Context
 

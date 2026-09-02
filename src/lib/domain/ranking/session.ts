@@ -5,18 +5,13 @@ import type {
 	ComparisonRequest,
 	EquivalenceTier,
 	PlaceId,
-	RankingDirection,
 	RankingProgress,
 	RankingRevision,
 	RankingSessionLifecycle,
 	RankingSessionPurpose,
 	RankingSessionSummary
 } from './contracts';
-import {
-	deriveRepairRequirement,
-	incompatibleEvidenceIdsForTiers,
-	planAdjacentTierAdjustment
-} from './revision';
+import { deriveRepairRequirement } from './revision';
 
 interface MergeState {
 	left: PlaceId[][];
@@ -53,23 +48,12 @@ interface RepairAlgorithmState {
 	requests: Array<{
 		leftPlaceId: PlaceId;
 		rightPlaceId: PlaceId;
-		supersedesEvidenceId: string;
+		supersedesEvidenceId?: string;
 	}>;
 	requestIndex: number;
 }
 
-interface AdjustmentAlgorithmState {
-	kind: 'adjustment';
-	targetPlaceId: PlaceId;
-	direction: RankingDirection;
-	effect: 'merge' | 'split';
-	comparisonPlaceId: PlaceId;
-	orderedTiers: PlaceId[][];
-	invalidatedEvidenceIds: string[];
-}
-
-type AlgorithmState =
-	InitialAlgorithmState | InsertionAlgorithmState | RepairAlgorithmState | AdjustmentAlgorithmState;
+type AlgorithmState = InitialAlgorithmState | InsertionAlgorithmState | RepairAlgorithmState;
 
 interface AlgorithmSnapshot {
 	algorithm: AlgorithmState;
@@ -284,50 +268,6 @@ export class RankingSession {
 		});
 	}
 
-	static adjustment(input: {
-		id: string;
-		listId: string;
-		baseRevision: RankingRevision;
-		placeId: PlaceId;
-		direction: RankingDirection;
-	}) {
-		const plan = planAdjacentTierAdjustment(input.baseRevision, input.placeId, input.direction);
-		if (!plan) throw new Error('The adjacent ranking adjustment is not currently available');
-		const allEvidence = [
-			...input.baseRevision.activeEvidence,
-			...input.baseRevision.excludedEvidence.map((item) => item.evidence)
-		];
-		return new RankingSession({
-			version: 1,
-			id: input.id,
-			listId: input.listId,
-			baseRevisionId: input.baseRevision.id,
-			purpose: 'adjustment',
-			lifecycle: 'open',
-			placeIdsSnapshot: [...input.baseRevision.activePlaceIds],
-			algorithm: {
-				kind: 'adjustment',
-				targetPlaceId: input.placeId,
-				direction: input.direction,
-				effect: plan.effect,
-				comparisonPlaceId: plan.comparisonPlaceId,
-				orderedTiers: plan.orderedTiers.map((tier) => [...tier.placeIds]),
-				invalidatedEvidenceIds: incompatibleEvidenceIdsForTiers(allEvidence, plan.orderedTiers)
-			},
-			pendingRequest: compareRequest(
-				input.id,
-				1,
-				input.placeId,
-				plan.comparisonPlaceId,
-				'adjacent-adjustment'
-			),
-			evidence: [],
-			nextSequence: 1,
-			history: [],
-			estimatedTotal: 1
-		});
-	}
-
 	static repair(input: { id: string; listId: string; baseRevision: RankingRevision }) {
 		const repair = deriveRepairRequirement(input.baseRevision);
 		if (!repair) throw new Error('The revision has no contradiction to repair');
@@ -351,6 +291,47 @@ export class RankingSession {
 			nextSequence: 1,
 			history: [],
 			estimatedTotal: conflicts.length
+		});
+	}
+
+	static completion(input: { id: string; listId: string; baseRevision: RankingRevision }) {
+		const relation = [...input.baseRevision.unresolvedRelations].sort(
+			(first, second) =>
+				(first.reason === 'missing-evidence' ? 0 : 1) -
+					(second.reason === 'missing-evidence' ? 0 : 1) ||
+				first.firstPlaceId.localeCompare(second.firstPlaceId) ||
+				first.secondPlaceId.localeCompare(second.secondPlaceId)
+		)[0];
+		if (!relation) throw new Error('The revision has no unresolved relation to complete');
+		return new RankingSession({
+			version: 1,
+			id: input.id,
+			listId: input.listId,
+			baseRevisionId: input.baseRevision.id,
+			purpose: 'completion',
+			lifecycle: 'open',
+			placeIdsSnapshot: [...input.baseRevision.activePlaceIds],
+			algorithm: {
+				kind: 'repair',
+				requests: [
+					{
+						leftPlaceId: relation.firstPlaceId,
+						rightPlaceId: relation.secondPlaceId
+					}
+				],
+				requestIndex: 0
+			},
+			pendingRequest: compareRequest(
+				input.id,
+				1,
+				relation.firstPlaceId,
+				relation.secondPlaceId,
+				'order-completion'
+			),
+			evidence: [],
+			nextSequence: 1,
+			history: [],
+			estimatedTotal: 1
 		});
 	}
 
@@ -526,21 +507,8 @@ export class RankingSession {
 		return clone(this.#algorithm.result);
 	}
 
-	adjustmentOutcome(): ComparisonOutcome | undefined {
-		if (this.#algorithm.kind !== 'adjustment' || !this.#pendingRequest) return undefined;
-		if (this.#algorithm.effect === 'merge') return 'tie';
-		const preferredPlaceId =
-			this.#algorithm.direction === 'up'
-				? this.#algorithm.targetPlaceId
-				: this.#algorithm.comparisonPlaceId;
-		return this.#pendingRequest.leftPlaceId === preferredPlaceId ? 'left' : 'right';
-	}
-
 	placedTierResult(): readonly EquivalenceTier[] | undefined {
-		if (this.#algorithm.kind === 'adjustment') {
-			return this.#algorithm.orderedTiers.map((placeIds) => ({ placeIds: [...placeIds] }));
-		}
-		if (this.purpose !== 'reposition' || this.#algorithm.kind !== 'insertion') return undefined;
+		if (this.#algorithm.kind !== 'insertion') return undefined;
 		const result = this.#algorithm.result;
 		if (!result || result.type === 'repair') return undefined;
 		const tiers = this.#algorithm.tiers.map((placeIds) => [...placeIds]);
@@ -553,9 +521,6 @@ export class RankingSession {
 		const previouslyInvalidated = baseRevision.excludedEvidence
 			.filter((item) => item.reason === 'invalidated')
 			.map((item) => item.evidence.id);
-		if (this.#algorithm.kind === 'adjustment') {
-			return [...new Set([...previouslyInvalidated, ...this.#algorithm.invalidatedEvidenceIds])];
-		}
 		if (this.purpose !== 'reposition' || this.#algorithm.kind !== 'insertion') {
 			return previouslyInvalidated;
 		}
@@ -610,8 +575,6 @@ export class RankingSession {
 				placeIds.add(request.leftPlaceId);
 				placeIds.add(request.rightPlaceId);
 			}
-		} else {
-			addTiers(state.algorithm.orderedTiers);
 		}
 		for (const evidence of state.evidence) {
 			placeIds.add(evidence.leftPlaceId);

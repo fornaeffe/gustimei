@@ -5,7 +5,8 @@ import {
 	createRankingRevision,
 	deriveRankingDisplay,
 	deriveRankingProjection,
-	planAdjacentTierAdjustment
+	planAdjacentTierAdjustment,
+	planManualPlacement
 } from './revision';
 import { RankingSession } from './session';
 
@@ -331,56 +332,61 @@ describe('binary tier insertion', () => {
 });
 
 describe('single-place ranking maintenance', () => {
-	it('asserts equality with the entire adjacent tier in one explicit adjustment', () => {
+	it('places one restaurant by canonical boundaries and retires contradictory comparisons', () => {
 		const base = revision(
-			['a', 'x', 'b', 'c'],
+			['a', 'b', 'c', 'd', 'e'],
 			[
-				evidence('a-ties-x', 1, 'a', 'x', 'tie'),
-				evidence('a-over-b', 2, 'a', 'b', 'left'),
-				evidence('b-over-c', 3, 'b', 'c', 'left')
+				evidence('a-over-b', 1, 'a', 'b', 'left'),
+				evidence('b-over-c', 2, 'b', 'c', 'left'),
+				evidence('c-over-d', 3, 'c', 'd', 'left'),
+				evidence('d-over-e', 4, 'd', 'e', 'left'),
+				evidence('b-over-e', 5, 'b', 'e', 'left')
 			]
 		);
-		const session = RankingSession.adjustment({
-			id: 'adjust-b-up',
-			listId: 'list-1',
-			baseRevision: base,
-			placeId: 'b',
-			direction: 'up'
-		});
-		const outcome = session.adjustmentOutcome();
-		if (!outcome) throw new Error('Expected an asserted adjustment outcome');
-		session.submit(outcome);
-		const result = createPlacedRankingRevision({
-			id: 'revision-2',
-			listId: 'list-1',
-			category: 'restaurant',
-			revision: 2,
-			activePlaceIds: base.activePlaceIds,
-			evidence: session.evidenceForNextRevision(base),
-			invalidatedEvidenceIds: session.invalidatedEvidenceIdsForNextRevision(base),
-			orderedTiers: session.placedTierResult() ?? [],
-			unresolvedRelations: base.unresolvedRelations,
-			provenance: 'synthetic',
-			publishedAt
-		});
 
-		expect(session.evidence).toHaveLength(1);
-		expect(session.evidence[0]).toMatchObject({
-			outcome: 'tie',
-			reason: 'adjacent-adjustment'
-		});
-		expect(result.orderedTiers).toEqual([{ placeIds: ['a', 'b', 'x'] }, { placeIds: ['c'] }]);
-		expect(result.excludedEvidence).toContainEqual(
-			expect.objectContaining({
-				evidence: expect.objectContaining({ id: 'a-over-b' }),
-				reason: 'invalidated'
-			})
+		const plan = planManualPlacement(base, 'e', { type: 'boundary', boundaryIndex: 1 });
+
+		expect(plan.orderedTiers.map((tier) => tier.placeIds)).toEqual([
+			['a'],
+			['e'],
+			['b'],
+			['c'],
+			['d']
+		]);
+		expect(plan.upperTierPlaceIds).toEqual(['a']);
+		expect(plan.lowerTierPlaceIds).toEqual(['b']);
+		expect([...plan.retiredComparisonEvidenceIds].sort()).toEqual(['b-over-e', 'd-over-e']);
+	});
+
+	it('rejects no-op placement boundaries and requires an explicit target for equality', () => {
+		const base = revision(
+			['a', 'b', 'c'],
+			[evidence('a-over-b', 1, 'a', 'b', 'left'), evidence('b-over-c', 2, 'b', 'c', 'left')]
 		);
-		expect(deriveRankingProjection(result)).toMatchObject({
-			orderCoverage: 'total',
-			nextAction: { type: 'view-ranking' }
+
+		expect(() => planManualPlacement(base, 'b', { type: 'boundary', boundaryIndex: 1 })).toThrow(
+			'different ranking position'
+		);
+		expect(planManualPlacement(base, 'b', { type: 'tie', tierIndex: 0 })).toMatchObject({
+			destination: 'into-tier',
+			tiedTierPlaceIds: ['a']
 		});
-		expect(deriveRankingProjection(result).repairRequirement).toBeUndefined();
+	});
+
+	it('splits only the moved member from a tied tier', () => {
+		const base = revision(
+			['a', 'b', 'c', 'd'],
+			[
+				evidence('a-over-b', 1, 'a', 'b', 'left'),
+				evidence('b-ties-c', 2, 'b', 'c', 'tie'),
+				evidence('c-over-d', 3, 'c', 'd', 'left')
+			]
+		);
+
+		const plan = planManualPlacement(base, 'b', { type: 'boundary', boundaryIndex: 1 });
+
+		expect(plan.orderedTiers.map((tier) => tier.placeIds)).toEqual([['a'], ['b'], ['c'], ['d']]);
+		expect(plan.retiredComparisonEvidenceIds).toContain('b-ties-c');
 	});
 
 	it('keeps explicitly retired evidence historical across later ranking revisions', () => {
@@ -388,23 +394,16 @@ describe('single-place ranking maintenance', () => {
 			['a', 'b', 'c'],
 			[evidence('a-over-b', 1, 'a', 'b', 'left'), evidence('b-over-c', 2, 'b', 'c', 'left')]
 		);
-		const adjustment = RankingSession.adjustment({
-			id: 'adjust-b-up',
-			listId: 'list-1',
-			baseRevision: base,
-			placeId: 'b',
-			direction: 'up'
-		});
-		adjustment.submit(adjustment.adjustmentOutcome() ?? 'tie');
+		const plan = planManualPlacement(base, 'b', { type: 'tie', tierIndex: 0 });
 		const adjusted = createPlacedRankingRevision({
 			id: 'revision-2',
 			listId: 'list-1',
 			category: 'restaurant',
 			revision: 2,
 			activePlaceIds: base.activePlaceIds,
-			evidence: adjustment.evidenceForNextRevision(base),
-			invalidatedEvidenceIds: adjustment.invalidatedEvidenceIdsForNextRevision(base),
-			orderedTiers: adjustment.placedTierResult() ?? [],
+			evidence: [...base.activeEvidence, ...base.excludedEvidence.map((item) => item.evidence)],
+			invalidatedEvidenceIds: plan.retiredComparisonEvidenceIds,
+			orderedTiers: plan.orderedTiers,
 			unresolvedRelations: [],
 			provenance: 'synthetic',
 			publishedAt
@@ -417,50 +416,6 @@ describe('single-place ranking maintenance', () => {
 		});
 
 		expect(insertion.invalidatedEvidenceIdsForNextRevision(adjusted)).toContain('a-over-b');
-	});
-
-	it('splits one member above a tied tier while preserving the surrounding tier placement', () => {
-		const base = revision(
-			['a', 'b', 'c', 'd'],
-			[
-				evidence('a-over-c', 1, 'a', 'c', 'left'),
-				evidence('b-ties-c', 2, 'b', 'c', 'tie'),
-				evidence('b-over-d', 3, 'b', 'd', 'left')
-			]
-		);
-		const plan = planAdjacentTierAdjustment(base, 'b', 'up');
-		expect(plan?.effect).toBe('split');
-		const session = RankingSession.adjustment({
-			id: 'split-b-up',
-			listId: 'list-1',
-			baseRevision: base,
-			placeId: 'b',
-			direction: 'up'
-		});
-		const outcome = session.adjustmentOutcome();
-		if (!outcome) throw new Error('Expected an asserted adjustment outcome');
-		session.submit(outcome);
-		const result = createPlacedRankingRevision({
-			id: 'revision-2',
-			listId: 'list-1',
-			category: 'restaurant',
-			revision: 2,
-			activePlaceIds: base.activePlaceIds,
-			evidence: session.evidenceForNextRevision(base),
-			invalidatedEvidenceIds: session.invalidatedEvidenceIdsForNextRevision(base),
-			orderedTiers: session.placedTierResult() ?? [],
-			unresolvedRelations: base.unresolvedRelations,
-			provenance: 'synthetic',
-			publishedAt
-		});
-
-		expect(result.orderedTiers).toEqual([
-			{ placeIds: ['a'] },
-			{ placeIds: ['b'] },
-			{ placeIds: ['c'] },
-			{ placeIds: ['d'] }
-		]);
-		expect(result.activeEvidence).not.toContainEqual(expect.objectContaining({ id: 'b-ties-c' }));
 	});
 
 	it('allows a locally unambiguous adjustment without requiring total global coverage', () => {
@@ -515,9 +470,6 @@ describe('single-place ranking maintenance', () => {
 				.filter((item) => item.leftPlaceId === 'b' || item.rightPlaceId === 'b')
 				.map(({ id, outcome, reason }) => ({ id, outcome, reason }))
 		).toEqual(session.evidence.map(({ id, outcome, reason }) => ({ id, outcome, reason })));
-		expect(result.activeEvidence).not.toContainEqual(
-			expect.objectContaining({ reason: 'adjacent-adjustment' })
-		);
 	});
 });
 

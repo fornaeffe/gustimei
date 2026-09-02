@@ -36,9 +36,7 @@ function artifactKey(
 function allEvidencePlaceIds(
 	dataset: Awaited<ReturnType<DatabaseRecommendationEvidenceSource['read']>>
 ) {
-	return [
-		...new Set(dataset.observations.flatMap((item) => [item.firstPlaceId, item.secondPlaceId]))
-	];
+	return [...new Set(dataset.rankings.flatMap((ranking) => ranking.tiers.flatMap((tier) => tier)))];
 }
 
 function encodeCursor(value: {
@@ -93,7 +91,14 @@ export class RecommendationArtifactService {
 
 	async load(category: RankingCategory, dataClass: 'real' | 'synthetic', id = 'current') {
 		const stored = await this.artifacts.get(artifactKey(this.environment, category, dataClass, id));
-		return stored ? decodeRecommendationArtifact(stored) : undefined;
+		if (!stored) return undefined;
+		try {
+			return decodeRecommendationArtifact(stored);
+		} catch {
+			// Generated artifacts are replaceable caches. An incompatible schema is a cache miss, not a
+			// reason to reinterpret or migrate old ranking input.
+			return undefined;
+		}
 	}
 
 	async rebuild(

@@ -4,8 +4,7 @@ import {
 	RECOMMENDATION_ARTIFACT_SCHEMA_VERSION,
 	RECOMMENDATION_ENGINE_VERSION_BY_CATEGORY,
 	type RecommendationArtifact,
-	type RecommendationEvidenceDataset,
-	type ResolvedPreferenceObservation
+	type RecommendationEvidenceDataset
 } from './contracts';
 
 function hashText(value: string) {
@@ -40,42 +39,6 @@ export function fingerprintEvidence(
 	);
 }
 
-function observationsToTiers(observations: readonly ResolvedPreferenceObservation[]) {
-	const scores = new Map<string, number>();
-	for (const observation of observations) {
-		scores.set(observation.firstPlaceId, scores.get(observation.firstPlaceId) ?? 0);
-		scores.set(observation.secondPlaceId, scores.get(observation.secondPlaceId) ?? 0);
-		if (observation.relation === 'first-preferred') {
-			scores.set(
-				observation.firstPlaceId,
-				(scores.get(observation.firstPlaceId) ?? 0) + observation.weight
-			);
-			scores.set(
-				observation.secondPlaceId,
-				(scores.get(observation.secondPlaceId) ?? 0) - observation.weight
-			);
-		} else if (observation.relation === 'second-preferred') {
-			scores.set(
-				observation.firstPlaceId,
-				(scores.get(observation.firstPlaceId) ?? 0) - observation.weight
-			);
-			scores.set(
-				observation.secondPlaceId,
-				(scores.get(observation.secondPlaceId) ?? 0) + observation.weight
-			);
-		}
-	}
-	const grouped = new Map<number, string[]>();
-	for (const [placeId, score] of scores) {
-		const tier = grouped.get(score) ?? [];
-		tier.push(placeId);
-		grouped.set(score, tier);
-	}
-	return [...grouped.entries()]
-		.sort(([first], [second]) => second - first)
-		.map(([, places]) => places.sort());
-}
-
 export function buildRecommendationArtifact(input: {
 	id: string;
 	category: RankingCategory;
@@ -96,19 +59,14 @@ export function buildRecommendationArtifact(input: {
 			)
 			.map((item) => item.userId)
 	);
-	const observations = input.dataset.observations.filter(
-		(observation) =>
-			observation.category === input.category && permittedUsers.has(observation.userId)
+	const rankings = input.dataset.rankings.filter(
+		(ranking) => ranking.category === input.category && permittedUsers.has(ranking.userId)
 	);
-	const byUser = new Map<string, ResolvedPreferenceObservation[]>();
 	const support = new Map<string, Set<string>>();
-	for (const observation of observations) {
-		const userObservations = byUser.get(observation.userId) ?? [];
-		userObservations.push(observation);
-		byUser.set(observation.userId, userObservations);
-		for (const placeId of [observation.firstPlaceId, observation.secondPlaceId]) {
+	for (const ranking of rankings) {
+		for (const placeId of ranking.tiers.flatMap((tier) => tier)) {
 			const users = support.get(placeId) ?? new Set<string>();
-			users.add(observation.userId);
+			users.add(ranking.userId);
 			support.set(placeId, users);
 		}
 	}
@@ -124,14 +82,14 @@ export function buildRecommendationArtifact(input: {
 		evidenceFingerprint: fingerprintEvidence(input.dataset, input.category, input.dataClass),
 		catalogueFingerprint: input.catalogueFingerprint,
 		generatedAt: input.generatedAt.toISOString(),
-		observationCount: observations.length,
-		contributorCount: byUser.size,
-		rankings: [...byUser.entries()]
-			.sort(([first], [second]) => first.localeCompare(second))
-			.map(([userId, userObservations]) => ({
-				userId,
-				tiers: observationsToTiers(userObservations)
-			})),
+		observationCount: rankings.length,
+		contributorCount: new Set(rankings.map((ranking) => ranking.userId)).size,
+		rankings: rankings
+			.map((ranking) => ({
+				userId: ranking.userId,
+				tiers: ranking.tiers.map((tier) => [...tier].sort())
+			}))
+			.sort((first, second) => first.userId.localeCompare(second.userId)),
 		placeSupport: Object.fromEntries(
 			[...support.entries()]
 				.sort(([first], [second]) => first.localeCompare(second))

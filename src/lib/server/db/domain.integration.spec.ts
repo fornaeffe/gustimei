@@ -2,13 +2,18 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq, sql } from 'drizzle-orm';
 import type { NormalizedLocalityBoundary } from '$lib/domain/catalogue/contracts';
 import { normalizeOsmPlace } from '$lib/domain/catalogue/normalization';
-import { createRankingRevision } from '$lib/domain/ranking/revision';
+import {
+	createPlacedRankingRevision,
+	createRankingRevision,
+	planManualPlacement
+} from '$lib/domain/ranking/revision';
 import { RankingSession } from '$lib/domain/ranking/session';
 import { createDatabase } from '$lib/server/db/connection';
 import {
 	catalogueSourceSnapshot,
 	comparisonEvidence,
 	localityBoundary,
+	manualPlacementEvidence,
 	personalPlaceComment,
 	productAnalyticsEvent,
 	recommendationAttribution,
@@ -397,7 +402,7 @@ describe('ranking, comments, provenance, and policy-enforced evidence', () => {
 			restrictedAt: now
 		});
 		const restricted = await evidence.read('community-model-training');
-		expect(restricted.observations).toEqual([]);
+		expect(restricted.rankings).toEqual([]);
 		expect(restricted.decisions[0]).toMatchObject({
 			decision: 'exclude',
 			reason: 'processing-restricted',
@@ -496,6 +501,93 @@ describe('ranking, comments, provenance, and policy-enforced evidence', () => {
 			.from(rankingRevisionEvidence)
 			.where(eq(rankingRevisionEvidence.revisionId, 'revision-3'));
 		expect(new Set(links.map((item) => item.sequence)).size).toBe(links.length);
+	});
+
+	it('round-trips first-class manual placement evidence with its immutable successor revision', async () => {
+		await seedCatalogue('synthetic', [
+			fixturePlace(1, 'One'),
+			fixturePlace(2, 'Two'),
+			fixturePlace(3, 'Three')
+		]);
+		await seedParticipation();
+		const rankings = new RankingRepository(db);
+		await rankings.getOrCreateList({
+			id: 'list-1',
+			ownerId: 'user-1',
+			category: 'restaurant',
+			now
+		});
+		for (const placeId of ['osm:node:1', 'osm:node:2', 'osm:node:3']) {
+			await rankings.addVisitedPlace({
+				ownerId: 'user-1',
+				listId: 'list-1',
+				placeId,
+				capture,
+				now
+			});
+		}
+		const session = RankingSession.initial({
+			id: 'session-initial',
+			listId: 'list-1',
+			placeIds: ['osm:node:1', 'osm:node:2', 'osm:node:3']
+		});
+		while (session.nextComparison()) session.submit('left');
+		await rankings.saveSession('user-1', session, capture, now);
+		const base = createRankingRevision({
+			id: 'revision-1',
+			listId: 'list-1',
+			category: 'restaurant',
+			revision: 1,
+			activePlaceIds: session.placeIdsSnapshot,
+			evidence: session.evidence,
+			provenance: 'synthetic',
+			publishedAt: now.toISOString()
+		});
+		await rankings.publishRevision('user-1', base, capture);
+		const movedPlaceId = base.orderedTiers.at(-1)?.placeIds[0];
+		if (!movedPlaceId) throw new Error('Expected a place to move');
+		const plan = planManualPlacement(base, movedPlaceId, {
+			type: 'boundary',
+			boundaryIndex: 0
+		});
+		const placement = {
+			id: 'placement-1',
+			baseRevisionId: base.id,
+			movedPlaceId,
+			destination: plan.destination,
+			upperTierPlaceIds: plan.upperTierPlaceIds,
+			lowerTierPlaceIds: plan.lowerTierPlaceIds,
+			tiedTierPlaceIds: plan.tiedTierPlaceIds,
+			retiredComparisonEvidenceIds: plan.retiredComparisonEvidenceIds,
+			capturedAt: new Date(now.getTime() + 1).toISOString()
+		} as const;
+		const moved = createPlacedRankingRevision({
+			id: 'revision-2',
+			listId: 'list-1',
+			category: 'restaurant',
+			revision: 2,
+			activePlaceIds: base.activePlaceIds,
+			evidence: [...base.activeEvidence, ...base.excludedEvidence.map((item) => item.evidence)],
+			invalidatedEvidenceIds: plan.retiredComparisonEvidenceIds,
+			orderedTiers: plan.orderedTiers,
+			unresolvedRelations: [],
+			manualPlacement: placement,
+			provenance: 'synthetic',
+			publishedAt: placement.capturedAt
+		});
+		await rankings.publishRevision('user-1', moved, capture);
+
+		expect(await rankings.loadCurrentRevision('user-1', 'list-1')).toEqual(moved);
+		const [persisted] = await db
+			.select()
+			.from(manualPlacementEvidence)
+			.where(eq(manualPlacementEvidence.id, placement.id));
+		expect(persisted).toMatchObject({
+			revisionId: 'revision-2',
+			baseRevisionId: 'revision-1',
+			movedPlaceId,
+			destination: 'between-tiers'
+		});
 	});
 
 	it('enforces the database comment limit even when the service boundary is bypassed', async () => {

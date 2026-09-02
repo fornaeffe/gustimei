@@ -11,6 +11,7 @@ export type ProductEventName =
 	| 'ranking-started'
 	| 'comparison-submitted'
 	| 'comparison-undone'
+	| 'manual-placement'
 	| 'ranking-completed'
 	| 'recommendation-exposed'
 	| 'recommendation-converted'
@@ -23,6 +24,7 @@ const allowedMetadata = new Set([
 	'localityFiltered',
 	'duplicate',
 	'outcome',
+	'destination',
 	'answeredCount',
 	'estimatedTotal',
 	'orderCoverage',

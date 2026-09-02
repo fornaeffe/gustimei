@@ -1,8 +1,8 @@
 import type { RankingCategory, RankingRevision } from '../ranking/contracts';
 
 export const RECOMMENDATION_ENGINE_VERSION_BY_CATEGORY = {
-	restaurant: 'recommendation-restaurant-nearest-neighbor-v1',
-	hotel: 'recommendation-hotel-bradley-terry-v1'
+	restaurant: 'recommendation-restaurant-nearest-neighbor-v2-resolved-tiers',
+	hotel: 'recommendation-hotel-bradley-terry-v2-resolved-tiers'
 } as const;
 export const MANDATORY_CONTRIBUTION_POLICY_VERSION = 'contribution-mandatory-v1' as const;
 export const OPTIONAL_FIXTURE_POLICY_VERSION = 'contribution-optional-fixture-v1' as const;
@@ -58,6 +58,14 @@ export interface ResolvedPreferenceObservation {
 	weight: number;
 }
 
+export interface ResolvedRankingObservation {
+	id: string;
+	userId: string;
+	category: RankingCategory;
+	revisionId: string;
+	tiers: readonly (readonly string[])[];
+}
+
 export interface EvidenceCandidate {
 	userId: string;
 	revision: RankingRevision;
@@ -83,7 +91,7 @@ export interface ArtifactInvalidationInput {
 
 export interface RecommendationEvidenceDataset {
 	purpose: ContributionPurpose;
-	observations: readonly ResolvedPreferenceObservation[];
+	rankings: readonly ResolvedRankingObservation[];
 	decisions: readonly ContributionPolicyDecision[];
 	exclusionCounts: Readonly<Partial<Record<ContributionDecisionReason, number>>>;
 	invalidationInputs: readonly ArtifactInvalidationInput[];
@@ -100,7 +108,7 @@ export interface RecommendationScore {
 	supported: boolean;
 }
 
-export const RECOMMENDATION_ARTIFACT_SCHEMA_VERSION = 1 as const;
+export const RECOMMENDATION_ARTIFACT_SCHEMA_VERSION = 2 as const;
 export const RECOMMENDATION_PAGE_SIZE = 24 as const;
 export const RECOMMENDATION_MAX_BROWSABLE_DEPTH = 1_000 as const;
 export const PERSONALIZATION_GATE = {

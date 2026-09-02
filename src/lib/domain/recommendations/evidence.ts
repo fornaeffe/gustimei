@@ -1,4 +1,3 @@
-import type { ComparisonEvidence } from '../ranking/contracts';
 import type { RankingRevision } from '../ranking/contracts';
 import type { TieredRanking } from './models';
 import type {
@@ -9,42 +8,15 @@ import type {
 	EvidenceCandidate,
 	RecommendationEvidenceDataset,
 	RecommendationEvidenceSource,
-	ResolvedPreferenceObservation
+	ResolvedRankingObservation
 } from './contracts';
 import { RECOMMENDATION_ENGINE_VERSION_BY_CATEGORY } from './contracts';
 
-function stableFingerprint(observations: readonly ResolvedPreferenceObservation[]) {
-	return observations
-		.map((observation) => observation.id)
+function stableFingerprint(rankings: readonly ResolvedRankingObservation[]) {
+	return rankings
+		.map((ranking) => `${ranking.id}:${ranking.tiers.map((tier) => tier.join(',')).join('>')}`)
 		.sort()
 		.join('|');
-}
-
-function observationFromEvidence(
-	userId: string,
-	category: ResolvedPreferenceObservation['category'],
-	revisionId: string,
-	evidence: ComparisonEvidence
-): ResolvedPreferenceObservation | undefined {
-	if (evidence.outcome === 'skip') return undefined;
-	const [firstPlaceId, secondPlaceId] = evidence.logicalPair;
-	const preferredPlaceId =
-		evidence.outcome === 'right' ? evidence.rightPlaceId : evidence.leftPlaceId;
-	return {
-		id: `${revisionId}:${evidence.id}`,
-		userId,
-		category,
-		revisionId,
-		firstPlaceId,
-		secondPlaceId,
-		relation:
-			evidence.outcome === 'tie'
-				? 'tie'
-				: preferredPlaceId === firstPlaceId
-					? 'first-preferred'
-					: 'second-preferred',
-		weight: 1
-	};
 }
 
 export class PolicyEnforcedRecommendationEvidenceSource implements RecommendationEvidenceSource {
@@ -57,7 +29,7 @@ export class PolicyEnforcedRecommendationEvidenceSource implements Recommendatio
 	}
 
 	read(purpose: ContributionPurpose): RecommendationEvidenceDataset {
-		const observations: ResolvedPreferenceObservation[] = [];
+		const rankings: ResolvedRankingObservation[] = [];
 		const decisions: ContributionPolicyDecision[] = [];
 		const invalidationInputs: ArtifactInvalidationInput[] = [];
 		const exclusionCounts: Record<string, number> = {};
@@ -72,25 +44,28 @@ export class PolicyEnforcedRecommendationEvidenceSource implements Recommendatio
 			};
 			let decision = this.#policy.resolve(purpose, context);
 			const quarantined = new Set(candidate.quarantinedPlaceIds ?? []);
-			const candidateObservations = candidate.revision.activeEvidence
-				.filter(
-					(evidence) =>
-						!quarantined.has(evidence.leftPlaceId) && !quarantined.has(evidence.rightPlaceId)
-				)
-				.map((evidence) =>
-					observationFromEvidence(
-						candidate.userId,
-						candidate.revision.category,
-						candidate.revision.id,
-						evidence
-					)
-				)
-				.filter((observation) => observation !== undefined);
-			if (decision.decision === 'include' && candidateObservations.length === 0) {
+			const tiered = deriveTieredRankingFromCurrentRevision(candidate.userId, candidate.revision);
+			const tiers = tiered.tiers
+				.map((tier) => tier.filter((placeId) => !quarantined.has(placeId)))
+				.filter((tier) => tier.length > 0);
+			const placeCount = tiers.reduce((count, tier) => count + tier.length, 0);
+			const hasResolvedRelation = placeCount >= 2 && (tiers.length > 1 || tiers[0]?.length > 1);
+			const candidateRankings: ResolvedRankingObservation[] = hasResolvedRelation
+				? [
+						{
+							id: candidate.revision.id,
+							userId: candidate.userId,
+							category: candidate.revision.category,
+							revisionId: candidate.revision.id,
+							tiers
+						}
+					]
+				: [];
+			if (decision.decision === 'include' && candidateRankings.length === 0) {
 				decision = { ...decision, decision: 'exclude', reason: 'no-resolved-evidence' };
 			}
 			decisions.push(decision);
-			if (decision.decision === 'include') observations.push(...candidateObservations);
+			if (decision.decision === 'include') rankings.push(...candidateRankings);
 			else exclusionCounts[decision.reason] = (exclusionCounts[decision.reason] ?? 0) + 1;
 			invalidationInputs.push({
 				userId: candidate.userId,
@@ -104,13 +79,13 @@ export class PolicyEnforcedRecommendationEvidenceSource implements Recommendatio
 				decision: decision.decision,
 				reason: decision.reason,
 				evidenceFingerprint:
-					decision.decision === 'include' ? stableFingerprint(candidateObservations) : ''
+					decision.decision === 'include' ? stableFingerprint(candidateRankings) : ''
 			});
 		}
 
 		return {
 			purpose,
-			observations,
+			rankings,
 			decisions,
 			exclusionCounts,
 			invalidationInputs

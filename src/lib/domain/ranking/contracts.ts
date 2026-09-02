@@ -1,4 +1,4 @@
-export const RANKING_ENGINE_VERSION = 'ranking-v2-tier-adjustments' as const;
+export const RANKING_ENGINE_VERSION = 'ranking-v3-manual-placement' as const;
 
 export type PlaceId = string;
 export type RankingCategory = 'restaurant' | 'hotel';
@@ -8,6 +8,7 @@ export type ComparisonReason =
 	| 'binary-insertion'
 	| 'tie-confirmation'
 	| 'contradiction-repair'
+	| 'order-completion'
 	| 'adjacent-adjustment';
 export type RankingDirection = 'up' | 'down';
 
@@ -38,6 +39,27 @@ export interface EquivalenceTier {
 	readonly placeIds: readonly PlaceId[];
 }
 
+export type ManualPlacementDestination =
+	| { readonly type: 'boundary'; readonly boundaryIndex: number }
+	| { readonly type: 'tie'; readonly tierIndex: number };
+
+/**
+ * One direct user statement that a place belongs at a particular boundary or in a particular tier.
+ * The tier snapshots preserve what the statement meant when it was made without fabricating
+ * pairwise comparison answers for every place crossed by the move.
+ */
+export interface ManualPlacementEvidence {
+	readonly id: string;
+	readonly baseRevisionId: string;
+	readonly movedPlaceId: PlaceId;
+	readonly destination: 'between-tiers' | 'into-tier';
+	readonly upperTierPlaceIds: readonly PlaceId[];
+	readonly lowerTierPlaceIds: readonly PlaceId[];
+	readonly tiedTierPlaceIds: readonly PlaceId[];
+	readonly retiredComparisonEvidenceIds: readonly string[];
+	readonly capturedAt: string;
+}
+
 export interface UnresolvedRelation {
 	readonly firstPlaceId: PlaceId;
 	readonly secondPlaceId: PlaceId;
@@ -61,6 +83,7 @@ export interface RankingRevision {
 	unresolvedRelations: readonly UnresolvedRelation[];
 	activeEvidence: readonly ComparisonEvidence[];
 	excludedEvidence: readonly ExcludedEvidence[];
+	manualPlacement?: ManualPlacementEvidence;
 	rankingEngineVersion: typeof RANKING_ENGINE_VERSION;
 	provenance: 'synthetic' | 'internal-testing' | 'private-beta' | 'general-release';
 	publishedAt: string;
@@ -77,7 +100,7 @@ export interface RankingProgress {
 }
 
 export type RankingSessionPurpose =
-	'initial-order' | 'insertion' | 'repair' | 'rebuild' | 'adjustment' | 'reposition';
+	'initial-order' | 'insertion' | 'repair' | 'completion' | 'rebuild' | 'reposition';
 export type RankingSessionLifecycle = 'open' | 'completed' | 'superseded';
 
 export interface RankingSessionSummary {

@@ -26,9 +26,9 @@ Date: 2026-08-31
 
 ## Artifact and rebuild contract
 
-Artifacts use a versioned JSON schema and record the artifact ID, category, data class, engine and
+Artifacts use version 2 of the JSON schema and record the artifact ID, category, data class, engine and
 contribution-policy versions, evidence and catalogue fingerprints, generation time, contributor and
-observation counts, reconstructed resolved tiers, and per-place distinct-user support. Local files
+observation counts, authoritative resolved tiers from each current revision, and per-place distinct-user support. Local files
 live under ignored `.data/recommendation-artifacts`; the existing provider-neutral `ArtifactStore`
 interface remains the application boundary for Phase 9 storage.
 
@@ -72,6 +72,16 @@ Public review composition is now available only for places already in the user's
 while review reads remain public and independent. Review/comment content, metadata, presence, and
 moderation state have no type-level or query path into artifacts, serving, explanations, or
 attribution.
+
+## Manual-placement correction (2026-09-02)
+
+The policy-enforced evidence source now emits one normalized resolved tier ranking per eligible
+current revision. Artifact construction no longer derives tiers by summing direct comparison wins;
+that reconstruction was interaction-path-dependent and could disagree with a first-class placed
+revision. Manual placement, pairwise ranking, insertion, and adjacent controls therefore contribute
+the same model input when they produce the same current order. The restaurant engine identifier is
+`recommendation-restaurant-nearest-neighbor-v2-resolved-tiers`; older generated artifacts are
+intentionally incompatible.
 
 ## Verification and deferred human validation
 

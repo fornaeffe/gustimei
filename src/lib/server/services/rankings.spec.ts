@@ -38,6 +38,47 @@ function participation() {
 }
 
 describe('ranking service rebuild sessions', () => {
+	it('opens one targeted completion comparison instead of rebuilding a partial ranking', async () => {
+		const partial = createRankingRevision({
+			id: 'revision-partial',
+			listId: 'list-1',
+			category: 'restaurant',
+			revision: 1,
+			activePlaceIds: ['a', 'b'],
+			evidence: [
+				{
+					...oldEvidence,
+					id: 'skipped-comparison',
+					outcome: 'skip'
+				}
+			],
+			provenance: 'internal-testing',
+			publishedAt: '2026-08-24T10:00:00.000Z'
+		});
+		const repository = {
+			findOpenSession: vi.fn().mockResolvedValue(undefined),
+			listVisitedPlaceIds: vi.fn().mockResolvedValue(['a', 'b']),
+			loadCurrentRevision: vi.fn().mockResolvedValue(partial),
+			saveSession: vi.fn().mockResolvedValue(undefined)
+		};
+		const service = new RankingService(
+			repository as unknown as RankingRepository,
+			participation(),
+			'development',
+			() => now,
+			() => 'completion-session'
+		);
+
+		const session = await service.startUsefulSession('user-1', 'list-1');
+
+		expect(session.summary()).toMatchObject({ purpose: 'completion', baseRevisionId: partial.id });
+		expect(session.nextComparison()).toMatchObject({
+			logicalPair: ['a', 'b'],
+			reason: 'order-completion'
+		});
+		expect(session.progress().estimatedTotal).toBe(1);
+	});
+
 	it('starts the smallest useful insertion instead of rebuilding a stable ranking', async () => {
 		const repository = {
 			findOpenSession: vi.fn().mockResolvedValue(undefined),
@@ -212,16 +253,11 @@ describe('ranking service rebuild sessions', () => {
 		expect(published.activeEvidence).not.toContainEqual(oldEvidence);
 	});
 
-	it('publishes an adjacent whole-tier equality assertion as one comparison', async () => {
-		let savedSession: RankingSession | undefined;
+	it('publishes an adjacent whole-tier equality assertion as first-class placement evidence', async () => {
 		let id = 0;
 		const repository = {
 			findOpenSession: vi.fn().mockResolvedValue(undefined),
 			loadCurrentRevision: vi.fn().mockResolvedValue(baseRevision),
-			saveSession: vi.fn().mockImplementation(async (_ownerId, session) => {
-				savedSession = session;
-			}),
-			loadSession: vi.fn().mockImplementation(async () => savedSession),
 			publishRevision: vi.fn().mockImplementation(async (_ownerId, revision) => revision)
 		};
 		const service = new RankingService(
@@ -240,15 +276,21 @@ describe('ranking service rebuild sessions', () => {
 			'revision-1'
 		);
 
-		expect(savedSession?.summary()).toMatchObject({
-			purpose: 'adjustment',
-			lifecycle: 'completed'
-		});
-		expect(savedSession?.evidence).toHaveLength(1);
 		expect(published.orderedTiers).toEqual([{ placeIds: ['a', 'b'] }]);
-		expect(published.activeEvidence).toEqual([
-			expect.objectContaining({ outcome: 'tie', reason: 'adjacent-adjustment' })
-		]);
+		expect(published.activeEvidence).toEqual([]);
+		expect(published.excludedEvidence).toContainEqual(
+			expect.objectContaining({
+				evidence: expect.objectContaining({ id: 'old-comparison' }),
+				reason: 'invalidated'
+			})
+		);
+		expect(published.manualPlacement).toMatchObject({
+			baseRevisionId: 'revision-1',
+			movedPlaceId: 'b',
+			destination: 'into-tier',
+			tiedTierPlaceIds: ['a'],
+			retiredComparisonEvidenceIds: ['old-comparison']
+		});
 	});
 
 	it('starts a dedicated reposition session only from a total current ranking', async () => {

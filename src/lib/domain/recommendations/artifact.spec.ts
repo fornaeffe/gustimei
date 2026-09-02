@@ -4,18 +4,18 @@ import { buildRecommendationArtifact, encodeRecommendationArtifact } from './art
 import type {
 	RecommendationArtifact,
 	RecommendationEvidenceDataset,
-	ResolvedPreferenceObservation
+	ResolvedRankingObservation
 } from './contracts';
 import { deriveServingGate, scoreRecommendationCandidates } from './serving';
 
 function dataset(
-	observations: ResolvedPreferenceObservation[],
+	rankings: ResolvedRankingObservation[],
 	provenance: RankingRevision['provenance'] = 'internal-testing'
 ): RecommendationEvidenceDataset {
-	const users = [...new Set(observations.map((item) => item.userId))];
+	const users = [...new Set(rankings.map((item) => item.userId))];
 	return {
 		purpose: 'community-model-training',
-		observations,
+		rankings,
 		decisions: users.map(() => ({
 			decision: 'include',
 			reason: 'eligible',
@@ -30,10 +30,10 @@ function dataset(
 			provenance,
 			purpose: 'community-model-training',
 			policyVersion: 'contribution-mandatory-v1',
-			recommendationEngineVersion: 'recommendation-restaurant-nearest-neighbor-v1',
+			recommendationEngineVersion: 'recommendation-restaurant-nearest-neighbor-v2-resolved-tiers',
 			decision: 'include',
 			reason: 'eligible',
-			evidenceFingerprint: observations
+			evidenceFingerprint: rankings
 				.filter((item) => item.userId === userId)
 				.map((item) => item.id)
 				.join('|')
@@ -41,25 +41,22 @@ function dataset(
 	};
 }
 
-function preference(userId: string, firstPlaceId: string, secondPlaceId: string, index: number) {
+function ranking(userId: string, placeIds: string[]) {
 	return {
-		id: `${userId}-${index}`,
+		id: `revision-${userId}`,
 		userId,
 		category: 'restaurant' as const,
 		revisionId: `revision-${userId}`,
-		firstPlaceId,
-		secondPlaceId,
-		relation: 'first-preferred' as const,
-		weight: 1
+		tiers: placeIds.map((placeId) => [placeId])
 	};
 }
 
-function artifact(observations: ResolvedPreferenceObservation[]) {
+function artifact(rankings: ResolvedRankingObservation[]) {
 	return buildRecommendationArtifact({
 		id: 'artifact-1',
 		category: 'restaurant',
 		dataClass: 'real',
-		dataset: dataset(observations),
+		dataset: dataset(rankings),
 		catalogueFingerprint: 'catalogue-1',
 		generatedAt: new Date('2026-08-31T10:00:00.000Z')
 	});
@@ -76,7 +73,7 @@ function revision(placeIds: string[]): RankingRevision {
 		unresolvedRelations: [],
 		activeEvidence: [],
 		excludedEvidence: [],
-		rankingEngineVersion: 'ranking-v2-tier-adjustments',
+		rankingEngineVersion: 'ranking-v3-manual-placement',
 		provenance: 'internal-testing',
 		publishedAt: '2026-08-31T09:00:00.000Z'
 	};
@@ -84,8 +81,8 @@ function revision(placeIds: string[]): RankingRevision {
 
 describe('versioned recommendation artifacts', () => {
 	it('separates real and synthetic contributors and builds reproducibly', () => {
-		const real = preference('real-user', 'a', 'b', 1);
-		const synthetic = preference('synthetic-user', 'b', 'c', 1);
+		const real = ranking('real-user', ['a', 'b']);
+		const synthetic = ranking('synthetic-user', ['b', 'c']);
 		const base = dataset([real, synthetic]);
 		const mixed = {
 			...base,
@@ -116,15 +113,11 @@ describe('versioned recommendation artifacts', () => {
 	});
 
 	it('applies the provisional gate and returns a stable score/place-id order', () => {
-		const observations = Array.from({ length: 4 }, (_, userIndex) => {
+		const rankings = Array.from({ length: 4 }, (_, userIndex) => {
 			const userId = `community-${userIndex}`;
-			return ['a', 'b', 'c', 'd', 'e']
-				.slice(0, -1)
-				.map((placeId, index) =>
-					preference(userId, placeId, ['a', 'b', 'c', 'd', 'e'][index + 1], index)
-				);
-		}).flat();
-		const built = artifact(observations);
+			return ranking(userId, ['a', 'b', 'c', 'd', 'e']);
+		});
+		const built = artifact(rankings);
 		const current = revision(['a', 'b', 'c', 'd', 'e']);
 		const result = scoreRecommendationCandidates({
 			userId: 'current-user',
@@ -141,14 +134,10 @@ describe('versioned recommendation artifacts', () => {
 
 	it('does not claim a community order when no place crosses the support threshold', () => {
 		const underSupported = artifact(
-			Array.from({ length: 3 }, (_, userIndex) =>
-				preference(`community-${userIndex}`, 'a', 'b', userIndex)
-			)
+			Array.from({ length: 3 }, (_, userIndex) => ranking(`community-${userIndex}`, ['a', 'b']))
 		);
 		const supported = artifact(
-			Array.from({ length: 4 }, (_, userIndex) =>
-				preference(`community-${userIndex}`, 'a', 'b', userIndex)
-			)
+			Array.from({ length: 4 }, (_, userIndex) => ranking(`community-${userIndex}`, ['a', 'b']))
 		);
 
 		expect(underSupported.observationCount).toBeGreaterThan(0);
@@ -159,7 +148,7 @@ describe('versioned recommendation artifacts', () => {
 	});
 
 	it('does not let review-shaped data alter artifacts or scores', () => {
-		const built = artifact([preference('u1', 'a', 'b', 1)]);
+		const built = artifact([ranking('u1', ['a', 'b'])]);
 		const snapshot = (value: RecommendationArtifact) => ({
 			bytes: encodeRecommendationArtifact(value),
 			scores: scoreRecommendationCandidates({

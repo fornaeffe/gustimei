@@ -30,6 +30,7 @@ export const rankingSessionPurposeEnum = pgEnum('ranking_session_purpose', [
 	'initial-order',
 	'insertion',
 	'repair',
+	'completion',
 	'rebuild',
 	'adjustment',
 	'reposition'
@@ -45,6 +46,7 @@ export const comparisonReasonEnum = pgEnum('comparison_reason', [
 	'binary-insertion',
 	'tie-confirmation',
 	'contradiction-repair',
+	'order-completion',
 	'adjacent-adjustment'
 ]);
 export const revisionEvidenceDispositionEnum = pgEnum('revision_evidence_disposition', [
@@ -75,6 +77,7 @@ export const productEventNameEnum = pgEnum('product_event_name', [
 	'ranking-started',
 	'comparison-submitted',
 	'comparison-undone',
+	'manual-placement',
 	'ranking-completed',
 	'recommendation-exposed',
 	'recommendation-converted',

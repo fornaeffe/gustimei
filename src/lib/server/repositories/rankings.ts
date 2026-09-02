@@ -13,6 +13,7 @@ import {
 	comparisonEvidence,
 	catalogueListPlaceSupersession,
 	effectivePlace,
+	manualPlacementEvidence,
 	personalPlaceComment,
 	place,
 	rankingList,
@@ -747,6 +748,20 @@ export class RankingRepository {
 				cohortAssignmentId: capture.cohortAssignmentId,
 				publishedAt: new Date(revision.publishedAt)
 			});
+			if (revision.manualPlacement) {
+				await transaction.insert(manualPlacementEvidence).values({
+					id: revision.manualPlacement.id,
+					revisionId: revision.id,
+					baseRevisionId: revision.manualPlacement.baseRevisionId,
+					movedPlaceId: revision.manualPlacement.movedPlaceId,
+					destination: revision.manualPlacement.destination,
+					upperTierPlaceIds: [...revision.manualPlacement.upperTierPlaceIds],
+					lowerTierPlaceIds: [...revision.manualPlacement.lowerTierPlaceIds],
+					tiedTierPlaceIds: [...revision.manualPlacement.tiedTierPlaceIds],
+					retiredComparisonEvidenceIds: [...revision.manualPlacement.retiredComparisonEvidenceIds],
+					capturedAt: new Date(revision.manualPlacement.capturedAt)
+				});
+			}
 
 			const tierByPlace = new Map<string, { tierIndex: number; tierPosition: number }>();
 			for (const [tierIndex, tier] of revision.orderedTiers.entries()) {
@@ -831,7 +846,7 @@ export class RankingRepository {
 		if (revision.rankingEngineVersion !== RANKING_ENGINE_VERSION) {
 			throw new ConflictError('The persisted ranking-engine version is unsupported');
 		}
-		const [places, unresolved, evidenceRows] = await Promise.all([
+		const [places, unresolved, evidenceRows, placements] = await Promise.all([
 			this.database
 				.select()
 				.from(rankingRevisionPlace)
@@ -848,7 +863,11 @@ export class RankingRepository {
 					comparisonEvidence,
 					eq(comparisonEvidence.id, rankingRevisionEvidence.comparisonId)
 				)
-				.where(eq(rankingRevisionEvidence.revisionId, revision.id))
+				.where(eq(rankingRevisionEvidence.revisionId, revision.id)),
+			this.database
+				.select()
+				.from(manualPlacementEvidence)
+				.where(eq(manualPlacementEvidence.revisionId, revision.id))
 		]);
 		const tiers = new Map<number, { positions: { position: number; placeId: string }[] }>();
 		for (const item of places) {
@@ -868,6 +887,7 @@ export class RankingRepository {
 				conflictingEvidenceIds: item.link.conflictingEvidenceIds
 			}))
 			.sort((first, second) => first.evidence.sequence - second.evidence.sequence);
+		const placement = placements[0];
 
 		return {
 			id: revision.id,
@@ -889,6 +909,21 @@ export class RankingRepository {
 			})),
 			activeEvidence,
 			excludedEvidence,
+			...(placement
+				? {
+						manualPlacement: {
+							id: placement.id,
+							baseRevisionId: placement.baseRevisionId,
+							movedPlaceId: placement.movedPlaceId,
+							destination: placement.destination,
+							upperTierPlaceIds: placement.upperTierPlaceIds,
+							lowerTierPlaceIds: placement.lowerTierPlaceIds,
+							tiedTierPlaceIds: placement.tiedTierPlaceIds,
+							retiredComparisonEvidenceIds: placement.retiredComparisonEvidenceIds,
+							capturedAt: placement.capturedAt.toISOString()
+						}
+					}
+				: {}),
 			rankingEngineVersion: RANKING_ENGINE_VERSION,
 			provenance: revision.provenance,
 			publishedAt: revision.publishedAt.toISOString()

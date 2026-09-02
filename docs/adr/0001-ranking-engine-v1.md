@@ -1,5 +1,9 @@
 # ADR 0001: tier-aware stable merge ranking engine
 
+> Extended on 2026-09-02 by [ADR 0007](0007-first-class-manual-ranking-placement.md), which introduces
+> `ranking-v3-manual-placement`, first-class direct-placement evidence, and targeted partial-order
+> completion. The pairwise merge, insertion, tie, and contradiction policies below remain applicable.
+
 - Status: accepted for the initial implementation
 - Date: 2026-08-14
 - Version: `ranking-v1-merge-tiers`

@@ -386,6 +386,46 @@ export const rankingRevisionEvidence = pgTable(
 	]
 );
 
+export const manualPlacementEvidence = pgTable(
+	'manual_placement_evidence',
+	{
+		id: text('id').primaryKey(),
+		revisionId: text('revision_id')
+			.notNull()
+			.unique()
+			.references(() => rankingRevision.id, { onDelete: 'cascade' }),
+		baseRevisionId: text('base_revision_id')
+			.notNull()
+			.references(() => rankingRevision.id, { onDelete: 'restrict' }),
+		movedPlaceId: text('moved_place_id')
+			.notNull()
+			.references(() => place.id, { onDelete: 'restrict' }),
+		destination: text('destination').$type<'between-tiers' | 'into-tier'>().notNull(),
+		upperTierPlaceIds: jsonb('upper_tier_place_ids').$type<string[]>().notNull().default([]),
+		lowerTierPlaceIds: jsonb('lower_tier_place_ids').$type<string[]>().notNull().default([]),
+		tiedTierPlaceIds: jsonb('tied_tier_place_ids').$type<string[]>().notNull().default([]),
+		retiredComparisonEvidenceIds: jsonb('retired_comparison_evidence_ids')
+			.$type<string[]>()
+			.notNull()
+			.default([]),
+		capturedAt: timestamp('captured_at', { withTimezone: true, mode: 'date' }).notNull()
+	},
+	(table) => [
+		check(
+			'manual_placement_destination_ck',
+			sql`${table.destination} in ('between-tiers', 'into-tier')`
+		),
+		check(
+			'manual_placement_distinct_revision_ck',
+			sql`${table.revisionId} <> ${table.baseRevisionId}`
+		),
+		check(
+			'manual_placement_shape_ck',
+			sql`(${table.destination} = 'between-tiers' and jsonb_array_length(${table.tiedTierPlaceIds}) = 0) or (${table.destination} = 'into-tier' and jsonb_array_length(${table.tiedTierPlaceIds}) > 0 and jsonb_array_length(${table.upperTierPlaceIds}) = 0 and jsonb_array_length(${table.lowerTierPlaceIds}) = 0)`
+		)
+	]
+);
+
 export const processingRestriction = pgTable(
 	'processing_restriction',
 	{

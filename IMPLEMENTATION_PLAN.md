@@ -69,7 +69,7 @@ Success therefore depends more on ranking completion, data quality, and recommen
 26. **Ranking-list lifecycle:** do not store a single workflow `status` on `ranking_list`. The list is the durable per-user/per-category aggregate and may contain useful resolved evidence even while some places remain unplaced, skipped, or under repair. Persist immutable/versioned ranking revisions and explicit session/evidence facts; derive order coverage, pending repair, the next UX action, and recommendation eligibility independently. A list never becomes globally “stale” merely because one part needs attention.
 27. **Personal comments:** an authenticated user may optionally keep one private plain-text comment per visited place to remember their experience and make later comparisons easier. This is a personal memory aid, not a review, ranking rationale, catalogue correction, message, or community contribution. Only the owner may create, read, update, delete, or export it. Never publish it, expose it to curators/businesses/other users, use it as ranking or recommendation evidence, derive features or explanations from it, or copy its content into analytics, logs, error reports, search indexes, fixtures, or model artifacts.
 28. **Public text reviews:** an authenticated, email-verified adult may optionally publish at most one current review per place. A review contains plain text and no star score, numeric rating, ranking position, like/helpfulness count, or public aggregate. It is public user-generated content, not ranking evidence, a recommendation feature, a catalogue correction, or a private personal comment. Creating, editing, withdrawing, substituting, disputing, moderating, removing, or expiring a review must never create a ranking revision, change a visited-place membership, invalidate a recommendation artifact, or alter a recommendation score. Ranking and place-selection actions must never require a review, and private comment text must never be prefilled into or copied to a public review. Do not index review text into catalogue search or expose a cross-place review search in the MVP.
-29. **Single-place ranking adjustments:** maintain the personal list with separate compact move-up, move-down, and single-place re-ranking actions; this does not settle, replace, or implement the draft drag-and-drop proposal. Moving a singleton toward an adjacent tier explicitly asserts equality with that entire tier. Moving one member of a tied tier up or down explicitly splits it immediately above or below the remaining tier while preserving surrounding placement. Make an adjacent action available whenever the affected restaurant and tier form an unambiguous locally resolved relation and neither is involved in unresolved or pending-repair work; total global coverage is not required. Record the asserted relation and first-class tier adjustment without fabricating comparisons against every crossed or retained place. Single-place re-ranking requires a total base order, keeps the published revision usable while open, resets prior evidence involving only that restaurant, and reinserts it through the tier-aware comparison session.
+29. **First-class manual ranking placement:** maintain the personal list with accessible drag, click/tap pick-up, keyboard placement, compact adjacent controls, and separate single-place comparison-based re-ranking. Every direct move publishes one immutable `manual_placement` fact and a placed successor revision; it never fabricates one answered comparison per crossed restaurant. Strict placement records the immediately upper/lower tier snapshots, equality requires a separately labelled whole-tier target, and incompatible older comparisons are retained as explicitly invalidated history rather than opened as a new contradiction. Manual placement requires a total repair-free current revision and optimistic base-revision match. The recommendation boundary consumes the current resolved tier sequence as one normalized list observation, so identical final rankings contribute identically regardless of interaction path. See [ADR 0007](docs/adr/0007-first-class-manual-ranking-placement.md).
 
 ## Public review boundary and provisional compliance design
 
@@ -1129,22 +1129,19 @@ composer remains responsible for the independently entered 30-day service-date e
 
 - Connected the existing tier-aware insertion and contradiction-repair algorithms to authenticated
   restaurant-list actions. Adding a place to a published total order now opens a binary insertion
-  session while the previous revision remains current; partial orders fall back to a revision-bound
-  rebuild. Repair sessions supersede only conflicting evidence, and users can explicitly reconsider a
+  session while the previous revision remains current; partial orders request one targeted missing
+  relation at a time instead of rebuilding the whole list. Repair sessions supersede only conflicting evidence, and users can explicitly reconsider a
   single prior answer without discarding unrelated comparisons.
 - Added ranked-place removal through a published successor revision. Evidence involving the removed
   place is omitted while unaffected evidence remains active; membership and its private comment are
   then deleted. Rebuild preserves memberships/comments, while category deletion clearly deletes the
   list, comparison history, and private comments without changing independent public reviews.
-- Added separate single-place ranking maintenance on 2026-09-02. Compact accessible up/down actions
-  publish an immutable first-class adjacent-tier adjustment: a singleton asserts equality with the
-  entire neighboring tier, while one member of a tied tier splits immediately above or below the
-  remainder. Availability is based on an unambiguous locally resolved relation rather than total
-  global coverage. A dedicated reposition session resets only the selected restaurant's previous
-  evidence and binary-inserts it again while the prior revision remains published. Recommendation
-  training receives only the operation's genuine asserted comparison and later session answers; it
-  does not receive fabricated comparisons implied by retained tier placement. This capability is
-  independent of and does not implement or supersede the draft drag-and-drop ADR.
+- Added first-class manual placement on 2026-09-02. Drag, click/tap pick-up, keyboard placement, and
+  compact adjacent controls publish an immutable `manual_placement` fact plus an authoritative placed
+  successor revision. Boundary snapshots encode at most the two canonical neighboring constraints;
+  crossed restaurants never become fabricated comparisons. Equality is an explicit whole-tier
+  target, while moving one tied member preserves the remaining tier. A dedicated reposition session
+  remains available when the user prefers fresh comparisons for one restaurant. See ADR 0007.
 - Corrected the post-adjustment projection on 2026-09-02: evidence intentionally retired by an
   adjacent move or single-place reposition remains immutable historical provenance, stays retired in
   later revisions, and is not a contradiction or pending repair. A completed move therefore remains
@@ -1310,6 +1307,12 @@ step. Public reviews and private comments remain outside every artifact, score, 
 explanation, and attribution path. Place pages now expose visited membership and review composition
 requires visited membership at both load and publish boundaries.
 
+**Ranking-input correction 2026-09-02:** recommendation artifact schema 2 and the category engine
+versions consume each eligible current revision's resolved tier sequence directly. The earlier
+artifact builder's comparison-win reconstruction was path-dependent and could disagree with placed
+revisions. Distinct-user place support, policy decisions, and artifact invalidation retain their
+existing purpose, while one ranking revision is now one normalized observation.
+
 Automated unit verification passes 100 tests, including new artifact reproducibility,
 real/synthetic isolation, deterministic order, serving gate, and review-shaped mutation isolation
 coverage. Svelte diagnostics and the official Svelte autofixer report zero issues. The generated
@@ -1423,11 +1426,12 @@ development, first check for concurrent Vite processes bound separately to IPv4 
   review notifier data, or moderation data enters browser state.
 - Integrated relevant TODOs: removed the obsolete debounced ranking-catalogue search (and its focus/
   alignment defects), consistently show available addresses, and added the signed-in identity affordance.
-  The draft drag-and-drop ADR remains deliberately unimplemented.
+  ADR 0007 now implements the former drag-and-drop draft with first-class placement provenance.
 - Verification: official Svelte documentation informed routing/state/form/snapshot/accessibility choices;
-  every edited Svelte component passes the official autofixer. `svelte-check`, 112 unit tests, and the
-  production build pass. ESLint/Prettier pass, and all 3 production-build Playwright checks pass in
-  English and Italian. Authenticated desktop/mobile visual usability remains a Phase 9 human check.
+  every edited Svelte component passes the official autofixer. `svelte-check`, 125 unit tests, 31
+  PostgreSQL integration tests, all 15 database migrations, the Phase 1 benchmark, and the production
+  build pass. ESLint/Prettier pass, and all 3 production-build Playwright checks pass in English and
+  Italian. Authenticated desktop/mobile visual usability remains a Phase 9 human check.
 
 **UI follow-up 2026-09-02:** Personal-ranking tier cards now use one vertical column at every
 viewport width, so the position label precedes every restaurant in the tier and tied restaurants no

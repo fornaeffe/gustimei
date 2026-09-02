@@ -1,13 +1,15 @@
 import { newApplicationId } from '$lib/domain/ids';
 import type {
 	ComparisonOutcome,
+	ManualPlacementDestination,
 	RankingCategory,
 	RankingDirection
 } from '$lib/domain/ranking/contracts';
 import {
 	createPlacedRankingRevision,
 	createRankingRevision,
-	deriveRankingProjection
+	deriveRankingProjection,
+	planManualPlacement
 } from '$lib/domain/ranking/revision';
 import { RankingSession } from '$lib/domain/ranking/session';
 import type { AppEnvironment } from '$lib/server/config/environment';
@@ -169,7 +171,7 @@ export class RankingService {
 		}
 		const nextUnplaced = placeIds.find((placeId) => !revision.activePlaceIds.includes(placeId));
 		if (nextUnplaced) return this.startInsertionSession(ownerId, listId, nextUnplaced);
-		if (nextAction === 'continue-ranking') return this.startInitialSession(ownerId, listId);
+		if (nextAction === 'continue-ranking') return this.startCompletionSession(ownerId, listId);
 		throw new DomainValidationError('Your ranking is already up to date');
 	}
 
@@ -192,6 +194,23 @@ export class RankingService {
 		const baseRevision = await this.rankings.loadCurrentRevision(ownerId, listId);
 		if (!baseRevision) throw new DomainValidationError('Publish a ranking before repairing it');
 		const session = RankingSession.repair({ id: this.createId(), listId, baseRevision });
+		await this.rankings.saveSession(ownerId, session, await this.captureContext(ownerId, now), now);
+		return session;
+	}
+
+	async startCompletionSession(ownerId: string, listId: string) {
+		const now = this.clock();
+		const existing = await this.rankings.findOpenSession(ownerId, listId, now);
+		if (existing) return existing;
+		const baseRevision = await this.rankings.loadCurrentRevision(ownerId, listId);
+		if (!baseRevision) throw new DomainValidationError('Publish a ranking before completing it');
+		let session: RankingSession;
+		try {
+			session = RankingSession.completion({ id: this.createId(), listId, baseRevision });
+		} catch (error) {
+			if (error instanceof Error) throw new DomainValidationError(error.message);
+			throw error;
+		}
 		await this.rankings.saveSession(ownerId, session, await this.captureContext(ownerId, now), now);
 		return session;
 	}
@@ -244,32 +263,78 @@ export class RankingService {
 		direction: RankingDirection,
 		expectedRevisionId: string
 	) {
+		const baseRevision = await this.rankings.loadCurrentRevision(ownerId, listId);
+		if (!baseRevision) throw new DomainValidationError('Publish a ranking before adjusting it');
+		const tierIndex = baseRevision.orderedTiers.findIndex((tier) =>
+			tier.placeIds.includes(placeId)
+		);
+		if (tierIndex < 0) throw new DomainValidationError('The restaurant is not ranked');
+		const sourceTier = baseRevision.orderedTiers[tierIndex];
+		const destination: ManualPlacementDestination =
+			sourceTier.placeIds.length === 1
+				? { type: 'tie', tierIndex: direction === 'up' ? tierIndex - 1 : tierIndex + 1 }
+				: { type: 'boundary', boundaryIndex: direction === 'up' ? tierIndex : tierIndex + 1 };
+		return this.placeManually(ownerId, listId, placeId, destination, expectedRevisionId);
+	}
+
+	async placeManually(
+		ownerId: string,
+		listId: string,
+		placeId: string,
+		destination: ManualPlacementDestination,
+		expectedRevisionId: string
+	) {
 		const now = this.clock();
 		const open = await this.rankings.findOpenSession(ownerId, listId, now);
 		if (open) throw new ConflictError('Finish or supersede the open ranking session first');
-		const baseRevision = await this.rankings.loadCurrentRevision(ownerId, listId);
-		if (!baseRevision) throw new DomainValidationError('Publish a ranking before adjusting it');
-		if (baseRevision.id !== expectedRevisionId) {
-			throw new ConflictError('The ranking changed before the adjustment was applied');
+		const base = await this.rankings.loadCurrentRevision(ownerId, listId);
+		if (!base) throw new DomainValidationError('Publish a ranking before moving a restaurant');
+		if (base.id !== expectedRevisionId) {
+			throw new ConflictError('The ranking changed before the move was applied');
 		}
-		let session: RankingSession;
+		let plan;
 		try {
-			session = RankingSession.adjustment({
-				id: this.createId(),
-				listId,
-				baseRevision,
-				placeId,
-				direction
-			});
+			plan = planManualPlacement(base, placeId, destination);
 		} catch (error) {
 			if (error instanceof Error) throw new DomainValidationError(error.message);
 			throw error;
 		}
-		const outcome = session.adjustmentOutcome();
-		if (!outcome) throw new DomainValidationError('The ranking adjustment has no asserted outcome');
-		session.submit(outcome);
-		await this.rankings.saveSession(ownerId, session, await this.captureContext(ownerId, now), now);
-		return this.publishCompletedSession(ownerId, session.id, baseRevision.category);
+		const evidence = [
+			...base.activeEvidence,
+			...base.excludedEvidence.map((item) => item.evidence)
+		];
+		const previouslyInvalidated = base.excludedEvidence
+			.filter((item) => item.reason === 'invalidated')
+			.map((item) => item.evidence.id);
+		const capture = await this.captureContext(ownerId, now);
+		const revisionId = this.createId();
+		const revision = createPlacedRankingRevision({
+			id: revisionId,
+			listId,
+			category: base.category,
+			revision: base.revision + 1,
+			activePlaceIds: base.activePlaceIds,
+			evidence,
+			invalidatedEvidenceIds: [
+				...new Set([...previouslyInvalidated, ...plan.retiredComparisonEvidenceIds])
+			],
+			orderedTiers: plan.orderedTiers,
+			unresolvedRelations: [],
+			manualPlacement: {
+				id: this.createId(),
+				baseRevisionId: base.id,
+				movedPlaceId: placeId,
+				destination: plan.destination,
+				upperTierPlaceIds: plan.upperTierPlaceIds,
+				lowerTierPlaceIds: plan.lowerTierPlaceIds,
+				tiedTierPlaceIds: plan.tiedTierPlaceIds,
+				retiredComparisonEvidenceIds: plan.retiredComparisonEvidenceIds,
+				capturedAt: now.toISOString()
+			},
+			provenance: capture.provenance,
+			publishedAt: now.toISOString()
+		});
+		return this.rankings.publishRevision(ownerId, revision, capture);
 	}
 
 	async removeRankedPlace(
@@ -302,7 +367,7 @@ export class RankingService {
 			)
 			.map((item) => item.evidence.id);
 		const capture = await this.captureContext(ownerId, now);
-		const revision = createRankingRevision({
+		const revision = createPlacedRankingRevision({
 			id: this.createId(),
 			listId,
 			category,
@@ -310,6 +375,12 @@ export class RankingService {
 			activePlaceIds,
 			evidence,
 			invalidatedEvidenceIds,
+			orderedTiers: base.orderedTiers
+				.map((tier) => ({ placeIds: tier.placeIds.filter((item) => item !== placeId) }))
+				.filter((tier) => tier.placeIds.length > 0),
+			unresolvedRelations: base.unresolvedRelations.filter(
+				(relation) => relation.firstPlaceId !== placeId && relation.secondPlaceId !== placeId
+			),
 			provenance: capture.provenance,
 			publishedAt: now.toISOString()
 		});
