@@ -1,6 +1,11 @@
 import { fail, isRedirect, redirect, type RequestEvent } from '@sveltejs/kit';
 import { and, eq, inArray } from 'drizzle-orm';
-import { deriveRankingDisplay, deriveRankingProjection } from '$lib/domain/ranking/revision';
+import type { RankingDirection } from '$lib/domain/ranking/contracts';
+import {
+	deriveRankingDisplay,
+	deriveRankingProjection,
+	planAdjacentTierAdjustment
+} from '$lib/domain/ranking/revision';
 import { runtimeConfig } from '$lib/server/config';
 import { db } from '$lib/server/db';
 import { placeReview } from '$lib/server/db/schema';
@@ -95,13 +100,27 @@ export const load: PageServerLoad = async (event) => {
 	}
 	return {
 		openSession: openSession?.summary(),
+		revisionId: revision?.id,
+		adjusted: event.url.searchParams.get('adjusted') === '1',
 		projection: revision ? deriveRankingProjection(revision) : undefined,
 		tiers:
 			display?.orderedTiers.map((tier, index) => ({
 				position: index + 1,
 				places: tier.placeIds.flatMap((placeId) => {
 					const place = placeById.get(placeId);
-					return place ? [place] : [];
+					if (!place) return [];
+					return [
+						{
+							...place,
+							moveUpEffect: !openSession
+								? planAdjacentTierAdjustment(revision!, placeId, 'up')?.effect
+								: undefined,
+							moveDownEffect: !openSession
+								? planAdjacentTierAdjustment(revision!, placeId, 'down')?.effect
+								: undefined,
+							canReposition: !openSession && revision?.unresolvedRelations.length === 0
+						}
+					];
 				})
 			})) ?? [],
 		unplaced: places.filter((place) => !rankedIds.has(place.placeId)),
@@ -134,6 +153,54 @@ async function redirectToSession(event: RequestEvent, rebuild = false) {
 export const actions = {
 	start: (event) => redirectToSession(event),
 	rebuild: (event) => redirectToSession(event, true),
+	adjust: async (event) => {
+		const user = requireUser(event);
+		const form = await event.request.formData();
+		try {
+			const direction = stringField(form, 'direction') as RankingDirection;
+			if (direction !== 'up' && direction !== 'down') {
+				throw new DomainValidationError('Choose a valid ranking direction');
+			}
+			const list = await repository.findList(user.id, 'restaurant');
+			if (!list) throw new NotFoundError('The ranking list was not found');
+			await rankings.adjustAdjacentPlace(
+				user.id,
+				list.id,
+				stringField(form, 'placeId'),
+				direction,
+				stringField(form, 'revisionId')
+			);
+			const capture = await rankings.captureContext(user.id);
+			await analytics.record({
+				userId: user.id,
+				cohortAssignmentId: capture.cohortAssignmentId,
+				name: 'comparison-submitted',
+				category: 'restaurant',
+				metadata: { outcome: 'adjacent-adjustment', answeredCount: 1, estimatedTotal: 1 }
+			});
+			redirect(303, `${localizedPath('/ranking/restaurants')}?adjusted=1`);
+		} catch (cause) {
+			if (isRedirect(cause)) throw cause;
+			return fail(409, { section: 'adjustment', error: safeError(cause) });
+		}
+	},
+	reposition: async (event) => {
+		const user = requireUser(event);
+		const form = await event.request.formData();
+		try {
+			const list = await repository.findList(user.id, 'restaurant');
+			if (!list) throw new NotFoundError('The ranking list was not found');
+			const session = await rankings.startRepositionSession(
+				user.id,
+				list.id,
+				stringField(form, 'placeId')
+			);
+			redirect(303, localizedPath(`/ranking/restaurants/session/${session.id}`));
+		} catch (cause) {
+			if (isRedirect(cause)) throw cause;
+			return fail(409, { section: 'adjustment', error: safeError(cause) });
+		}
+	},
 	saveComment: async (event) => {
 		const user = requireUser(event);
 		const form = await event.request.formData();

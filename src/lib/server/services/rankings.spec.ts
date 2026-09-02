@@ -211,4 +211,68 @@ describe('ranking service rebuild sessions', () => {
 		);
 		expect(published.activeEvidence).not.toContainEqual(oldEvidence);
 	});
+
+	it('publishes an adjacent whole-tier equality assertion as one comparison', async () => {
+		let savedSession: RankingSession | undefined;
+		let id = 0;
+		const repository = {
+			findOpenSession: vi.fn().mockResolvedValue(undefined),
+			loadCurrentRevision: vi.fn().mockResolvedValue(baseRevision),
+			saveSession: vi.fn().mockImplementation(async (_ownerId, session) => {
+				savedSession = session;
+			}),
+			loadSession: vi.fn().mockImplementation(async () => savedSession),
+			publishRevision: vi.fn().mockImplementation(async (_ownerId, revision) => revision)
+		};
+		const service = new RankingService(
+			repository as unknown as RankingRepository,
+			participation(),
+			'development',
+			() => now,
+			() => `generated-${++id}`
+		);
+
+		const published = await service.adjustAdjacentPlace(
+			'user-1',
+			'list-1',
+			'b',
+			'up',
+			'revision-1'
+		);
+
+		expect(savedSession?.summary()).toMatchObject({
+			purpose: 'adjustment',
+			lifecycle: 'completed'
+		});
+		expect(savedSession?.evidence).toHaveLength(1);
+		expect(published.orderedTiers).toEqual([{ placeIds: ['a', 'b'] }]);
+		expect(published.activeEvidence).toEqual([
+			expect.objectContaining({ outcome: 'tie', reason: 'adjacent-adjustment' })
+		]);
+	});
+
+	it('starts a dedicated reposition session only from a total current ranking', async () => {
+		const repository = {
+			findOpenSession: vi.fn().mockResolvedValue(undefined),
+			loadCurrentRevision: vi.fn().mockResolvedValue(baseRevision),
+			saveSession: vi.fn().mockResolvedValue(undefined)
+		};
+		const service = new RankingService(
+			repository as unknown as RankingRepository,
+			participation(),
+			'development',
+			() => now,
+			() => 'reposition-session'
+		);
+
+		const session = await service.startRepositionSession('user-1', 'list-1', 'b');
+
+		expect(session.summary()).toMatchObject({
+			id: 'reposition-session',
+			purpose: 'reposition',
+			baseRevisionId: 'revision-1',
+			lifecycle: 'open'
+		});
+		expect(session.nextComparison()?.logicalPair).toEqual(['a', 'b']);
+	});
 });

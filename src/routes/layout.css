@@ -385,6 +385,10 @@ h3 {
 .icon-button:hover {
 	background: var(--surface-subtle);
 }
+.icon-button:disabled {
+	opacity: 0.42;
+	cursor: not-allowed;
+}
 .ui-icon {
 	display: inline-flex;
 	flex: 0 0 auto;
@@ -1374,6 +1378,24 @@ input[type='radio'] {
 	margin: 0;
 	color: var(--text-secondary);
 }
+.ranking-adjustment-help {
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: 0.92rem;
+}
+.ranked-place__actions {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: var(--space-1);
+}
+.ranked-place__actions form {
+	margin: 0;
+}
+.ranked-place__note-status {
+	grid-column: 1 / -1;
+	justify-self: start;
+}
 .ranked-place details {
 	grid-column: 1 / -1;
 }
@@ -1499,6 +1521,12 @@ input[type='radio'] {
 	.comparison-controls,
 	.ranking-tier {
 		grid-template-columns: 1fr;
+	}
+	.ranked-place {
+		grid-template-columns: minmax(0, 1fr);
+	}
+	.ranked-place__actions {
+		justify-content: flex-start;
 	}
 	.comparison-arena__versus {
 		margin-inline: auto;

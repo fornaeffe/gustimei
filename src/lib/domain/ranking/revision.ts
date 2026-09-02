@@ -5,6 +5,7 @@ import {
 	type ExcludedEvidence,
 	type ExclusionReason,
 	type PlaceId,
+	type RankingDirection,
 	type RankingProjection,
 	type RankingRevision,
 	type RankingSessionSummary,
@@ -21,6 +22,20 @@ interface RevisionInput {
 	evidence: readonly ComparisonEvidence[];
 	provenance: RankingRevision['provenance'];
 	publishedAt: string;
+	invalidatedEvidenceIds?: readonly string[];
+}
+
+interface PlacedRevisionInput extends RevisionInput {
+	orderedTiers: readonly EquivalenceTier[];
+	unresolvedRelations: readonly UnresolvedRelation[];
+	invalidatedEvidenceIds?: readonly string[];
+}
+
+export interface AdjacentTierAdjustment {
+	direction: RankingDirection;
+	effect: 'merge' | 'split';
+	comparisonPlaceId: PlaceId;
+	orderedTiers: readonly EquivalenceTier[];
 }
 
 class DisjointSet {
@@ -280,6 +295,97 @@ function pairKey(first: PlaceId, second: PlaceId) {
 	return [first, second].sort().join('\u0000');
 }
 
+function tierIndexByPlace(tiers: readonly EquivalenceTier[]) {
+	return new Map(
+		tiers.flatMap((tier, tierIndex) =>
+			tier.placeIds.map((placeId) => [placeId, tierIndex] as const)
+		)
+	);
+}
+
+function evidenceMatchesTiers(
+	evidence: ComparisonEvidence,
+	tierIndexes: ReadonlyMap<PlaceId, number>
+) {
+	if (evidence.outcome === 'skip') return true;
+	const leftTier = tierIndexes.get(evidence.leftPlaceId);
+	const rightTier = tierIndexes.get(evidence.rightPlaceId);
+	if (leftTier === undefined || rightTier === undefined) return false;
+	if (evidence.outcome === 'tie') return leftTier === rightTier;
+	return evidence.outcome === 'left' ? leftTier < rightTier : rightTier < leftTier;
+}
+
+export function incompatibleEvidenceIdsForTiers(
+	evidence: readonly ComparisonEvidence[],
+	tiers: readonly EquivalenceTier[]
+) {
+	const tierIndexes = tierIndexByPlace(tiers);
+	return evidence.filter((item) => !evidenceMatchesTiers(item, tierIndexes)).map((item) => item.id);
+}
+
+export function planAdjacentTierAdjustment(
+	revision: RankingRevision,
+	placeId: PlaceId,
+	direction: RankingDirection
+): AdjacentTierAdjustment | undefined {
+	const tierIndex = revision.orderedTiers.findIndex((tier) => tier.placeIds.includes(placeId));
+	if (tierIndex < 0) return undefined;
+	const currentTier = revision.orderedTiers[tierIndex];
+	const unresolvedPlaces = new Set(
+		revision.unresolvedRelations.flatMap((relation) => [
+			relation.firstPlaceId,
+			relation.secondPlaceId
+		])
+	);
+	const repairPlaces = new Set(deriveRepairRequirement(revision)?.placeIds ?? []);
+
+	if (currentTier.placeIds.length > 1) {
+		const remaining = currentTier.placeIds.filter((item) => item !== placeId).sort();
+		if (
+			[placeId, ...remaining].some((item) => unresolvedPlaces.has(item) || repairPlaces.has(item))
+		) {
+			return undefined;
+		}
+		const tiers = revision.orderedTiers.map((tier) => ({ placeIds: [...tier.placeIds] }));
+		tiers.splice(
+			tierIndex,
+			1,
+			...(direction === 'up'
+				? [{ placeIds: [placeId] }, { placeIds: remaining }]
+				: [{ placeIds: remaining }, { placeIds: [placeId] }])
+		);
+		return {
+			direction,
+			effect: 'split',
+			comparisonPlaceId: remaining[0],
+			orderedTiers: tiers
+		};
+	}
+
+	const destinationIndex = direction === 'up' ? tierIndex - 1 : tierIndex + 1;
+	const destination = revision.orderedTiers[destinationIndex];
+	if (!destination) return undefined;
+	if (
+		[placeId, ...destination.placeIds].some(
+			(item) => unresolvedPlaces.has(item) || repairPlaces.has(item)
+		)
+	) {
+		return undefined;
+	}
+	const merged = [...destination.placeIds, placeId].sort();
+	const tiers = revision.orderedTiers
+		.filter((_tier, index) => index !== tierIndex)
+		.map((tier, index) => ({
+			placeIds: index === Math.min(tierIndex, destinationIndex) ? merged : [...tier.placeIds]
+		}));
+	return {
+		direction,
+		effect: 'merge',
+		comparisonPlaceId: [...destination.placeIds].sort()[0],
+		orderedTiers: tiers
+	};
+}
+
 export function createRankingRevision(input: RevisionInput): RankingRevision {
 	const items = [...new Set(input.activePlaceIds)];
 	if (items.length !== input.activePlaceIds.length) throw new Error('Ranking items must be unique');
@@ -322,7 +428,19 @@ export function createRankingRevision(input: RevisionInput): RankingRevision {
 		}
 	}
 
-	const selected = selectConsistentEvidence(items, input.evidence);
+	const invalidatedIds = new Set(input.invalidatedEvidenceIds ?? []);
+	for (const evidenceId of invalidatedIds) {
+		if (!input.evidence.some((item) => item.id === evidenceId)) {
+			throw new Error('Invalidated evidence must exist in the revision history');
+		}
+	}
+	const selected = selectConsistentEvidence(
+		items,
+		input.evidence.filter((item) => !invalidatedIds.has(item.id))
+	);
+	const invalidated: ExcludedEvidence[] = input.evidence
+		.filter((item) => invalidatedIds.has(item.id))
+		.map((evidence) => ({ evidence, reason: 'invalidated', conflictingEvidenceIds: [] }));
 	const order = deriveOrder(items, selected.active, input.evidence, selected.excluded);
 	return {
 		id: input.id,
@@ -333,7 +451,67 @@ export function createRankingRevision(input: RevisionInput): RankingRevision {
 		orderedTiers: order.tiers,
 		unresolvedRelations: order.unresolved,
 		activeEvidence: selected.active,
-		excludedEvidence: selected.excluded,
+		excludedEvidence: [...selected.excluded, ...invalidated].sort(
+			(first, second) => first.evidence.sequence - second.evidence.sequence
+		),
+		rankingEngineVersion: RANKING_ENGINE_VERSION,
+		provenance: input.provenance,
+		publishedAt: input.publishedAt
+	};
+}
+
+export function createPlacedRankingRevision(input: PlacedRevisionInput): RankingRevision {
+	// Reuse the comparison-history validation performed for ordinary derived revisions.
+	createRankingRevision(input);
+	const items = [...new Set(input.activePlaceIds)];
+	const tierPlaceIds = input.orderedTiers.flatMap((tier) => tier.placeIds);
+	if (
+		tierPlaceIds.length !== items.length ||
+		new Set(tierPlaceIds).size !== items.length ||
+		items.some((placeId) => !tierPlaceIds.includes(placeId)) ||
+		input.orderedTiers.some((tier) => tier.placeIds.length === 0)
+	) {
+		throw new Error('Placed ranking tiers must partition the active places exactly once');
+	}
+	const invalidatedIds = new Set(input.invalidatedEvidenceIds ?? []);
+	for (const evidenceId of invalidatedIds) {
+		if (!input.evidence.some((item) => item.id === evidenceId)) {
+			throw new Error('Invalidated evidence must exist in the revision history');
+		}
+	}
+	const selected = selectConsistentEvidence(
+		items,
+		input.evidence.filter((item) => !invalidatedIds.has(item.id))
+	);
+	const tierIndexes = tierIndexByPlace(input.orderedTiers);
+	if (selected.active.some((item) => !evidenceMatchesTiers(item, tierIndexes))) {
+		throw new Error('Active comparison evidence contradicts the placed ranking tiers');
+	}
+	for (const relation of input.unresolvedRelations) {
+		if (
+			relation.firstPlaceId === relation.secondPlaceId ||
+			!tierIndexes.has(relation.firstPlaceId) ||
+			!tierIndexes.has(relation.secondPlaceId) ||
+			tierIndexes.get(relation.firstPlaceId) === tierIndexes.get(relation.secondPlaceId)
+		) {
+			throw new Error('Placed unresolved relations must connect distinct active tiers');
+		}
+	}
+	const invalidated: ExcludedEvidence[] = input.evidence
+		.filter((item) => invalidatedIds.has(item.id))
+		.map((evidence) => ({ evidence, reason: 'invalidated', conflictingEvidenceIds: [] }));
+	return {
+		id: input.id,
+		listId: input.listId,
+		category: input.category,
+		revision: input.revision,
+		activePlaceIds: items,
+		orderedTiers: input.orderedTiers.map((tier) => ({ placeIds: [...tier.placeIds] })),
+		unresolvedRelations: input.unresolvedRelations.map((relation) => ({ ...relation })),
+		activeEvidence: selected.active,
+		excludedEvidence: [...selected.excluded, ...invalidated].sort(
+			(first, second) => first.evidence.sequence - second.evidence.sequence
+		),
 		rankingEngineVersion: RANKING_ENGINE_VERSION,
 		provenance: input.provenance,
 		publishedAt: input.publishedAt
@@ -342,8 +520,7 @@ export function createRankingRevision(input: RevisionInput): RankingRevision {
 
 export function deriveRepairRequirement(revision: RankingRevision): RepairRequirement | undefined {
 	const conflicts = revision.excludedEvidence.filter(
-		(item) =>
-			item.reason === 'cycle' || item.reason === 'tie-conflict' || item.reason === 'invalidated'
+		(item) => item.reason === 'cycle' || item.reason === 'tie-conflict'
 	);
 	if (conflicts.length === 0) return undefined;
 	const placeIds = [
@@ -354,11 +531,7 @@ export function deriveRepairRequirement(revision: RankingRevision): RepairRequir
 	return {
 		placeIds,
 		evidenceIds: conflicts.map((item) => item.evidence.id).sort(),
-		reason: conflicts.some((item) => item.reason === 'tie-conflict')
-			? 'tie-conflict'
-			: conflicts.some((item) => item.reason === 'cycle')
-				? 'cycle'
-				: 'invalidated',
+		reason: conflicts.some((item) => item.reason === 'tie-conflict') ? 'tie-conflict' : 'cycle',
 		scope: placeIds.length > localLimit ? 'rebuild' : 'local'
 	};
 }

@@ -3,6 +3,7 @@ import { render } from 'vitest-browser-svelte';
 import * as m from '$lib/paraglide/messages';
 import PersonalCommentField from './comments/PersonalCommentField.svelte';
 import ComparisonPlaceCard from './ranking/ComparisonPlaceCard.svelte';
+import RankingPlaceActions from './ranking/RankingPlaceActions.svelte';
 import ReviewDisclosure from './reviews/ReviewDisclosure.svelte';
 import NoticeForm from './reviews/NoticeForm.svelte';
 import PlaceCard from './ui/PlaceCard.svelte';
@@ -61,5 +62,37 @@ describe('Phase 3 content boundaries', () => {
 		await expect.element(screen.getByText('Parma')).toBeVisible();
 		await expect.element(screen.getByText(m.view_private_note())).toBeVisible();
 		await expect.element(screen.getByText('Quiet table by the window')).not.toBeVisible();
+	});
+
+	it('exposes compact ranking adjustments with complete accessible meanings', async () => {
+		const screen = await render(RankingPlaceActions, {
+			placeId: 'restaurant-1',
+			placeName: 'Trattoria Verde',
+			revisionId: 'revision-1',
+			moveUpEffect: 'merge',
+			moveDownEffect: 'split',
+			canReposition: true,
+			adjustAction: '?/adjust',
+			repositionAction: '?/reposition',
+			describedBy: 'ranking-help'
+		});
+
+		await expect
+			.element(
+				screen.getByRole('button', {
+					name: m.move_up_merge({ place: 'Trattoria Verde' })
+				})
+			)
+			.toBeEnabled();
+		await expect
+			.element(
+				screen.getByRole('button', {
+					name: m.move_down_split({ place: 'Trattoria Verde' })
+				})
+			)
+			.toBeEnabled();
+		await expect
+			.element(screen.getByRole('button', { name: m.rerank_place({ place: 'Trattoria Verde' }) }))
+			.toBeEnabled();
 	});
 });

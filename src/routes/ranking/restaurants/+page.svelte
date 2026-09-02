@@ -6,6 +6,7 @@
 	import { ListOrdered, StickyNote, Trash2 } from '@lucide/svelte';
 	import PersonalComment from '$lib/components/comments/PersonalComment.svelte';
 	import PersonalCommentField from '$lib/components/comments/PersonalCommentField.svelte';
+	import RankingPlaceActions from '$lib/components/ranking/RankingPlaceActions.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import StatePanel from '$lib/components/ui/StatePanel.svelte';
@@ -46,6 +47,12 @@
 				>{/snippet}
 		</StatePanel>
 	{:else}
+		<p id="ranking-adjustment-help" class="ranking-adjustment-help">
+			{m.ranking_adjustment_help()}
+		</p>
+		{#if data.adjusted}
+			<p class="form-status form-status--success" role="status">{m.ranking_adjustment_success()}</p>
+		{/if}
 		<ol class="ranking-tiers">
 			{#each data.tiers as tier (tier.position)}
 				<li class="surface-card ranking-tier">
@@ -68,7 +75,18 @@
 								</h2>
 								<p>{place.addressLabel || place.displayLocality}</p>
 							</div>
-							{#if place.commentBody}<span class="status-chip"
+							<RankingPlaceActions
+								placeId={place.placeId}
+								placeName={place.name}
+								revisionId={data.revisionId ?? ''}
+								moveUpEffect={place.moveUpEffect}
+								moveDownEffect={place.moveDownEffect}
+								canReposition={place.canReposition}
+								adjustAction="?/adjust"
+								repositionAction="?/reposition"
+								describedBy="ranking-adjustment-help"
+							/>
+							{#if place.commentBody}<span class="status-chip ranked-place__note-status"
 									><Icon icon={StickyNote} size={14} />{m.private_note_available()}</span
 								>{/if}
 							<details>

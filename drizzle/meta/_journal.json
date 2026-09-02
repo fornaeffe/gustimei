@@ -78,6 +78,20 @@
       "when": 1788198069399,
       "tag": "0010_slimy_next_avengers",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1788331927596,
+      "tag": "0011_superb_arachne",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1788332632767,
+      "tag": "0012_ranking-engine-v2",
+      "breakpoints": true
     }
   ]
 }

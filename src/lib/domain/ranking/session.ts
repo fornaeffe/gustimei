@@ -5,13 +5,18 @@ import type {
 	ComparisonRequest,
 	EquivalenceTier,
 	PlaceId,
+	RankingDirection,
 	RankingProgress,
 	RankingRevision,
 	RankingSessionLifecycle,
 	RankingSessionPurpose,
 	RankingSessionSummary
 } from './contracts';
-import { deriveRepairRequirement } from './revision';
+import {
+	deriveRepairRequirement,
+	incompatibleEvidenceIdsForTiers,
+	planAdjacentTierAdjustment
+} from './revision';
 
 interface MergeState {
 	left: PlaceId[][];
@@ -53,7 +58,18 @@ interface RepairAlgorithmState {
 	requestIndex: number;
 }
 
-type AlgorithmState = InitialAlgorithmState | InsertionAlgorithmState | RepairAlgorithmState;
+interface AdjustmentAlgorithmState {
+	kind: 'adjustment';
+	targetPlaceId: PlaceId;
+	direction: RankingDirection;
+	effect: 'merge' | 'split';
+	comparisonPlaceId: PlaceId;
+	orderedTiers: PlaceId[][];
+	invalidatedEvidenceIds: string[];
+}
+
+type AlgorithmState =
+	InitialAlgorithmState | InsertionAlgorithmState | RepairAlgorithmState | AdjustmentAlgorithmState;
 
 interface AlgorithmSnapshot {
 	algorithm: AlgorithmState;
@@ -228,6 +244,87 @@ export class RankingSession {
 			nextSequence: 1,
 			history: [],
 			estimatedTotal: Math.ceil(Math.log2(tiers.length + 1)) + 1
+		});
+	}
+
+	static reposition(input: {
+		id: string;
+		listId: string;
+		baseRevision: RankingRevision;
+		placeId: PlaceId;
+	}) {
+		if (input.baseRevision.unresolvedRelations.length > 0) {
+			throw new Error('Repositioning requires a total base revision');
+		}
+		if (!input.baseRevision.activePlaceIds.includes(input.placeId)) {
+			throw new Error('The repositioned place must belong to the ranking');
+		}
+		const tiers = normalizedTiers(input.baseRevision.orderedTiers)
+			.map((tier) => tier.filter((placeId) => placeId !== input.placeId))
+			.filter((tier) => tier.length > 0);
+		return new RankingSession({
+			version: 1,
+			id: input.id,
+			listId: input.listId,
+			baseRevisionId: input.baseRevision.id,
+			purpose: 'reposition',
+			lifecycle: 'open',
+			placeIdsSnapshot: [...input.baseRevision.activePlaceIds],
+			algorithm: {
+				kind: 'insertion',
+				newPlaceId: input.placeId,
+				tiers,
+				low: 0,
+				high: tiers.length
+			},
+			evidence: [],
+			nextSequence: 1,
+			history: [],
+			estimatedTotal: Math.ceil(Math.log2(tiers.length + 1)) + 1
+		});
+	}
+
+	static adjustment(input: {
+		id: string;
+		listId: string;
+		baseRevision: RankingRevision;
+		placeId: PlaceId;
+		direction: RankingDirection;
+	}) {
+		const plan = planAdjacentTierAdjustment(input.baseRevision, input.placeId, input.direction);
+		if (!plan) throw new Error('The adjacent ranking adjustment is not currently available');
+		const allEvidence = [
+			...input.baseRevision.activeEvidence,
+			...input.baseRevision.excludedEvidence.map((item) => item.evidence)
+		];
+		return new RankingSession({
+			version: 1,
+			id: input.id,
+			listId: input.listId,
+			baseRevisionId: input.baseRevision.id,
+			purpose: 'adjustment',
+			lifecycle: 'open',
+			placeIdsSnapshot: [...input.baseRevision.activePlaceIds],
+			algorithm: {
+				kind: 'adjustment',
+				targetPlaceId: input.placeId,
+				direction: input.direction,
+				effect: plan.effect,
+				comparisonPlaceId: plan.comparisonPlaceId,
+				orderedTiers: plan.orderedTiers.map((tier) => [...tier.placeIds]),
+				invalidatedEvidenceIds: incompatibleEvidenceIdsForTiers(allEvidence, plan.orderedTiers)
+			},
+			pendingRequest: compareRequest(
+				input.id,
+				1,
+				input.placeId,
+				plan.comparisonPlaceId,
+				'adjacent-adjustment'
+			),
+			evidence: [],
+			nextSequence: 1,
+			history: [],
+			estimatedTotal: 1
 		});
 	}
 
@@ -429,6 +526,52 @@ export class RankingSession {
 		return clone(this.#algorithm.result);
 	}
 
+	adjustmentOutcome(): ComparisonOutcome | undefined {
+		if (this.#algorithm.kind !== 'adjustment' || !this.#pendingRequest) return undefined;
+		if (this.#algorithm.effect === 'merge') return 'tie';
+		const preferredPlaceId =
+			this.#algorithm.direction === 'up'
+				? this.#algorithm.targetPlaceId
+				: this.#algorithm.comparisonPlaceId;
+		return this.#pendingRequest.leftPlaceId === preferredPlaceId ? 'left' : 'right';
+	}
+
+	placedTierResult(): readonly EquivalenceTier[] | undefined {
+		if (this.#algorithm.kind === 'adjustment') {
+			return this.#algorithm.orderedTiers.map((placeIds) => ({ placeIds: [...placeIds] }));
+		}
+		if (this.purpose !== 'reposition' || this.#algorithm.kind !== 'insertion') return undefined;
+		const result = this.#algorithm.result;
+		if (!result || result.type === 'repair') return undefined;
+		const tiers = this.#algorithm.tiers.map((placeIds) => [...placeIds]);
+		if (result.type === 'tied') tiers[result.tierIndex].push(this.#algorithm.newPlaceId);
+		else tiers.splice(result.tierIndex, 0, [this.#algorithm.newPlaceId]);
+		return tiers.map((placeIds) => ({ placeIds: placeIds.sort() }));
+	}
+
+	invalidatedEvidenceIdsForNextRevision(baseRevision: RankingRevision): readonly string[] {
+		const previouslyInvalidated = baseRevision.excludedEvidence
+			.filter((item) => item.reason === 'invalidated')
+			.map((item) => item.evidence.id);
+		if (this.#algorithm.kind === 'adjustment') {
+			return [...new Set([...previouslyInvalidated, ...this.#algorithm.invalidatedEvidenceIds])];
+		}
+		if (this.purpose !== 'reposition' || this.#algorithm.kind !== 'insertion') {
+			return previouslyInvalidated;
+		}
+		const repositionedPlaceId = this.#algorithm.newPlaceId;
+		const repositionedEvidence = [
+			...baseRevision.activeEvidence,
+			...baseRevision.excludedEvidence.map((item) => item.evidence)
+		]
+			.filter(
+				(item) =>
+					item.leftPlaceId === repositionedPlaceId || item.rightPlaceId === repositionedPlaceId
+			)
+			.map((item) => item.id);
+		return [...new Set([...previouslyInvalidated, ...repositionedEvidence])];
+	}
+
 	#serializedState(): SerializedRankingSession {
 		return {
 			version: 1,
@@ -462,11 +605,13 @@ export class RankingSession {
 		} else if (state.algorithm.kind === 'insertion') {
 			addTiers(state.algorithm.tiers);
 			placeIds.add(state.algorithm.newPlaceId);
-		} else {
+		} else if (state.algorithm.kind === 'repair') {
 			for (const request of state.algorithm.requests) {
 				placeIds.add(request.leftPlaceId);
 				placeIds.add(request.rightPlaceId);
 			}
+		} else {
+			addTiers(state.algorithm.orderedTiers);
 		}
 		for (const evidence of state.evidence) {
 			placeIds.add(evidence.leftPlaceId);
@@ -478,7 +623,8 @@ export class RankingSession {
 	#consumeOutcome(outcome: ComparisonOutcome, request: ComparisonRequest) {
 		if (this.#algorithm.kind === 'initial') this.#consumeInitial(outcome, request);
 		else if (this.#algorithm.kind === 'insertion') this.#consumeInsertion(outcome, request);
-		else this.#algorithm.requestIndex += 1;
+		else if (this.#algorithm.kind === 'repair') this.#algorithm.requestIndex += 1;
+		else this.#lifecycle = 'completed';
 	}
 
 	#consumeInitial(outcome: ComparisonOutcome, request: ComparisonRequest) {
@@ -540,7 +686,7 @@ export class RankingSession {
 		if (this.#lifecycle !== 'open' || this.#pendingRequest) return;
 		if (this.#algorithm.kind === 'initial') this.#advanceInitial();
 		else if (this.#algorithm.kind === 'insertion') this.#advanceInsertion();
-		else this.#advanceRepair();
+		else if (this.#algorithm.kind === 'repair') this.#advanceRepair();
 	}
 
 	#advanceInitial() {

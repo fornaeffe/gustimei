@@ -76,7 +76,7 @@ function revision(placeIds: string[]): RankingRevision {
 		unresolvedRelations: [],
 		activeEvidence: [],
 		excludedEvidence: [],
-		rankingEngineVersion: 'ranking-v1-merge-tiers',
+		rankingEngineVersion: 'ranking-v2-tier-adjustments',
 		provenance: 'internal-testing',
 		publishedAt: '2026-08-31T09:00:00.000Z'
 	};

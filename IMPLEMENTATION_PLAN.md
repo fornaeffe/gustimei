@@ -69,6 +69,7 @@ Success therefore depends more on ranking completion, data quality, and recommen
 26. **Ranking-list lifecycle:** do not store a single workflow `status` on `ranking_list`. The list is the durable per-user/per-category aggregate and may contain useful resolved evidence even while some places remain unplaced, skipped, or under repair. Persist immutable/versioned ranking revisions and explicit session/evidence facts; derive order coverage, pending repair, the next UX action, and recommendation eligibility independently. A list never becomes globally “stale” merely because one part needs attention.
 27. **Personal comments:** an authenticated user may optionally keep one private plain-text comment per visited place to remember their experience and make later comparisons easier. This is a personal memory aid, not a review, ranking rationale, catalogue correction, message, or community contribution. Only the owner may create, read, update, delete, or export it. Never publish it, expose it to curators/businesses/other users, use it as ranking or recommendation evidence, derive features or explanations from it, or copy its content into analytics, logs, error reports, search indexes, fixtures, or model artifacts.
 28. **Public text reviews:** an authenticated, email-verified adult may optionally publish at most one current review per place. A review contains plain text and no star score, numeric rating, ranking position, like/helpfulness count, or public aggregate. It is public user-generated content, not ranking evidence, a recommendation feature, a catalogue correction, or a private personal comment. Creating, editing, withdrawing, substituting, disputing, moderating, removing, or expiring a review must never create a ranking revision, change a visited-place membership, invalidate a recommendation artifact, or alter a recommendation score. Ranking and place-selection actions must never require a review, and private comment text must never be prefilled into or copied to a public review. Do not index review text into catalogue search or expose a cross-place review search in the MVP.
+29. **Single-place ranking adjustments:** maintain the personal list with separate compact move-up, move-down, and single-place re-ranking actions; this does not settle, replace, or implement the draft drag-and-drop proposal. Moving a singleton toward an adjacent tier explicitly asserts equality with that entire tier. Moving one member of a tied tier up or down explicitly splits it immediately above or below the remaining tier while preserving surrounding placement. Make an adjacent action available whenever the affected restaurant and tier form an unambiguous locally resolved relation and neither is involved in unresolved or pending-repair work; total global coverage is not required. Record the asserted relation and first-class tier adjustment without fabricating comparisons against every crossed or retained place. Single-place re-ranking requires a total base order, keeps the published revision usable while open, resets prior evidence involving only that restaurant, and reinserts it through the tier-aware comparison session.
 
 ## Public review boundary and provisional compliance design
 
@@ -1135,6 +1136,22 @@ composer remains responsible for the independently entered 30-day service-date e
   place is omitted while unaffected evidence remains active; membership and its private comment are
   then deleted. Rebuild preserves memberships/comments, while category deletion clearly deletes the
   list, comparison history, and private comments without changing independent public reviews.
+- Added separate single-place ranking maintenance on 2026-09-02. Compact accessible up/down actions
+  publish an immutable first-class adjacent-tier adjustment: a singleton asserts equality with the
+  entire neighboring tier, while one member of a tied tier splits immediately above or below the
+  remainder. Availability is based on an unambiguous locally resolved relation rather than total
+  global coverage. A dedicated reposition session resets only the selected restaurant's previous
+  evidence and binary-inserts it again while the prior revision remains published. Recommendation
+  training receives only the operation's genuine asserted comparison and later session answers; it
+  does not receive fabricated comparisons implied by retained tier placement. This capability is
+  independent of and does not implement or supersede the draft drag-and-drop ADR.
+- Corrected the post-adjustment projection on 2026-09-02: evidence intentionally retired by an
+  adjacent move or single-place reposition remains immutable historical provenance, stays retired in
+  later revisions, and is not a contradiction or pending repair. A completed move therefore remains
+  a total, up-to-date ranking and does not ask the user to repeat the comparison asserted by the move.
+- Progressively enhanced adjacent move forms preserve the current page scroll and focus across their
+  same-page ranking refresh, while retaining native form submission as the no-JavaScript fallback.
+  Single-place reranking continues to navigate normally into its separate comparison workflow.
 - Added locality filtering to the completed personal ranking with dense, explicitly filtered ordinal
   labels; the persisted global tiers and revision are unchanged. Successful initial/insertion
   publications use the approved 30-day display and 90-day dismissal prompt caps described above.

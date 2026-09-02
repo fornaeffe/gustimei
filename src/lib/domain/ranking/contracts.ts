@@ -1,10 +1,15 @@
-export const RANKING_ENGINE_VERSION = 'ranking-v1-merge-tiers' as const;
+export const RANKING_ENGINE_VERSION = 'ranking-v2-tier-adjustments' as const;
 
 export type PlaceId = string;
 export type RankingCategory = 'restaurant' | 'hotel';
 export type ComparisonOutcome = 'left' | 'right' | 'tie' | 'skip';
 export type ComparisonReason =
-	'initial-order' | 'binary-insertion' | 'tie-confirmation' | 'contradiction-repair';
+	| 'initial-order'
+	| 'binary-insertion'
+	| 'tie-confirmation'
+	| 'contradiction-repair'
+	| 'adjacent-adjustment';
+export type RankingDirection = 'up' | 'down';
 
 export interface ComparisonRequest {
 	id: string;
@@ -42,7 +47,7 @@ export interface UnresolvedRelation {
 export interface RepairRequirement {
 	placeIds: readonly PlaceId[];
 	evidenceIds: readonly string[];
-	reason: 'cycle' | 'tie-conflict' | 'invalidated';
+	reason: 'cycle' | 'tie-conflict';
 	scope: 'local' | 'rebuild';
 }
 
@@ -71,7 +76,8 @@ export interface RankingProgress {
 	isEstimate: true;
 }
 
-export type RankingSessionPurpose = 'initial-order' | 'insertion' | 'repair' | 'rebuild';
+export type RankingSessionPurpose =
+	'initial-order' | 'insertion' | 'repair' | 'rebuild' | 'adjustment' | 'reposition';
 export type RankingSessionLifecycle = 'open' | 'completed' | 'superseded';
 
 export interface RankingSessionSummary {

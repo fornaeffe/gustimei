@@ -30,7 +30,9 @@ export const rankingSessionPurposeEnum = pgEnum('ranking_session_purpose', [
 	'initial-order',
 	'insertion',
 	'repair',
-	'rebuild'
+	'rebuild',
+	'adjustment',
+	'reposition'
 ]);
 export const rankingSessionLifecycleEnum = pgEnum('ranking_session_lifecycle', [
 	'open',
@@ -42,7 +44,8 @@ export const comparisonReasonEnum = pgEnum('comparison_reason', [
 	'initial-order',
 	'binary-insertion',
 	'tie-confirmation',
-	'contradiction-repair'
+	'contradiction-repair',
+	'adjacent-adjustment'
 ]);
 export const revisionEvidenceDispositionEnum = pgEnum('revision_evidence_disposition', [
 	'active',

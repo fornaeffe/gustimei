@@ -1,6 +1,14 @@
 import { newApplicationId } from '$lib/domain/ids';
-import type { ComparisonOutcome, RankingCategory } from '$lib/domain/ranking/contracts';
-import { createRankingRevision, deriveRankingProjection } from '$lib/domain/ranking/revision';
+import type {
+	ComparisonOutcome,
+	RankingCategory,
+	RankingDirection
+} from '$lib/domain/ranking/contracts';
+import {
+	createPlacedRankingRevision,
+	createRankingRevision,
+	deriveRankingProjection
+} from '$lib/domain/ranking/revision';
 import { RankingSession } from '$lib/domain/ranking/session';
 import type { AppEnvironment } from '$lib/server/config/environment';
 import { ConflictError, DomainValidationError, NotFoundError } from '$lib/server/domain/errors';
@@ -205,6 +213,65 @@ export class RankingService {
 		return session;
 	}
 
+	async startRepositionSession(ownerId: string, listId: string, placeId: string) {
+		const now = this.clock();
+		const existing = await this.rankings.findOpenSession(ownerId, listId, now);
+		if (existing) return existing;
+		const baseRevision = await this.rankings.loadCurrentRevision(ownerId, listId);
+		if (!baseRevision) throw new DomainValidationError('Publish a ranking before repositioning it');
+		if (baseRevision.unresolvedRelations.length > 0) {
+			throw new DomainValidationError(
+				'Resolve the incomplete ranking before repositioning one restaurant'
+			);
+		}
+		if (!baseRevision.activePlaceIds.includes(placeId)) {
+			throw new DomainValidationError('The restaurant is not part of the current ranking');
+		}
+		const session = RankingSession.reposition({
+			id: this.createId(),
+			listId,
+			baseRevision,
+			placeId
+		});
+		await this.rankings.saveSession(ownerId, session, await this.captureContext(ownerId, now), now);
+		return session;
+	}
+
+	async adjustAdjacentPlace(
+		ownerId: string,
+		listId: string,
+		placeId: string,
+		direction: RankingDirection,
+		expectedRevisionId: string
+	) {
+		const now = this.clock();
+		const open = await this.rankings.findOpenSession(ownerId, listId, now);
+		if (open) throw new ConflictError('Finish or supersede the open ranking session first');
+		const baseRevision = await this.rankings.loadCurrentRevision(ownerId, listId);
+		if (!baseRevision) throw new DomainValidationError('Publish a ranking before adjusting it');
+		if (baseRevision.id !== expectedRevisionId) {
+			throw new ConflictError('The ranking changed before the adjustment was applied');
+		}
+		let session: RankingSession;
+		try {
+			session = RankingSession.adjustment({
+				id: this.createId(),
+				listId,
+				baseRevision,
+				placeId,
+				direction
+			});
+		} catch (error) {
+			if (error instanceof Error) throw new DomainValidationError(error.message);
+			throw error;
+		}
+		const outcome = session.adjustmentOutcome();
+		if (!outcome) throw new DomainValidationError('The ranking adjustment has no asserted outcome');
+		session.submit(outcome);
+		await this.rankings.saveSession(ownerId, session, await this.captureContext(ownerId, now), now);
+		return this.publishCompletedSession(ownerId, session.id, baseRevision.category);
+	}
+
 	async removeRankedPlace(
 		ownerId: string,
 		listId: string,
@@ -226,6 +293,14 @@ export class RankingService {
 			...base.activeEvidence,
 			...base.excludedEvidence.map((item) => item.evidence)
 		].filter((item) => item.leftPlaceId !== placeId && item.rightPlaceId !== placeId);
+		const invalidatedEvidenceIds = base.excludedEvidence
+			.filter(
+				(item) =>
+					item.reason === 'invalidated' &&
+					item.evidence.leftPlaceId !== placeId &&
+					item.evidence.rightPlaceId !== placeId
+			)
+			.map((item) => item.evidence.id);
 		const capture = await this.captureContext(ownerId, now);
 		const revision = createRankingRevision({
 			id: this.createId(),
@@ -234,6 +309,7 @@ export class RankingService {
 			revision: base.revision + 1,
 			activePlaceIds,
 			evidence,
+			invalidatedEvidenceIds,
 			provenance: capture.provenance,
 			publishedAt: now.toISOString()
 		});
@@ -294,16 +370,28 @@ export class RankingService {
 				throw new ConflictError('The ranking session is based on a stale revision');
 		}
 		const activePlaceIds = [...session.placeIdsSnapshot];
-		const revision = createRankingRevision({
+		const evidence = session.evidenceForNextRevision(legacyRebuild ? undefined : base);
+		const invalidatedEvidenceIds = base ? session.invalidatedEvidenceIdsForNextRevision(base) : [];
+		const placedTiers = session.placedTierResult();
+		const revisionInput = {
 			id: this.createId(),
 			listId: session.listId,
 			category,
 			revision: (base?.revision ?? 0) + 1,
 			activePlaceIds,
-			evidence: session.evidenceForNextRevision(legacyRebuild ? undefined : base),
+			evidence,
+			invalidatedEvidenceIds,
 			provenance: capture.provenance,
 			publishedAt: now.toISOString()
-		});
+		};
+		const revision =
+			placedTiers && base
+				? createPlacedRankingRevision({
+						...revisionInput,
+						orderedTiers: placedTiers,
+						unresolvedRelations: base.unresolvedRelations
+					})
+				: createRankingRevision(revisionInput);
 		return this.rankings.publishRevision(ownerId, revision, capture);
 	}
 }
