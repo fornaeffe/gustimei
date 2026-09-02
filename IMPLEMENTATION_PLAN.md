@@ -1076,6 +1076,14 @@ proportionate retention purpose ([17 April 2026 decision](https://www.garantepri
   setup-oriented introduction copy. The dashboard now derives ranked and unresolved counts from the
   current revision, distinguishes selection/setup from a published ranking, and links the ready card
   to a completed session whose full evidence belongs to that revision.
+- Post-implementation multi-add testing found that each incremental insertion ended on a redundant
+  session-specific ranking summary which displayed only the first three tiers while later selected
+  restaurants remained unplaced. Completed insertions now publish and continue directly into the next
+  unplaced restaurant; only after every selected restaurant belongs to the published revision does the
+  flow redirect to the canonical `/ranking/restaurants` page. The session route is comparison-only in
+  normal operation, completed-session URLs redirect to the canonical ranking, and the exceptional
+  retry state remains available only when publication failed. The optional post-completion review
+  prompt now lives on the canonical ranking page and returns there after review publication.
 
 **Open questions to answer before Phase 6:**
 

@@ -3,7 +3,7 @@
 	import { resolve } from '$app/paths';
 	import type { Pathname } from '$app/types';
 	import { getLocale, localizeHref } from '$lib/paraglide/runtime';
-	import { Check, Equal, RotateCcw, SkipForward } from '@lucide/svelte';
+	import { Equal, RotateCcw, SkipForward } from '@lucide/svelte';
 	import ComparisonPlaceCard from '$lib/components/ranking/ComparisonPlaceCard.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Icon from '$lib/components/ui/Icon.svelte';
@@ -170,7 +170,7 @@
 		</div>
 		<p class="keyboard-help">{m.keyboard_shortcuts()}</p>
 	</section>
-{:else if data.session.lifecycle === 'completed' && !data.ranking}
+{:else if data.session.lifecycle === 'completed'}
 	<StatePanel title={m.ranking_complete_title()} description={m.ranking_publish_retry()}>
 		{#snippet action()}
 			<form method="POST" action="?/publish">
@@ -178,54 +178,6 @@
 			</form>
 		{/snippet}
 	</StatePanel>
-{:else if data.ranking}
-	<section class="completed-ranking stack" aria-labelledby="ranking-title">
-		<header>
-			<p class="eyebrow"><Icon icon={Check} size={16} />{m.comparison_progress_complete()}</p>
-			<h1 id="ranking-title">{m.ranking_complete_title()}</h1>
-			<p class="lede">{m.ranking_complete_body()}</p>
-		</header>
-		<ol class="ranking-completion-summary">
-			{#each data.ranking.tiers.slice(0, 3) as tier (tier.position)}
-				<li>
-					<strong>{tier.position}</strong><span
-						>{tier.places.map((place) => place.name).join(' · ')}</span
-					>
-				</li>
-			{/each}
-		</ol>
-
-		{#if data.reviewPrompt && form?.section !== 'reviewPrompt'}
-			<aside class="surface-card review-prompt" aria-labelledby="review-prompt-title">
-				<div>
-					<h2 id="review-prompt-title">{m.optional_review_prompt()}</h2>
-					<p>{m.optional_review_prompt_body()}</p>
-				</div>
-				<div class="cluster">
-					<Button
-						href={localizeHref(
-							`/places/${encodeURIComponent(data.reviewPrompt.placeId)}/reviews/new?returnTo=${encodeURIComponent(`/ranking/restaurants/session/${data.session.id}`)}`,
-							{ locale }
-						)}
-					>
-						{m.review_this_place({ place: data.reviewPrompt.name })}
-					</Button>
-					<form method="POST" action="?/dismissReviewPrompt" use:enhance>
-						<Button type="submit" variant="quiet">{m.not_now()}</Button>
-					</form>
-				</div>
-			</aside>
-		{/if}
-
-		<div class="cluster">
-			<Button href={localizeHref('/recommendations/restaurants', { locale })}
-				>{m.back_to_map()}</Button
-			>
-			<Button href={localizeHref('/ranking/restaurants', { locale })} variant="secondary"
-				>{m.nav_ranking()}</Button
-			>
-		</div>
-	</section>
 {:else}
 	<StatePanel title={m.ranking_ready()} description={m.phase_five_session_ready()} />
 {/if}

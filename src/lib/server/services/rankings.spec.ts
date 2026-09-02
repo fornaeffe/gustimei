@@ -86,6 +86,69 @@ describe('ranking service rebuild sessions', () => {
 		expect(repository.listVisitedPlaceIds).not.toHaveBeenCalled();
 	});
 
+	it('starts another insertion while visited places remain unplaced', async () => {
+		const repository = {
+			findOpenSession: vi.fn().mockResolvedValue(undefined),
+			listVisitedPlaceIds: vi.fn().mockResolvedValue(['a', 'b', 'c', 'd']),
+			loadCurrentRevision: vi.fn().mockResolvedValue(
+				createRankingRevision({
+					id: 'revision-2',
+					listId: 'list-1',
+					category: 'restaurant',
+					revision: 2,
+					activePlaceIds: ['a', 'b', 'c'],
+					evidence: [
+						oldEvidence,
+						{
+							id: 'comparison-b-c',
+							logicalPair: ['b', 'c'],
+							sequence: 2,
+							leftPlaceId: 'b',
+							rightPlaceId: 'c',
+							outcome: 'left',
+							reason: 'initial-order',
+							active: true
+						}
+					],
+					provenance: 'internal-testing',
+					publishedAt: '2026-08-25T09:00:00.000Z'
+				})
+			),
+			saveSession: vi.fn().mockResolvedValue(undefined)
+		};
+		const service = new RankingService(
+			repository as unknown as RankingRepository,
+			participation(),
+			'development',
+			() => now,
+			() => 'next-insertion-session'
+		);
+
+		const session = await service.startNextUnplacedSession('user-1', 'list-1');
+
+		expect(session?.summary()).toMatchObject({
+			id: 'next-insertion-session',
+			purpose: 'insertion',
+			lifecycle: 'open'
+		});
+		expect(session?.nextComparison()).toEqual(expect.objectContaining({ rightPlaceId: 'd' }));
+	});
+
+	it('does not start another session once every visited place is ranked', async () => {
+		const repository = {
+			findOpenSession: vi.fn().mockResolvedValue(undefined),
+			listVisitedPlaceIds: vi.fn().mockResolvedValue(['a', 'b']),
+			loadCurrentRevision: vi.fn().mockResolvedValue(baseRevision)
+		};
+		const service = new RankingService(
+			repository as unknown as RankingRepository,
+			participation(),
+			'development'
+		);
+
+		expect(await service.startNextUnplacedSession('user-1', 'list-1')).toBeUndefined();
+	});
+
 	it('captures the current revision when starting a full-list re-sort', async () => {
 		const repository = {
 			findOpenSession: vi.fn().mockResolvedValue(undefined),

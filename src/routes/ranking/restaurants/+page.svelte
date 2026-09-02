@@ -97,6 +97,28 @@
 		</ol>
 	{/if}
 
+	{#if data.reviewPrompt && form?.section !== 'reviewPrompt'}
+		<aside class="surface-card review-prompt" aria-labelledby="review-prompt-title">
+			<div>
+				<h2 id="review-prompt-title">{m.optional_review_prompt()}</h2>
+				<p>{m.optional_review_prompt_body()}</p>
+			</div>
+			<div class="cluster">
+				<Button
+					href={localizeHref(
+						`/places/${encodeURIComponent(data.reviewPrompt.placeId)}/reviews/new?returnTo=${encodeURIComponent('/ranking/restaurants')}`,
+						{ locale }
+					)}
+				>
+					{m.review_this_place({ place: data.reviewPrompt.name })}
+				</Button>
+				<form method="POST" action="?/dismissReviewPrompt" use:enhance>
+					<Button type="submit" variant="quiet">{m.not_now()}</Button>
+				</form>
+			</div>
+		</aside>
+	{/if}
+
 	{#if data.unplaced.length > 0 || data.unresolved.length > 0}
 		<section class="surface-card unresolved-ranking" aria-labelledby="unplaced-title">
 			<h2 id="unplaced-title">{m.not_placed_yet()}</h2>

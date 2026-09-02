@@ -1117,20 +1117,6 @@ input[type='radio'] {
 .ranking-session__leave {
 	width: max-content;
 }
-.ranking-completion-summary {
-	display: grid;
-	gap: var(--space-2);
-	margin: 0;
-	padding: 0;
-	list-style: none;
-}
-.ranking-completion-summary li {
-	display: grid;
-	grid-template-columns: 2rem 1fr;
-	gap: var(--space-3);
-	border-bottom: 1px solid var(--border);
-	padding: var(--space-3) 0;
-}
 .nearby-recommendations > summary {
 	display: flex;
 	align-items: center;
@@ -1218,8 +1204,7 @@ input[type='radio'] {
 	color: var(--text-secondary);
 	font-size: 0.84rem;
 }
-.ranking-session,
-.completed-ranking {
+.ranking-session {
 	width: min(100%, 68rem);
 	margin-inline: auto;
 }
@@ -1230,8 +1215,7 @@ input[type='radio'] {
 	gap: var(--space-6);
 	margin-bottom: var(--space-6);
 }
-.ranking-session__header h1,
-.completed-ranking > header h1 {
+.ranking-session__header h1 {
 	font-size: clamp(2.25rem, 6vw, 4.8rem);
 	margin-bottom: var(--space-3);
 }
@@ -1351,11 +1335,6 @@ input[type='radio'] {
 	color: var(--text-secondary);
 	text-align: center;
 	font-size: 0.82rem;
-}
-.completed-ranking > header .eyebrow {
-	display: flex;
-	align-items: center;
-	gap: 0.4rem;
 }
 .ranking-tiers {
 	display: grid;

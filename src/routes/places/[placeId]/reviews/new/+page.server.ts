@@ -28,7 +28,10 @@ async function requireVisited(
 
 function safeReturnTo(value: string | null) {
 	if (!value) return undefined;
-	return /^\/ranking\/restaurants\/session\/[A-Za-z0-9_-]+$/.test(value) ? value : undefined;
+	return value === '/ranking/restaurants' ||
+		/^\/ranking\/restaurants\/session\/[A-Za-z0-9_-]+$/.test(value)
+		? value
+		: undefined;
 }
 
 export const load: PageServerLoad = async (event) => {

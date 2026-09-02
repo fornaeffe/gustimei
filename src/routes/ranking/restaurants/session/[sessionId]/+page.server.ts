@@ -1,10 +1,8 @@
 import { fail, isRedirect, redirect } from '@sveltejs/kit';
-import { and, eq, inArray } from 'drizzle-orm';
 import type { ComparisonOutcome } from '$lib/domain/ranking/contracts';
-import { deriveRankingDisplay, deriveRankingProjection } from '$lib/domain/ranking/revision';
+import { deriveRankingProjection } from '$lib/domain/ranking/revision';
 import { runtimeConfig } from '$lib/server/config';
 import { db } from '$lib/server/db';
-import { placeReview } from '$lib/server/db/schema';
 import { ConflictError, DomainValidationError, NotFoundError } from '$lib/server/domain/errors';
 import { requireUser } from '$lib/server/http/auth-guard';
 import { localizedPath } from '$lib/server/http/locale';
@@ -44,77 +42,24 @@ function outcomeField(form: FormData) {
 export const load: PageServerLoad = async (event) => {
 	const user = requireUser(event);
 	const session = await rankingRepository.loadSession(user.id, event.params.sessionId);
+	if (session.lifecycle === 'completed') {
+		const revision = await rankingRepository.loadCurrentRevision(user.id, session.listId);
+		const publishedEvidenceIds = new Set([
+			...(revision?.activeEvidence.map((item) => item.id) ?? []),
+			...(revision?.excludedEvidence.map((item) => item.evidence.id) ?? [])
+		]);
+		if (session.evidence.every((item) => publishedEvidenceIds.has(item.id))) {
+			redirect(303, localizedPath('/ranking/restaurants'));
+		}
+		return {
+			session: session.summary(),
+			comparison: undefined,
+			latestEvidenceId: undefined
+		};
+	}
 	const places = await rankings.listVisitedPlaces(user.id, 'restaurant');
 	const placeById = new Map(places.map((place) => [place.placeId, place]));
 	const comparison = session.nextComparison();
-	const currentRevision = await rankingRepository.loadCurrentRevision(user.id, session.listId);
-	const sessionEvidenceIds = new Set(session.evidence.map((item) => item.id));
-	const revisionEvidenceIds = new Set([
-		...(currentRevision?.activeEvidence.map((item) => item.id) ?? []),
-		...(currentRevision?.excludedEvidence.map((item) => item.evidence.id) ?? [])
-	]);
-	const revision =
-		currentRevision && [...sessionEvidenceIds].every((id) => revisionEvidenceIds.has(id))
-			? currentRevision
-			: undefined;
-	const display = revision ? deriveRankingDisplay(revision) : undefined;
-	const ranking = revision
-		? {
-				tiers: display!.orderedTiers.map((tier, index) => ({
-					position: index + 1,
-					places: tier.placeIds.flatMap((placeId) => {
-						const place = placeById.get(placeId);
-						return place ? [place] : [];
-					})
-				}))
-			}
-		: undefined;
-
-	let reviewPrompt;
-	const promptShownAt = Number(event.cookies.get('ranking_review_prompt_shown_at') ?? 0);
-	const promptDismissedAt = Number(event.cookies.get('ranking_review_prompt_dismissed_at') ?? 0);
-	const now = Date.now();
-	const showCapElapsed =
-		!Number.isFinite(promptShownAt) || now - promptShownAt >= 30 * 24 * 60 * 60 * 1_000;
-	const dismissalCapElapsed =
-		!Number.isFinite(promptDismissedAt) || now - promptDismissedAt >= 90 * 24 * 60 * 60 * 1_000;
-	if (
-		revision &&
-		user.emailVerified &&
-		['initial-order', 'insertion'].includes(session.purpose) &&
-		showCapElapsed &&
-		dismissalCapElapsed
-	) {
-		const reviewed = await db
-			.select({ placeId: placeReview.placeId })
-			.from(placeReview)
-			.where(
-				and(
-					eq(placeReview.authorId, user.id),
-					inArray(placeReview.placeId, [...revision.activePlaceIds])
-				)
-			);
-		const reviewedIds = new Set(reviewed.map((item) => item.placeId));
-		reviewPrompt = places.find(
-			(place) => revision.activePlaceIds.includes(place.placeId) && !reviewedIds.has(place.placeId)
-		);
-		if (reviewPrompt) {
-			const capture = await rankings.captureContext(user.id);
-			await analytics.record({
-				userId: user.id,
-				cohortAssignmentId: capture.cohortAssignmentId,
-				name: 'review-prompt-shown',
-				category: 'restaurant'
-			});
-			event.cookies.set('ranking_review_prompt_shown_at', String(now), {
-				path: '/',
-				httpOnly: true,
-				sameSite: 'lax',
-				secure: runtimeConfig.appEnvironment === 'production',
-				maxAge: 60 * 60 * 24 * 30
-			});
-		}
-	}
 
 	return {
 		session: session.summary(),
@@ -125,9 +70,7 @@ export const load: PageServerLoad = async (event) => {
 					right: placeById.get(comparison.rightPlaceId)
 				}
 			: undefined,
-		latestEvidenceId: session.latestActiveEvidence()?.id,
-		ranking,
-		reviewPrompt
+		latestEvidenceId: session.latestActiveEvidence()?.id
 	};
 };
 
@@ -163,6 +106,10 @@ export const actions = {
 					event.params.sessionId,
 					'restaurant'
 				);
+				const nextSession = await rankings.startNextUnplacedSession(user.id, result.session.listId);
+				if (nextSession) {
+					redirect(303, localizedPath(`/ranking/restaurants/session/${nextSession.id}`));
+				}
 				if (result.captured) {
 					const capture = await rankings.captureContext(user.id);
 					const projection = deriveRankingProjection(revision);
@@ -177,6 +124,7 @@ export const actions = {
 						}
 					});
 				}
+				redirect(303, `${localizedPath('/ranking/restaurants')}?completed=1`);
 			}
 			redirect(303, localizedPath(`/ranking/restaurants/session/${event.params.sessionId}`));
 		} catch (error) {
@@ -212,29 +160,21 @@ export const actions = {
 	publish: async (event) => {
 		const user = requireUser(event);
 		try {
-			await rankings.publishCompletedSession(user.id, event.params.sessionId, 'restaurant');
-			redirect(303, localizedPath(`/ranking/restaurants/session/${event.params.sessionId}`));
+			const revision = await rankings.publishCompletedSession(
+				user.id,
+				event.params.sessionId,
+				'restaurant'
+			);
+			const nextSession = await rankings.startNextUnplacedSession(user.id, revision.listId);
+			redirect(
+				303,
+				nextSession
+					? localizedPath(`/ranking/restaurants/session/${nextSession.id}`)
+					: localizedPath('/ranking/restaurants')
+			);
 		} catch (error) {
 			if (isRedirect(error)) throw error;
 			return fail(409, { section: 'publish', error: safeError(error) });
 		}
-	},
-	dismissReviewPrompt: async (event) => {
-		const user = requireUser(event);
-		event.cookies.set('ranking_review_prompt_dismissed_at', String(Date.now()), {
-			path: '/',
-			httpOnly: true,
-			sameSite: 'lax',
-			secure: runtimeConfig.appEnvironment === 'production',
-			maxAge: 60 * 60 * 24 * 90
-		});
-		const capture = await rankings.captureContext(user.id);
-		await analytics.record({
-			userId: user.id,
-			cohortAssignmentId: capture.cohortAssignmentId,
-			name: 'review-prompt-dismissed',
-			category: 'restaurant'
-		});
-		return { section: 'reviewPrompt', dismissed: true };
 	}
 } satisfies Actions;

@@ -165,6 +165,18 @@ export class RankingService {
 		throw new DomainValidationError('Your ranking is already up to date');
 	}
 
+	async startNextUnplacedSession(ownerId: string, listId: string) {
+		const existing = await this.rankings.findOpenSession(ownerId, listId, this.clock());
+		if (existing) return existing;
+		const [placeIds, revision] = await Promise.all([
+			this.rankings.listVisitedPlaceIds(ownerId, listId),
+			this.rankings.loadCurrentRevision(ownerId, listId)
+		]);
+		const nextUnplaced = placeIds.find((placeId) => !revision?.activePlaceIds.includes(placeId));
+		if (!nextUnplaced) return undefined;
+		return this.startInsertionSession(ownerId, listId, nextUnplaced);
+	}
+
 	async startRepairSession(ownerId: string, listId: string) {
 		const now = this.clock();
 		const existing = await this.rankings.findOpenSession(ownerId, listId, now);
