@@ -1350,7 +1350,7 @@ input[type='radio'] {
 }
 .ranking-tier {
 	display: grid;
-	grid-template-columns: minmax(7rem, 0.25fr) minmax(0, 1fr);
+	grid-template-columns: minmax(0, 1fr);
 	gap: var(--space-5);
 }
 .ranking-tier__position {
@@ -1518,8 +1518,7 @@ input[type='radio'] {
 	}
 	.ranking-session__header,
 	.comparison-arena,
-	.comparison-controls,
-	.ranking-tier {
+	.comparison-controls {
 		grid-template-columns: 1fr;
 	}
 	.ranked-place {

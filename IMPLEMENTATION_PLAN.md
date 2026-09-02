@@ -1429,6 +1429,10 @@ development, first check for concurrent Vite processes bound separately to IPv4 
   production build pass. ESLint/Prettier pass, and all 3 production-build Playwright checks pass in
   English and Italian. Authenticated desktop/mobile visual usability remains a Phase 9 human check.
 
+**UI follow-up 2026-09-02:** Personal-ranking tier cards now use one vertical column at every
+viewport width, so the position label precedes every restaurant in the tier and tied restaurants no
+longer flow around the label in a two-column grid.
+
 **Provisional human checks for Phase 9:** confirm mobile marker density and touch target comfort,
 map-versus-list comprehension, initial whole-candidate-universe framing, search-result wording, dark
 mode tile contrast, and performance against the full local Italy candidate universe. Replace the
