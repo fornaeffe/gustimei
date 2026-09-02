@@ -1375,6 +1375,10 @@ development, first check for concurrent Vite processes bound separately to IPv4 
   visited marking, review entry, and private-note access. The restaurant name is its place-detail link;
   there is no separate preview card or redundant details link. Removed the non-essential Discover
   heading card so the location search and map retain the available visual space.
+- Corrected the recommendation fallback gate after local diagnostics found an artifact with three
+  eligible contributors and no place meeting the four-contributor support threshold: non-empty but
+  wholly unsupported artifacts now show the insufficient-evidence state instead of claiming a
+  community-based order. The accepted provisional support threshold remains unchanged.
 - Visited marking no longer redirects into ranking from Discover or restaurant details. The UI updates
   immediately after a successful enhanced action and only exposes ranking work once it is useful.
   A dismissible invitation and quiet navigation badge distinguish pending work from an error.

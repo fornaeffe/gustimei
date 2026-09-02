@@ -139,6 +139,25 @@ describe('versioned recommendation artifacts', () => {
 		expect(result.scores.every((item) => item.supported && item.visited)).toBe(true);
 	});
 
+	it('does not claim a community order when no place crosses the support threshold', () => {
+		const underSupported = artifact(
+			Array.from({ length: 3 }, (_, userIndex) =>
+				preference(`community-${userIndex}`, 'a', 'b', userIndex)
+			)
+		);
+		const supported = artifact(
+			Array.from({ length: 4 }, (_, userIndex) =>
+				preference(`community-${userIndex}`, 'a', 'b', userIndex)
+			)
+		);
+
+		expect(underSupported.observationCount).toBeGreaterThan(0);
+		expect(deriveServingGate('current-user', undefined, underSupported).mode).toBe(
+			'insufficient-evidence'
+		);
+		expect(deriveServingGate('current-user', undefined, supported).mode).toBe('community-prior');
+	});
+
 	it('does not let review-shaped data alter artifacts or scores', () => {
 		const built = artifact([preference('u1', 'a', 'b', 1)]);
 		const snapshot = (value: RecommendationArtifact) => ({

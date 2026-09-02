@@ -19,6 +19,9 @@ export function deriveServingGate(
 		(placeId) =>
 			(artifact.placeSupport[placeId] ?? 0) >= PERSONALIZATION_GATE.minimumCommunitySupport
 	).length;
+	const hasSupportedEvidence = Object.values(artifact.placeSupport).some(
+		(support) => support >= PERSONALIZATION_GATE.minimumCommunitySupport
+	);
 	const eligible =
 		places.length >= PERSONALIZATION_GATE.rankedPlaces &&
 		(ranking?.tiers.length ?? 0) >= PERSONALIZATION_GATE.resolvedTiers &&
@@ -26,7 +29,7 @@ export function deriveServingGate(
 	return {
 		mode: eligible
 			? 'personalized'
-			: artifact.observationCount > 0
+			: hasSupportedEvidence
 				? 'community-prior'
 				: 'insufficient-evidence',
 		rankedPlaces: places.length,
