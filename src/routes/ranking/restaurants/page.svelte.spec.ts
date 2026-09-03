@@ -53,6 +53,35 @@ describe('manual ranking placement interactions', () => {
 		expect(document.querySelector('.ranking-picked-layer')).not.toBeNull();
 	});
 
+	it('places from the whole picked card while hiding its cloned reposition controls', async () => {
+		const screen = await render(RankingPage, { data, form: null });
+		let submitted: Record<string, string> | undefined;
+		const intercept = (event: SubmitEvent) => {
+			const form = event.target;
+			if (!(form instanceof HTMLFormElement) || !form.action.endsWith('?/place')) return;
+			event.preventDefault();
+			submitted = Object.fromEntries(
+				[...new FormData(form).entries()].map(([key, value]) => [key, String(value)])
+			);
+		};
+		document.addEventListener('submit', intercept, { capture: true });
+
+		try {
+			await screen.getByRole('button', { name: m.ranking_pick_up({ place: 'Beta' }) }).click();
+			const pickedCard = document.querySelector<HTMLElement>('.ranking-picked-layer')!;
+			const clonedActions = pickedCard.querySelector<HTMLElement>('.ranked-place__actions')!;
+			expect(clonedActions.hidden).toBe(true);
+
+			pickedCard.querySelector<HTMLButtonElement>('.ranking-picked-layer__drop-surface')!.click();
+			await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
+			expect(submitted?.placeId).toBe('restaurant-2');
+			expect(submitted?.destinationType).toMatch(/^(boundary|tie)$/);
+		} finally {
+			document.removeEventListener('submit', intercept, { capture: true });
+		}
+	});
+
 	it('submits a native handle drag through the stable list-level drop surface', async () => {
 		const screen = await render(RankingPage, { data, form: null });
 		const source = screen.getByRole('button', { name: m.ranking_pick_up({ place: 'Alpha' }) });

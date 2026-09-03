@@ -212,7 +212,7 @@
 	"my_ranking_title": "La mia classifica ristoranti",
 	"my_ranking_intro": "Il tuo ordine privato dei ristoranti visitati. Consigli e recensioni pubbliche restano separati.",
 	"ranking_adjustment_help": "Su o giù modifica una sola relazione locale: un ristorante senza pari merito entra come equivalente nel livello adiacente; un ristorante in un livello a pari merito si sposta appena sopra o sotto gli altri di quel livello. I controlli non sono disponibili dove posizioni irrisolte rendono ambigua la destinazione. Riclassifica avvia nuovi confronti solo per quel ristorante.",
-	"ranking_manual_move_help": "Trascina la maniglia e rilasciala sulla destinazione evidenziata. In alternativa, attiva una volta la maniglia, scorri finché un confine o una posizione a pari merito si evidenzia all'altezza del ristorante sollevato, quindi attiva di nuovo la sua maniglia per posizionarlo. Le frecce, Home e Fine scelgono confini netti; Esc annulla. Lo spostamento è disponibile solo per una classifica completamente risolta.",
+	"ranking_manual_move_help": "Trascina la maniglia e rilasciala sulla destinazione evidenziata. In alternativa, attiva una volta la maniglia, scorri finché un confine o una posizione a pari merito si evidenzia all'altezza del ristorante sollevato, quindi attiva la maniglia o un punto qualsiasi della scheda per posizionarlo. Le frecce, Home e Fine scelgono confini netti; Esc annulla. Lo spostamento è disponibile solo per una classifica completamente risolta.",
 	"ranking_adjustment_success": "La modifica alla classifica è stata salvata.",
 	"ranking_pick_up": "Sposta {place}",
 	"ranking_move_picked_up": "Hai selezionato {place}. Scegli un confine o un livello a pari merito, poi conferma lo spostamento.",

@@ -72,6 +72,9 @@
 			clone
 				.querySelectorAll<HTMLElement>('[id]')
 				.forEach((element) => element.removeAttribute('id'));
+			clone
+				.querySelectorAll<HTMLElement>('.ranked-place__actions')
+				.forEach((element) => (element.hidden = true));
 			node.replaceChildren(clone);
 		}
 		return () => node.replaceChildren();
@@ -466,6 +469,7 @@
 			{#key pickedPlace.placeId}
 				<aside
 					class="ranking-picked-layer"
+					class:ranking-picked-layer--droppable={placementTarget && !submittingMove}
 					style={`top:${pickupFrame.top}px;left:${pickupFrame.left}px;width:${pickupFrame.width}px;min-height:${pickupFrame.height}px;--ranking-pickup-shift:${pickupFrame.shift}px`}
 					aria-label={m.ranking_move_dialog()}
 				>
@@ -475,6 +479,13 @@
 						inert
 						{@attach registerPickedClone}
 					></div>
+					<button
+						class="ranking-picked-layer__drop-surface"
+						type="button"
+						disabled={!placementTarget || submittingMove}
+						aria-label={m.ranking_place_here({ place: pickedPlace.name })}
+						onclick={() => void commitMove()}
+					></button>
 					<button
 						class="ranking-move-handle icon-button ranking-picked-layer__handle"
 						type="button"

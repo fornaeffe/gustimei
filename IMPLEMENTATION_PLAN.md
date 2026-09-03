@@ -1456,6 +1456,13 @@ native drag-event submission paths. Verification passed the official Svelte auto
 ESLint, zero-warning `svelte-check`, all 130 unit/component tests, the production build, and all 3
 production-server end-to-end tests.
 
+**Manual-placement pickup refinement 2026-09-03:** The whole picked-up card now confirms the current
+strict or equality target on click/tap, while the cancel control stops propagation and remains the
+only non-drop area. The cloned adjacent up/down controls are hidden until the move ends, avoiding a
+misleading second repositioning affordance; the focused rendered-browser test covers both behaviors.
+Verification passed the official Svelte autofixer, Prettier, ESLint, zero-warning `svelte-check`, all
+131 unit/component tests, and the production build.
+
 **Provisional human checks for Phase 9:** confirm mobile marker density and touch target comfort,
 map-versus-list comprehension, initial whole-candidate-universe framing, search-result wording, dark
 mode tile contrast, and performance against the full local Italy candidate universe. Replace the

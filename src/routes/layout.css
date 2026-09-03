@@ -1431,9 +1431,26 @@ input[type='radio'] {
 .ranking-picked-layer__clone {
 	pointer-events: none;
 }
+
+.ranking-picked-layer__clone .ranked-place__actions {
+	visibility: hidden;
+}
+
+.ranking-picked-layer--droppable {
+	cursor: pointer;
+}
+.ranking-picked-layer__drop-surface {
+	position: absolute;
+	z-index: 1;
+	inset: 0;
+	border: 0;
+	background: transparent;
+	cursor: pointer;
+}
 .ranking-picked-layer__handle,
 .ranking-picked-layer__cancel {
 	position: absolute;
+	z-index: 2;
 	top: 0;
 }
 .ranking-picked-layer__handle {

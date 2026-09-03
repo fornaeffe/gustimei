@@ -212,7 +212,7 @@
 	"my_ranking_title": "My restaurant ranking",
 	"my_ranking_intro": "Your private order of visited restaurants. Recommendations and public reviews remain separate.",
 	"ranking_adjustment_help": "Up or down changes one local relationship: a restaurant on its own joins the adjacent tier as equal; a restaurant in a tied tier moves just above or below the rest of that tier. Controls stay unavailable where unresolved ranking work makes the destination ambiguous. Re-rank starts fresh comparisons for only that restaurant.",
-	"ranking_manual_move_help": "Drag the move handle and release at the highlighted target. Alternatively, activate the handle once, scroll until a boundary or equality target highlights at the picked-up restaurant's height, then activate its handle again to place it. Arrow keys, Home and End choose strict boundaries; Escape cancels. Moving is available only for a fully resolved ranking.",
+	"ranking_manual_move_help": "Drag the move handle and release at the highlighted target. Alternatively, activate the handle once, scroll until a boundary or equality target highlights at the picked-up restaurant's height, then activate its handle or anywhere on its card to place it. Arrow keys, Home and End choose strict boundaries; Escape cancels. Moving is available only for a fully resolved ranking.",
 	"ranking_adjustment_success": "Your ranking adjustment was saved.",
 	"ranking_pick_up": "Move {place}",
 	"ranking_move_picked_up": "Picked up {place}. Choose a boundary or an equal tier, then confirm the move.",

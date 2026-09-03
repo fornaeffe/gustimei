@@ -71,9 +71,10 @@ The ranking page provides all of the following over the same server action:
 - click/tap pick-up mode with a fixed, non-interactive clone of the ranked-place card. It begins at
   the source card's viewport position, animates slightly right, and leaves the original space as an
   equal-sized placeholder, so pick-up does not move the page or alter list height. Normal scrolling
-  highlights the strict-boundary or equality target nearest the picked card's fixed height. Activating
-  the picked card's handle again confirms either target; its adjacent cancel control ends only the
-  pending move;
+  highlights the strict-boundary or equality target nearest the picked card's fixed height. Clicking
+  or tapping anywhere on the picked card, including its handle, confirms either target; its adjacent
+  cancel control is the sole exception and ends only the pending move. Other cloned card actions are
+  hidden while placement is pending;
 - keyboard pick-up with Arrow Up/Down and Home/End boundary navigation, Enter/Space confirmation,
   and Escape cancellation;
 - retained adjacent move controls and single-place comparison-based reranking.

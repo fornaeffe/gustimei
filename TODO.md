@@ -12,3 +12,4 @@
   - [x] Render the picked-up restaurant as an otherwise identical but non-interactive ranked-place card, initially aligned with its source and animated slightly right into its picked-up position; leave only its move handle active.
   - [x] Select the drop target at the picked-up card's height rather than the viewport center.
   - [x] Consider both between-tier and into-tier targets when selecting by height, keep non-selected targets at zero height, and use one click on the picked-up handle to place into either target type.
+  - [x] Let a click or tap anywhere on the picked-up card confirm placement, except for its cancel control, and hide the cloned up/down actions while placement is pending.
