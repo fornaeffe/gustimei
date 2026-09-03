@@ -1437,6 +1437,25 @@ development, first check for concurrent Vite processes bound separately to IPv4 
 viewport width, so the position label precedes every restaurant in the tier and tied restaurants no
 longer flow around the label in a two-column grid.
 
+**Manual-placement UX follow-up 2026-09-02:** Native press-drag-release now uses dedicated drag state
+and no longer activates click/tap pick-up mode when pointer movement starts a browser drag. Simple
+handle activation still enters the accessible click/tap or keyboard flow. The remaining post-drop
+state and picked-up-card visual refinements are tracked explicitly in `TODO.md` and are not part of
+this correction. Verification passed the official Svelte autofixer, zero-warning `svelte-check`,
+Prettier, ESLint, all 125 unit tests, and the production build.
+
+**Manual-placement UX completion 2026-09-03:** Replaced conditional, layout-shifting native drop
+controls with stable list-level pointer geometry and permanent zero-layout target anchors. Click/tap
+pick-up now renders an inert fixed clone at the source card's original height, animates it slightly
+right, keeps the source as an equal-sized placeholder, selects both strict and equality targets at
+that fixed height while the list scrolls, and confirms either through one further handle activation.
+Cancellation lives on the picked card. Successful enhanced submission clears every move/submission
+state before refreshing, dismissing the picked UI and leaving subsequent handles responsive. Focused
+geometry and rendered-browser interaction tests cover the stable-height, cancellation/re-entry, and
+native drag-event submission paths. Verification passed the official Svelte autofixer, Prettier,
+ESLint, zero-warning `svelte-check`, all 130 unit/component tests, the production build, and all 3
+production-server end-to-end tests.
+
 **Provisional human checks for Phase 9:** confirm mobile marker density and touch target comfort,
 map-versus-list comprehension, initial whole-candidate-universe framing, search-result wording, dark
 mode tile contrast, and performance against the full local Italy candidate universe. Replace the

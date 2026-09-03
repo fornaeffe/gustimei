@@ -65,9 +65,15 @@ tier is a no-op and is unavailable.
 
 The ranking page provides all of the following over the same server action:
 
-- conventional dragging from a dedicated handle to an insertion boundary;
-- click/tap pick-up mode with a fixed viewport control, normal scrolling, highlighted nearest
-  boundary, explicit confirmation, and cancellation;
+- conventional native dragging from a dedicated handle over a stable list-level drop surface. The
+  list computes the nearest strict-boundary or equality target from pointer height without inserting
+  or resizing layout content during the drag;
+- click/tap pick-up mode with a fixed, non-interactive clone of the ranked-place card. It begins at
+  the source card's viewport position, animates slightly right, and leaves the original space as an
+  equal-sized placeholder, so pick-up does not move the page or alter list height. Normal scrolling
+  highlights the strict-boundary or equality target nearest the picked card's fixed height. Activating
+  the picked card's handle again confirms either target; its adjacent cancel control ends only the
+  pending move;
 - keyboard pick-up with Arrow Up/Down and Home/End boundary navigation, Enter/Space confirmation,
   and Escape cancellation;
 - retained adjacent move controls and single-place comparison-based reranking.
@@ -76,6 +82,11 @@ The click/tap mode is the non-dragging single-pointer alternative required by
 [WCAG 2.2 Success Criterion 2.5.7](https://www.w3.org/WAI/WCAG22/Understanding/dragging-movements.html).
 Native list and button semantics are retained rather than wrapping restaurant-card controls in a
 `listbox`.
+
+Placement targets are permanent zero-layout geometry anchors. Only the selected target becomes
+visible, as an absolute overlay that does not change document flow. Successful enhanced submission
+clears all picked/dragged/submitting state before refreshing the ranking, so the overlay disappears
+and later handle activations remain responsive.
 
 ### Recommendation input
 

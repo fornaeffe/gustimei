@@ -9,6 +9,11 @@
 	import { tick } from 'svelte';
 	import PersonalComment from '$lib/components/comments/PersonalComment.svelte';
 	import PersonalCommentField from '$lib/components/comments/PersonalCommentField.svelte';
+	import {
+		isPlacementTargetAllowed,
+		nearestPlacementTarget,
+		type PlacementTarget
+	} from '$lib/components/ranking/manual-placement';
 	import RankingPlaceActions from '$lib/components/ranking/RankingPlaceActions.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Icon from '$lib/components/ui/Icon.svelte';
@@ -28,11 +33,25 @@
 		sourceTierIndex: number;
 		sourceTierSize: number;
 	};
-	type PlacementTarget = { type: 'boundary' | 'tie'; index: number };
+	type PickupFrame = {
+		top: number;
+		left: number;
+		width: number;
+		height: number;
+		anchorY: number;
+		shift: number;
+	};
 
 	let pickedPlace = $state<PickedPlace>();
+	let draggedPlace = $state<PickedPlace>();
+	let suppressHandleClickUntil = 0;
+	let movingPlace = $derived(draggedPlace ?? pickedPlace);
 	let placementTarget = $state<PlacementTarget>();
 	let placementForm = $state<HTMLFormElement>();
+	let rankingList = $state<HTMLOListElement>();
+	let pickupFrame = $state<PickupFrame>();
+	let pickedClone = $state.raw<HTMLElement>();
+	let pickedSourceHandle = $state<HTMLButtonElement>();
 	let moveStatus = $state('');
 	let submittingMove = $state(false);
 	function registerPlacementForm(node: HTMLFormElement) {
@@ -41,54 +60,103 @@
 			if (placementForm === node) placementForm = undefined;
 		};
 	}
+	function registerRankingList(node: HTMLOListElement) {
+		rankingList = node;
+		return () => {
+			if (rankingList === node) rankingList = undefined;
+		};
+	}
+	function registerPickedClone(node: HTMLElement) {
+		const clone = pickedClone?.cloneNode(true);
+		if (clone instanceof HTMLElement) {
+			clone
+				.querySelectorAll<HTMLElement>('[id]')
+				.forEach((element) => element.removeAttribute('id'));
+			node.replaceChildren(clone);
+		}
+		return () => node.replaceChildren();
+	}
+	function registerPickedDropHandle(node: HTMLButtonElement) {
+		void tick().then(() => node.focus({ preventScroll: true }));
+	}
 
 	function boundaryAllowed(index: number) {
-		if (!pickedPlace) return false;
-		return !(
-			pickedPlace.sourceTierSize === 1 &&
-			(index === pickedPlace.sourceTierIndex || index === pickedPlace.sourceTierIndex + 1)
+		return Boolean(
+			movingPlace && isPlacementTargetAllowed({ type: 'boundary', index }, movingPlace)
 		);
 	}
 
 	function tieAllowed(index: number) {
-		return Boolean(pickedPlace && index !== pickedPlace.sourceTierIndex);
+		return Boolean(movingPlace && isPlacementTargetAllowed({ type: 'tie', index }, movingPlace));
 	}
 
-	function beginMove(place: PickedPlace) {
+	function tierGeometry() {
+		if (!rankingList) return [];
+		return [...rankingList.querySelectorAll<HTMLElement>('[data-ranking-tier-index]')].map(
+			(element) => {
+				const bounds = element.getBoundingClientRect();
+				return {
+					index: Number(element.dataset.rankingTierIndex),
+					top: bounds.top,
+					bottom: bounds.bottom
+				};
+			}
+		);
+	}
+
+	function updatePlacementTarget(anchorY: number) {
+		if (!movingPlace || submittingMove) return;
+		placementTarget = nearestPlacementTarget(tierGeometry(), anchorY, movingPlace);
+		if (placementTarget) {
+			moveStatus =
+				placementTarget.type === 'tie'
+					? m.ranking_move_equal_target({
+							position: data.tiers[placementTarget.index]?.position ?? placementTarget.index + 1
+						})
+					: m.ranking_move_target({ position: placementTarget.index + 1 });
+		}
+	}
+
+	function beginMove(place: PickedPlace, sourceHandle: HTMLButtonElement) {
 		if (submittingMove) return;
+		const source = sourceHandle.closest<HTMLElement>('.ranked-place');
+		if (!source) return;
+		const bounds = source.getBoundingClientRect();
+		const availableShift = Math.max(0, window.innerWidth - bounds.right - 8);
+		pickedClone = source.cloneNode(true) as HTMLElement;
+		pickedSourceHandle = sourceHandle;
+		pickupFrame = {
+			top: bounds.top,
+			left: bounds.left,
+			width: bounds.width,
+			height: bounds.height,
+			anchorY: bounds.top + bounds.height / 2,
+			shift: Math.min(24, availableShift)
+		};
 		pickedPlace = place;
 		placementTarget = undefined;
 		moveStatus = m.ranking_move_picked_up({ place: place.name });
-		void tick().then(updateNearestBoundary);
+		updatePlacementTarget(pickupFrame.anchorY);
 	}
 
 	function cancelMove() {
 		const name = pickedPlace?.name;
+		const sourceHandle = pickedSourceHandle;
 		pickedPlace = undefined;
 		placementTarget = undefined;
+		pickupFrame = undefined;
+		pickedClone = undefined;
+		pickedSourceHandle = undefined;
 		if (name) moveStatus = m.ranking_move_cancelled({ place: name });
+		void tick().then(() => sourceHandle?.focus({ preventScroll: true }));
 	}
 
-	function updateNearestBoundary() {
-		if (!pickedPlace || submittingMove) return;
-		const candidates = [...document.querySelectorAll<HTMLElement>('[data-placement-boundary]')]
-			.map((element) => ({
-				element,
-				index: Number(element.dataset.placementBoundary)
-			}))
-			.filter((candidate) => boundaryAllowed(candidate.index));
-		if (candidates.length === 0) return;
-		const center = window.innerHeight / 2;
-		const nearest = candidates.reduce((best, candidate) => {
-			const distance = Math.abs(candidate.element.getBoundingClientRect().top - center);
-			const bestDistance = Math.abs(best.element.getBoundingClientRect().top - center);
-			return distance < bestDistance ? candidate : best;
-		});
-		placementTarget = { type: 'boundary', index: nearest.index };
+	function updatePickedTarget() {
+		if (pickedPlace && pickupFrame) updatePlacementTarget(pickupFrame.anchorY);
 	}
 
-	async function commitMove(target = placementTarget) {
-		if (!pickedPlace || !target || submittingMove) return;
+	async function commitMove(target = placementTarget, place = movingPlace) {
+		if (!place || !target || submittingMove) return;
 		if (target.type === 'boundary' ? !boundaryAllowed(target.index) : !tieAllowed(target.index)) {
 			return;
 		}
@@ -138,21 +206,75 @@
 	}
 
 	function dragStart(event: DragEvent, place: PickedPlace) {
-		beginMove(place);
+		if (submittingMove || draggedPlace) {
+			event.preventDefault();
+			return;
+		}
+		pickedPlace = undefined;
+		pickupFrame = undefined;
+		pickedClone = undefined;
+		pickedSourceHandle = undefined;
+		draggedPlace = place;
+		placementTarget = undefined;
+		suppressHandleClickUntil = Date.now() + 500;
 		if (event.dataTransfer) {
 			event.dataTransfer.effectAllowed = 'move';
 			event.dataTransfer.setData('text/plain', place.placeId);
 		}
 	}
 
+	function dragOver(event: DragEvent) {
+		if (!draggedPlace) return;
+		event.preventDefault();
+		if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+		updatePlacementTarget(event.clientY);
+	}
+
+	function dropDraggedPlace(event: DragEvent) {
+		if (!draggedPlace || !placementTarget) return;
+		event.preventDefault();
+		void commitMove(placementTarget, draggedPlace);
+	}
+
+	function dragEnd() {
+		suppressHandleClickUntil = Date.now() + 500;
+		if (submittingMove) return;
+		draggedPlace = undefined;
+		placementTarget = undefined;
+	}
+
+	function handleHandleClick(event: MouseEvent, place: PickedPlace) {
+		if (event.detail > 0 && Date.now() <= suppressHandleClickUntil) {
+			event.preventDefault();
+			return;
+		}
+		const handle = event.currentTarget;
+		if (handle instanceof HTMLButtonElement) beginMove(place, handle);
+	}
+
+	function resetMoveState() {
+		pickedPlace = undefined;
+		draggedPlace = undefined;
+		placementTarget = undefined;
+		pickupFrame = undefined;
+		pickedClone = undefined;
+		pickedSourceHandle = undefined;
+		submittingMove = false;
+	}
+
 	const enhancePlacement: SubmitFunction = () => {
 		return async ({ result, update }) => {
 			if (result.type === 'redirect') {
+				resetMoveState();
 				await goto(resolve(result.location as Pathname), {
 					invalidateAll: true,
 					noScroll: true
 				});
 				return;
+			}
+			if (draggedPlace) {
+				draggedPlace = undefined;
+				placementTarget = undefined;
 			}
 			submittingMove = false;
 			await update();
@@ -160,7 +282,11 @@
 	};
 </script>
 
-<svelte:window onkeydown={handleMoveKeydown} onscroll={updateNearestBoundary} />
+<svelte:window
+	onkeydown={handleMoveKeydown}
+	onscroll={updatePickedTarget}
+	onresize={updatePickedTarget}
+/>
 
 <svelte:head><title>{m.my_ranking_title()} — {m.product_name()}</title></svelte:head>
 
@@ -201,35 +327,52 @@
 			{@attach registerPlacementForm}
 			use:enhance={enhancePlacement}
 		>
-			<input type="hidden" name="placeId" value={pickedPlace?.placeId ?? ''} />
+			<input type="hidden" name="placeId" value={movingPlace?.placeId ?? ''} />
 			<input type="hidden" name="revisionId" value={data.revisionId ?? ''} />
 			<input type="hidden" name="destinationType" value={placementTarget?.type ?? ''} />
 			<input type="hidden" name="destinationIndex" value={placementTarget?.index ?? ''} />
 		</form>
 		<p class="sr-only" aria-live="polite">{moveStatus}</p>
-		<ol class="ranking-tiers" class:ranking-tiers--moving={pickedPlace}>
+		<ol
+			class="ranking-tiers"
+			{@attach registerRankingList}
+			ondragover={dragOver}
+			ondrop={dropDraggedPlace}
+		>
 			{#each data.tiers as tier, tierIndex (tier.position)}
-				{#if pickedPlace && boundaryAllowed(tierIndex)}
-					<li class="ranking-drop-boundary">
-						<button
-							type="button"
-							data-placement-boundary={tierIndex}
-							class:ranking-drop-boundary__button--active={placementTarget?.type === 'boundary' &&
-								placementTarget.index === tierIndex}
-							onpointerenter={() => (placementTarget = { type: 'boundary', index: tierIndex })}
-							onfocus={() => (placementTarget = { type: 'boundary', index: tierIndex })}
-							ondragover={(event) => event.preventDefault()}
-							ondrop={(event) => {
-								event.preventDefault();
-								void commitMove({ type: 'boundary', index: tierIndex });
-							}}
-							onclick={() => (placementTarget = { type: 'boundary', index: tierIndex })}
+				<li class="surface-card ranking-tier" data-ranking-tier-index={tierIndex}>
+					<div
+						class="ranking-placement-target ranking-placement-target--boundary-top"
+						class:ranking-placement-target--active={movingPlace &&
+							boundaryAllowed(tierIndex) &&
+							placementTarget?.type === 'boundary' &&
+							placementTarget.index === tierIndex}
+						aria-hidden="true"
+					>
+						{m.ranking_drop_here()}
+					</div>
+					<div
+						class="ranking-placement-target ranking-placement-target--tie"
+						class:ranking-placement-target--active={movingPlace &&
+							tieAllowed(tierIndex) &&
+							placementTarget?.type === 'tie' &&
+							placementTarget.index === tierIndex}
+						aria-hidden="true"
+					>
+						{m.ranking_make_equal_with_tier({ position: tier.position })}
+					</div>
+					{#if tierIndex === data.tiers.length - 1}
+						<div
+							class="ranking-placement-target ranking-placement-target--boundary-bottom"
+							class:ranking-placement-target--active={movingPlace &&
+								boundaryAllowed(data.tiers.length) &&
+								placementTarget?.type === 'boundary' &&
+								placementTarget.index === data.tiers.length}
+							aria-hidden="true"
 						>
 							{m.ranking_drop_here()}
-						</button>
-					</li>
-				{/if}
-				<li class="surface-card ranking-tier">
+						</div>
+					{/if}
 					<span class="ranking-tier__position"
 						>{tier.places.length > 1
 							? m.ranking_tied_position({ position: tier.position })
@@ -238,10 +381,12 @@
 					{#each tier.places as place (place.placeId)}
 						<article
 							class="ranked-place"
-							class:ranked-place--picked={pickedPlace?.placeId === place.placeId}
+							class:ranked-place--source-placeholder={pickedPlace?.placeId === place.placeId}
+							class:ranked-place--dragging={draggedPlace?.placeId === place.placeId}
 						>
 							<button
 								class="ranking-move-handle icon-button"
+								data-ranking-place-id={place.placeId}
 								type="button"
 								draggable={place.canPlaceManually}
 								disabled={!place.canPlaceManually}
@@ -249,8 +394,8 @@
 								aria-label={m.ranking_pick_up({ place: place.name })}
 								aria-describedby="ranking-adjustment-help"
 								title={m.ranking_pick_up({ place: place.name })}
-								onclick={() =>
-									beginMove({
+								onclick={(event) =>
+									handleHandleClick(event, {
 										placeId: place.placeId,
 										name: place.name,
 										sourceTierIndex: place.sourceTierIndex,
@@ -263,6 +408,7 @@
 										sourceTierIndex: place.sourceTierIndex,
 										sourceTierSize: place.sourceTierSize
 									})}
+								ondragend={dragEnd}
 							>
 								<Icon icon={GripVertical} />
 							</button>
@@ -313,66 +459,42 @@
 							</details>
 						</article>
 					{/each}
-					{#if pickedPlace && tieAllowed(tierIndex)}
-						<button
-							class="ranking-tie-target"
-							class:ranking-tie-target--active={placementTarget?.type === 'tie' &&
-								placementTarget.index === tierIndex}
-							type="button"
-							onclick={() => (placementTarget = { type: 'tie', index: tierIndex })}
-							onfocus={() => (placementTarget = { type: 'tie', index: tierIndex })}
-							ondragover={(event) => event.preventDefault()}
-							ondrop={(event) => {
-								event.preventDefault();
-								void commitMove({ type: 'tie', index: tierIndex });
-							}}
-						>
-							{m.ranking_make_equal_with_tier({ position: tier.position })}
-						</button>
-					{/if}
 				</li>
 			{/each}
-			{#if pickedPlace && boundaryAllowed(data.tiers.length)}
-				<li class="ranking-drop-boundary">
-					<button
-						type="button"
-						data-placement-boundary={data.tiers.length}
-						class:ranking-drop-boundary__button--active={placementTarget?.type === 'boundary' &&
-							placementTarget.index === data.tiers.length}
-						onpointerenter={() =>
-							(placementTarget = { type: 'boundary', index: data.tiers.length })}
-						onfocus={() => (placementTarget = { type: 'boundary', index: data.tiers.length })}
-						ondragover={(event) => event.preventDefault()}
-						ondrop={(event) => {
-							event.preventDefault();
-							void commitMove({ type: 'boundary', index: data.tiers.length });
-						}}
-						onclick={() => (placementTarget = { type: 'boundary', index: data.tiers.length })}
-					>
-						{m.ranking_drop_here()}
-					</button>
-				</li>
-			{/if}
 		</ol>
-		{#if pickedPlace}
-			<aside class="surface-card ranking-floating-move" aria-label={m.ranking_move_dialog()}>
-				<button
-					class="ranking-floating-move__handle"
-					type="button"
-					disabled={!placementTarget || submittingMove}
-					onclick={() => void commitMove()}
+		{#if pickedPlace && pickupFrame && pickedClone}
+			{#key pickedPlace.placeId}
+				<aside
+					class="ranking-picked-layer"
+					style={`top:${pickupFrame.top}px;left:${pickupFrame.left}px;width:${pickupFrame.width}px;min-height:${pickupFrame.height}px;--ranking-pickup-shift:${pickupFrame.shift}px`}
+					aria-label={m.ranking_move_dialog()}
 				>
-					<Icon icon={GripVertical} />
-					<span>{m.ranking_place_here({ place: pickedPlace.name })}</span>
-				</button>
-				<button
-					class="icon-button"
-					type="button"
-					aria-label={m.ranking_cancel_move({ place: pickedPlace.name })}
-					title={m.ranking_cancel_move({ place: pickedPlace.name })}
-					onclick={cancelMove}><Icon icon={X} /></button
-				>
-			</aside>
+					<div
+						class="ranking-picked-layer__clone"
+						aria-hidden="true"
+						inert
+						{@attach registerPickedClone}
+					></div>
+					<button
+						class="ranking-move-handle icon-button ranking-picked-layer__handle"
+						type="button"
+						disabled={!placementTarget || submittingMove}
+						aria-label={m.ranking_place_here({ place: pickedPlace.name })}
+						title={m.ranking_place_here({ place: pickedPlace.name })}
+						{@attach registerPickedDropHandle}
+						onclick={() => void commitMove()}
+					>
+						<Icon icon={GripVertical} />
+					</button>
+					<button
+						class="icon-button ranking-picked-layer__cancel"
+						type="button"
+						aria-label={m.ranking_cancel_move({ place: pickedPlace.name })}
+						title={m.ranking_cancel_move({ place: pickedPlace.name })}
+						onclick={cancelMove}><Icon icon={X} /></button
+					>
+				</aside>
+			{/key}
 		{/if}
 	{/if}
 
