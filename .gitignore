@@ -29,3 +29,6 @@ test-results
 /downloaded_data
 /notes
 /.data
+/deploy/*.env
+*.dump
+*.age

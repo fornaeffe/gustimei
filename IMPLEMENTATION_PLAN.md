@@ -1487,6 +1487,35 @@ work through Phase 8.
 - Run a local operational rehearsal with seeded non-sensitive review/case fixtures covering notice acknowledgement, author notification, evidence exchange, human decision, redress, reinstatement, expiry, deletion deadlines, moderator absence/conflict, queue backlog, export/erasure, backup/restore, and failed/retried scheduled jobs. Resolve every blocking product/workflow defect before Phase 9.
 - Complete the restaurant catalogue/licensing review and the local performance, accessibility, security, compliance-matrix, moderation, data-rights, and recommendation-quality gates needed to deploy a private beta.
 
+**Implementation status (2026-09-03):** the Phase 8 repository work is complete; the human and
+external-approval gates remain intentionally open. The restaurant-only category audit, provider
+contracts and fail-closed hosted boundaries, app/operations Docker targets, Caddy/PostgreSQL Compose
+topology, least-privilege database-role bootstrap, liveness/readiness routes, production configuration
+validator, immutable image/deploy/rollback and locked heavy-operation workflows, R2/backup/Better
+Stack contracts, local review-maintenance runner, and rollback/restore runbooks are documented in
+[`docs/phase-8-architecture.md`](docs/phase-8-architecture.md). No hosted service was provisioned or
+called and no hotel product behavior was added. The leaked rebuild CLI branch now rejects non-restaurant
+categories; recommendation and evidence storage fail closed in preview/production until Phase 9 adds
+the approved adapters.
+
+The reusable `FormFeedback` boundary now covers the remaining server-action forms, including auth,
+profile, ranking, recommendation, review-management, review-composition, notice recovery, and place
+actions. Notice rejection now marks the relevant field and exposes a specific safe validation reason;
+invalid evidence reports its type/size/filename or anonymous-contact problem beside the notice action.
+The two corresponding TODOs are complete. The broader typography-scale TODO remains open because it
+requires the cross-device visual decision listed in the human gate rather than an unreviewed global
+restyle.
+
+The canonical `npm run rehearse:phase8` run passed on 2026-09-03: Prettier/ESLint, zero-warning
+`svelte-check`, all 140 unit/component tests, all 31 PostgreSQL integration tests, the deterministic
+review maintenance job, the Phase 1 benchmark, all three production-server Playwright tests in English
+and Italian, an isolated custom-format PostgreSQL dump/restore round trip, and both app and operations
+image builds. Every edited Svelte component also passed the official Svelte autofixer with zero issues.
+The manual tests, hosted-provider drills, budgets, thresholds, owners, research choices, and legal
+approvals that must be completed before Phase 9 implementation are consolidated as an evidence-oriented
+checklist in [`docs/phase-8-readiness-checklist.md`](docs/phase-8-readiness-checklist.md). Until that
+checklist is signed, the Phase 8 technical implementation is ready but the Phase 9 start gate is not.
+
 **Exit:** the restaurant product is functionally complete against local/test providers and ready for the Phase 9 infrastructure integrations. Its category and provider boundaries can support a separately designed hotel phase later, but no hotel-specific beta feature has been added. The Compose/Caddy topology, PostgreSQL isolation model, GitHub Actions workflows, R2 storage/backup contracts, Better Stack monitoring, runbooks, and rollback plan are documented and locally rehearsed.
 
 **Open questions to answer before Phase 9:**

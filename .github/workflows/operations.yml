@@ -1,0 +1,51 @@
+name: Heavy restaurant operation
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        type: choice
+        options:
+          - catalogue-import-restaurant
+          - recommendation-rebuild-restaurant
+          - review-maintenance
+          - database-backup
+        required: true
+      idempotency_key:
+        description: Unique immutable operation key approved by the operator
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: restaurant-operation-${{ inputs.operation }}
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    environment: restaurant-production-operations
+    steps:
+      - name: Validate idempotency key
+        env:
+          IDEMPOTENCY_KEY: ${{ inputs.idempotency_key }}
+        run: '[[ "$IDEMPOTENCY_KEY" =~ ^[A-Za-z0-9._:-]{8,100}$ ]]'
+      - name: Configure pinned host access
+        env:
+          SSH_KEY: ${{ secrets.OPERATOR_SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.OPERATOR_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s' "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+      - name: Run locked host-side operation
+        env:
+          OPERATOR_HOST: ${{ secrets.OPERATOR_HOST }}
+          OPERATOR_USER: ${{ secrets.OPERATOR_USER }}
+          OPERATION: ${{ inputs.operation }}
+          IDEMPOTENCY_KEY: ${{ inputs.idempotency_key }}
+        run: >-
+          ssh "$OPERATOR_USER@$OPERATOR_HOST"
+          /opt/gustimei/bin/run-operation "$OPERATION" "$IDEMPOTENCY_KEY"

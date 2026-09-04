@@ -1,0 +1,107 @@
+name: gustimei-production
+
+x-app-environment: &app-environment
+  APP_ENV: production
+  NODE_ENV: production
+  HOST: 0.0.0.0
+  PORT: 3000
+  ORIGIN: https://${APP_HOSTNAME:?set APP_HOSTNAME}
+  PROTOCOL_HEADER: x-forwarded-proto
+  HOST_HEADER: x-forwarded-host
+  ADDRESS_HEADER: X-Forwarded-For
+  XFF_DEPTH: '1'
+  BODY_SIZE_LIMIT: 6M
+  SHUTDOWN_TIMEOUT: '30'
+
+services:
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    environment:
+      APP_HOSTNAME: ${APP_HOSTNAME:?set APP_HOSTNAME}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL}
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [edge, private]
+
+  app:
+    image: ${GUSTIMEI_IMAGE:?use an immutable image digest}
+    restart: unless-stopped
+    init: true
+    env_file:
+      - ${GUSTIMEI_RUNTIME_ENV_FILE:-./deploy/runtime.env}
+    environment: *app-environment
+    depends_on:
+      database:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    networks: [private, providers]
+
+  database:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    env_file:
+      - ${GUSTIMEI_DATABASE_ENV_FILE:-./deploy/database.env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    security_opt:
+      - no-new-privileges:true
+    networks: [private]
+
+  migrate:
+    image: ${GUSTIMEI_OPS_IMAGE:?use an immutable operations image digest}
+    profiles: [operations]
+    env_file:
+      - ${GUSTIMEI_MIGRATION_ENV_FILE:-./deploy/migration.env}
+    environment:
+      APP_ENV: production
+      NODE_ENV: production
+    command: npm run db:migrate
+    depends_on:
+      database:
+        condition: service_healthy
+    networks: [private]
+
+  review-maintenance:
+    image: ${GUSTIMEI_OPS_IMAGE:?use an immutable operations image digest}
+    profiles: [phase9-jobs]
+    env_file:
+      - ${GUSTIMEI_WORKER_ENV_FILE:-./deploy/worker.env}
+    environment:
+      APP_ENV: production
+      NODE_ENV: production
+    command: npm run jobs:review-maintenance
+    depends_on:
+      database:
+        condition: service_healthy
+    networks: [private]
+
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:
+
+networks:
+  edge:
+  private:
+    internal: true
+  providers:

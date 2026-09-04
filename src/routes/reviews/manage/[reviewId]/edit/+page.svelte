@@ -3,6 +3,7 @@
 	import ReviewDisclosure from '$lib/components/reviews/ReviewDisclosure.svelte';
 	import ServiceDateInput from '$lib/components/reviews/ServiceDateInput.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
+	import FormFeedback from '$lib/components/ui/FormFeedback.svelte';
 	import * as m from '$lib/paraglide/messages';
 	let { data, form } = $props();
 </script>
@@ -18,12 +19,7 @@
 	<section class="surface-card stack">
 		<h2>{m.edit_same_visit()}</h2>
 		<p>{m.edit_same_visit_help()}</p>
-		{#if form?.section === 'edit' && form.error}<p
-				class="form-status form-status--error"
-				role="alert"
-			>
-				{form.error}
-			</p>{/if}
+		<FormFeedback active={form?.section === 'edit'} error={form?.error} />
 		<form method="POST" action="?/edit" class="review-composer">
 			<input type="hidden" name="expectedVersion" value={data.review.version} />
 			<div class="field">
@@ -39,12 +35,7 @@
 	<section class="surface-card stack">
 		<h2>{m.substitute_review()}</h2>
 		<p>{m.substitute_review_help()}</p>
-		{#if form?.section === 'substitute' && form.error}<p
-				class="form-status form-status--error"
-				role="alert"
-			>
-				{form.error}
-			</p>{/if}
+		<FormFeedback active={form?.section === 'substitute'} error={form?.error} />
 		<form method="POST" action="?/substitute" class="review-composer">
 			<div class="field">
 				<label for="substitute-body">{m.review_body_label()}</label>

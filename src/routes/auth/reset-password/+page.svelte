@@ -2,6 +2,7 @@
 	import { enhance } from '$app/forms';
 	import { getLocale, localizeHref } from '$lib/paraglide/runtime';
 	import Button from '$lib/components/ui/Button.svelte';
+	import FormFeedback from '$lib/components/ui/FormFeedback.svelte';
 	import * as m from '$lib/paraglide/messages';
 	let { data, form } = $props();
 	let locale = $derived(getLocale());
@@ -11,16 +12,18 @@
 <article class="surface-card auth-card">
 	<header><h1>{m.reset_title()}</h1></header>
 	{#if form?.success}
-		<p class="form-status" role="status">{m.password_reset_success()}</p>
+		<FormFeedback saved savedMessage={m.password_reset_success()} />
 		<Button href={localizeHref('/auth/sign-in', { locale })}>{m.sign_in()}</Button>
 	{:else}
-		{#if form?.error}<p class="form-status form-status--error" role="alert">
-				{form.error === 'password-length'
-					? m.validation_password_length()
-					: form.error === 'password-match'
-						? m.validation_password_match()
-						: m.invalid_or_expired_link()}
-			</p>{/if}
+		<FormFeedback
+			error={form?.error === 'password-length'
+				? m.validation_password_length()
+				: form?.error === 'password-match'
+					? m.validation_password_match()
+					: form?.error
+						? m.invalid_or_expired_link()
+						: undefined}
+		/>
 		<form method="POST" use:enhance class="stack-form">
 			<input type="hidden" name="token" value={form?.token ?? data.token} />
 			<div class="field">

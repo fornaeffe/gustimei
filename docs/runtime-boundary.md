@@ -28,10 +28,12 @@ a production artifact can be built without embedding runtime secrets.
 
 ## Provider seams
 
-Application code depends on four narrow interfaces: transactional email, background jobs,
-artifact/blob storage, and error reporting. Local/test adapters retain data in process and never
-make network calls. Deployment configuration is represented by the validated `RuntimeConfig`
-contract. Hosted adapters are intentionally deferred to Phase 9.
+Application code depends on narrow interfaces for transactional email, background jobs, job locks,
+artifact/blob storage, restricted evidence, error reporting, and operational monitoring. Local/test
+adapters retain data in process or under ignored `.data` roots and never make provider network calls.
+Preview/production artifact and evidence adapters fail closed. Deployment configuration is represented
+by `RuntimeConfig` plus the separately validated production provider/credential contract. Hosted
+adapters are intentionally deferred to Phase 9.
 
 The Node artifact is built with `npm run build` and started with `npm run start`. The process
 expects `HOST`, `PORT`, and proxy/origin settings supported by SvelteKit's Node adapter; trusted
@@ -39,3 +41,8 @@ proxy headers must only be enabled once the deployment topology is known.
 
 The end-to-end runner starts the built server as a direct child process and always terminates it
 after Playwright exits. This explicit lifecycle avoids orphaned Node servers on Windows.
+
+Phase 8 adds separate app/operations container targets, the Caddy/PostgreSQL topology, least-privilege
+role bootstrap, immutable GitHub workflows, and local operational rehearsal. See
+[`phase-8-architecture.md`](phase-8-architecture.md) and the mandatory
+[`phase-8-readiness-checklist.md`](phase-8-readiness-checklist.md).

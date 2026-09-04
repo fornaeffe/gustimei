@@ -51,3 +51,37 @@ jobs:
       - run: npm run test:e2e:install
       - run: npm run db:push -- --force
       - run: npm run test:e2e
+
+  database-and-benchmark:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: gustimei
+          POSTGRES_PASSWORD: gustimei-test
+          POSTGRES_DB: gustimei_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U gustimei -d gustimei_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run test:db
+      - run: npm run jobs:review-maintenance:test
+      - run: npm run benchmark:phase1
+
+  container-images:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build --target app -t gustimei:ci-app .
+      - run: docker build --target ops -t gustimei:ci-ops .

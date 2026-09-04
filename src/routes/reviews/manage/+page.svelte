@@ -6,6 +6,7 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import ReviewDisclosure from '$lib/components/reviews/ReviewDisclosure.svelte';
 	import StatePanel from '$lib/components/ui/StatePanel.svelte';
+	import FormFeedback from '$lib/components/ui/FormFeedback.svelte';
 	import * as m from '$lib/paraglide/messages';
 	let { data, form } = $props();
 	let locale = $derived(getLocale());
@@ -19,8 +20,7 @@
 		<p class="lede">{m.reviews_manage_intro()}</p>
 	</header>
 	<ReviewDisclosure />
-	{#if form?.error}<p class="form-status form-status--error" role="alert">{form.error}</p>{/if}
-	{#if form?.withdrawn}<p class="form-status" role="status">{m.review_withdrawn()}</p>{/if}
+	<FormFeedback error={form?.error} saved={form?.withdrawn} savedMessage={m.review_withdrawn()} />
 	{#if data.reviews.length === 0}
 		<StatePanel title={m.no_public_reviews()} description={m.review_management_empty()} />
 	{:else}

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import Button from '$lib/components/ui/Button.svelte';
+	import FormFeedback from '$lib/components/ui/FormFeedback.svelte';
 	import * as m from '$lib/paraglide/messages';
 	let { form } = $props();
 </script>
@@ -11,10 +12,15 @@
 		<h1>{m.forgot_title()}</h1>
 		<p>{m.forgot_intro()}</p>
 	</header>
-	{#if form?.sent}<p class="form-status" role="status">{m.reset_request_confirmation()}</p>{/if}
-	{#if form?.error}<p class="form-status form-status--error" role="alert">
-			{form.error === 'rate-limited' ? m.rate_limited() : m.validation_email()}
-		</p>{/if}
+	<FormFeedback
+		error={form?.error === 'rate-limited'
+			? m.rate_limited()
+			: form?.error
+				? m.validation_email()
+				: undefined}
+		saved={form?.sent}
+		savedMessage={m.reset_request_confirmation()}
+	/>
 	<form method="POST" use:enhance class="stack-form">
 		<div class="field">
 			<label for="email">{m.email()}</label><input

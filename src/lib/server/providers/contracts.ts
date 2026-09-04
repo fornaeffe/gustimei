@@ -1,4 +1,5 @@
 import type { RuntimeConfig } from '$lib/server/config/environment';
+import type { RankingCategory } from '$lib/domain/ranking/contracts';
 
 export interface TransactionalEmail {
 	recipient: string;
@@ -12,6 +13,11 @@ export interface EmailProvider {
 
 export interface BackgroundJob {
 	name: string;
+	idempotencyKey: string;
+	scope: {
+		environment: RuntimeConfig['appEnvironment'];
+		category?: RankingCategory;
+	};
 	payload: Readonly<Record<string, unknown>>;
 }
 
@@ -31,12 +37,39 @@ export interface ErrorReporter {
 	capture(error: unknown, metadata?: Readonly<Record<string, ErrorMetadataValue>>): void;
 }
 
+export type OperationalMonitor =
+	| 'database-backup'
+	| 'catalogue-import-restaurant'
+	| 'recommendation-rebuild-restaurant'
+	| 'review-maintenance'
+	| 'transactional-outbox';
+
+export interface MonitorCheckIn {
+	monitor: OperationalMonitor;
+	runId: string;
+	status: 'started' | 'succeeded' | 'failed';
+	occurredAt: string;
+	/** Allowlisted counts and durations only. Never include content, identifiers, or action URLs. */
+	metrics?: Readonly<Record<string, number>>;
+}
+
+export interface OperationalMonitoringProvider {
+	checkIn(checkIn: MonitorCheckIn): Promise<void>;
+}
+
+export interface JobLockProvider {
+	/** Returns a release function, or undefined when another runner owns this exact scope. */
+	acquire(key: string): Promise<(() => Promise<void>) | undefined>;
+}
+
 export interface AppProviders {
 	config: RuntimeConfig;
 	email: EmailProvider;
 	jobs: BackgroundJobProvider;
 	artifacts: ArtifactStore;
 	errors: ErrorReporter;
+	monitoring: OperationalMonitoringProvider;
+	locks: JobLockProvider;
 }
 
 export type ReviewOutboxPurpose =

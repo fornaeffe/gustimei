@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Button from '$lib/components/ui/Button.svelte';
+	import FormFeedback from '$lib/components/ui/FormFeedback.svelte';
 	import * as m from '$lib/paraglide/messages';
 
 	let { data, form } = $props();
@@ -12,9 +13,7 @@
 		<h1>{m.case_access_recovery()}</h1>
 		<p>{m.case_access_recovery_intro()}</p>
 	</header>
-	{#if form?.submitted}
-		<p class="form-status" role="status">{m.case_access_recovery_confirmation()}</p>
-	{/if}
+	<FormFeedback saved={form?.submitted} savedMessage={m.case_access_recovery_confirmation()} />
 	<form method="POST" class="stack-form">
 		<div class="field">
 			<label for="case-reference">{m.case_reference()}</label>

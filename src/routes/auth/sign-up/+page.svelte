@@ -5,6 +5,7 @@
 	import { getLocale, localizeHref } from '$lib/paraglide/runtime';
 	import { contributionDisclosure } from '$lib/content/policies';
 	import Button from '$lib/components/ui/Button.svelte';
+	import FormFeedback from '$lib/components/ui/FormFeedback.svelte';
 	import * as m from '$lib/paraglide/messages';
 	let { form } = $props();
 	let locale = $derived(getLocale());
@@ -32,7 +33,7 @@
 		<h1>{m.auth_sign_up_title()}</h1>
 		<p>{m.auth_sign_up_intro()}</p>
 	</header>
-	{#if errorMessage}<p class="form-status form-status--error" role="alert">{errorMessage}</p>{/if}
+	<FormFeedback error={errorMessage} />
 	<form method="POST" use:enhance class="stack-form">
 		<div class="field">
 			<label for="name">{m.name()}</label>

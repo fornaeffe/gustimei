@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { getLocale, localizeHref } from '$lib/paraglide/runtime';
 	import Button from '$lib/components/ui/Button.svelte';
+	import FormFeedback from '$lib/components/ui/FormFeedback.svelte';
 	import PersonalComment from '$lib/components/comments/PersonalComment.svelte';
 	import PersonalCommentField from '$lib/components/comments/PersonalCommentField.svelte';
 	import PlaceCard from '$lib/components/ui/PlaceCard.svelte';
@@ -33,9 +34,11 @@
 		<form method="POST" action="?/addVisited">
 			<Button type="submit">{m.mark_already_visited()}</Button>
 		</form>
-		{#if form?.section === 'visited' && form?.added}
-			<p class="form-status" role="status">{m.visited()}</p>
-		{/if}
+		<FormFeedback
+			active={form?.section === 'visited'}
+			saved={form?.added}
+			savedMessage={m.visited()}
+		/>
 	{/if}
 	{#if data.rankingRelationship}
 		<p class="status-chip">
@@ -62,9 +65,11 @@
 				placeId={data.place.placeId}
 				fieldId="place-personal-note"
 			/>
-			{#if form?.section === 'comment' && form?.saved}<p class="form-status" role="status">
-					{m.save_note()}
-				</p>{/if}
+			<FormFeedback
+				active={form?.section === 'comment'}
+				saved={form?.saved}
+				savedMessage={m.save_note()}
+			/>
 		</section>
 	{/if}
 	<p class="attribution">

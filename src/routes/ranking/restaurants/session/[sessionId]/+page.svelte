@@ -7,6 +7,7 @@
 	import ComparisonPlaceCard from '$lib/components/ranking/ComparisonPlaceCard.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Icon from '$lib/components/ui/Icon.svelte';
+	import FormFeedback from '$lib/components/ui/FormFeedback.svelte';
 	import StatePanel from '$lib/components/ui/StatePanel.svelte';
 	import * as m from '$lib/paraglide/messages';
 
@@ -93,9 +94,7 @@
 			>{m.leave_ranking()}</a
 		>
 
-		{#if form?.error}
-			<p class="form-status form-status--error" role="alert">{form.error}</p>
-		{/if}
+		<FormFeedback error={form?.error} />
 		<p class="sr-only" aria-live="polite">
 			{busy ? m.saving_comparison() : form?.section === 'comparison' ? m.comparison_saved() : ''}
 		</p>

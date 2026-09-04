@@ -1,0 +1,61 @@
+name: Deploy or rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        type: choice
+        options: [deploy, rollback]
+        required: true
+      app_image:
+        description: App image including @sha256 digest
+        required: true
+      ops_image:
+        description: Operations image including @sha256 digest
+        required: true
+      expected_revision:
+        description: Git revision recorded in the deployment audit
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: restaurant-production-deployment
+  cancel-in-progress: false
+
+jobs:
+  change:
+    runs-on: ubuntu-latest
+    environment: restaurant-production
+    steps:
+      - name: Validate immutable inputs
+        env:
+          APP_IMAGE: ${{ inputs.app_image }}
+          OPS_IMAGE: ${{ inputs.ops_image }}
+          EXPECTED_REVISION: ${{ inputs.expected_revision }}
+        run: |
+          [[ "$APP_IMAGE" =~ ^ghcr\.io/[a-z0-9._/-]+@sha256:[a-f0-9]{64}$ ]]
+          [[ "$OPS_IMAGE" =~ ^ghcr\.io/[a-z0-9._/-]+@sha256:[a-f0-9]{64}$ ]]
+          [[ "$EXPECTED_REVISION" =~ ^[a-f0-9]{40}$ ]]
+      - name: Configure pinned host access
+        env:
+          SSH_KEY: ${{ secrets.DEPLOYMENT_SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.DEPLOYMENT_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s' "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+      - name: Execute audited host-side change
+        env:
+          DEPLOYMENT_HOST: ${{ secrets.DEPLOYMENT_HOST }}
+          DEPLOYMENT_USER: ${{ secrets.DEPLOYMENT_USER }}
+          ACTION: ${{ inputs.action }}
+          APP_IMAGE: ${{ inputs.app_image }}
+          OPS_IMAGE: ${{ inputs.ops_image }}
+          EXPECTED_REVISION: ${{ inputs.expected_revision }}
+        run: >-
+          ssh "$DEPLOYMENT_USER@$DEPLOYMENT_HOST"
+          /opt/gustimei/bin/deploy
+          "$ACTION" "$APP_IMAGE" "$OPS_IMAGE" "$EXPECTED_REVISION"

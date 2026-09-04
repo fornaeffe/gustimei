@@ -4,6 +4,7 @@
 	import type { Pathname } from '$app/types';
 	import { getLocale, localizeHref } from '$lib/paraglide/runtime';
 	import Button from '$lib/components/ui/Button.svelte';
+	import FormFeedback from '$lib/components/ui/FormFeedback.svelte';
 	import * as m from '$lib/paraglide/messages';
 	let { data, form } = $props();
 	let locale = $derived(getLocale());
@@ -16,9 +17,13 @@
 		<h1>{m.auth_sign_in_title()}</h1>
 		<p>{m.auth_sign_in_intro()}</p>
 	</header>
-	{#if form?.error}<p class="form-status form-status--error" role="alert">
-			{form.error === 'rate-limited' ? m.rate_limited() : m.generic_auth_error()}
-		</p>{/if}
+	<FormFeedback
+		error={form?.error === 'rate-limited'
+			? m.rate_limited()
+			: form?.error
+				? m.generic_auth_error()
+				: undefined}
+	/>
 	<form method="POST" use:enhance class="stack-form">
 		<input type="hidden" name="redirectTo" value={form?.values?.redirectTo ?? data.redirectTo} />
 		<div class="field">

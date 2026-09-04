@@ -1,7 +1,11 @@
 import { closeDatabase } from '../src/lib/server/db';
 import { recommendationArtifacts } from '../src/lib/server/services/recommendation-runtime';
 
-const category = process.argv[2] === 'hotel' ? 'hotel' : 'restaurant';
+const categoryArgument = process.argv[2] ?? 'restaurant';
+if (categoryArgument !== 'restaurant') {
+	throw new Error('Phase 8 rebuilds are restaurant-only; expected category "restaurant"');
+}
+const category = 'restaurant' as const;
 const dataClass = process.argv.includes('--synthetic') ? 'synthetic' : 'real';
 
 try {

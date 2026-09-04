@@ -10,9 +10,21 @@ import { runtimeConfig } from '$lib/server/config';
 import { stringField } from '$lib/server/security/auth-forms';
 import { reviewModeration } from '$lib/server/services/review-moderation-runtime';
 import { validateEvidenceMetadata } from '$lib/domain/reviews/evidence';
+import { DomainValidationError } from '$lib/server/domain/errors';
 import type { Actions, PageServerLoad } from './$types';
 
 const catalogue = new CatalogueRepository(db, runtimeConfig.appEnvironment);
+
+function noticeErrorField(message: string) {
+	const normalized = message.toLocaleLowerCase('en-US');
+	if (normalized.startsWith('notice kind')) return 'kind';
+	if (normalized.startsWith('alleged ground')) return 'ground';
+	if (normalized.startsWith('notice explanation')) return 'explanation';
+	if (normalized.startsWith('notifier email')) return 'email';
+	if (normalized.startsWith('evidence')) return 'evidence';
+	if (normalized.includes('good-faith')) return 'goodFaith';
+	return undefined;
+}
 
 async function target(placeId: string, versionId: string) {
 	const place = await catalogue.getPublicPlace(decodeURIComponent(placeId));
@@ -45,14 +57,20 @@ export const actions = {
 		try {
 			const evidence = form.get('evidence');
 			if (evidence instanceof File && evidence.size > 0) {
-				validateEvidenceMetadata({
-					mediaType: evidence.type,
-					sizeBytes: evidence.size,
-					filename: evidence.name
-				});
+				try {
+					validateEvidenceMetadata({
+						mediaType: evidence.type,
+						sizeBytes: evidence.size,
+						filename: evidence.name
+					});
+				} catch (cause) {
+					throw new DomainValidationError(
+						`Evidence: ${cause instanceof Error ? cause.message : 'the selected file is invalid'}`
+					);
+				}
 				if (anonymous && !String(form.get('email') ?? '').trim()) {
-					throw new Error(
-						'Remove the optional evidence or provide a contact email before submitting anonymously'
+					throw new DomainValidationError(
+						'Evidence: provide a contact email or remove the optional file before submitting anonymously'
 					);
 				}
 			}
@@ -104,11 +122,13 @@ export const actions = {
 					: undefined
 			};
 		} catch (cause) {
+			const error = safeActionError(
+				cause,
+				"We couldn't submit the notice. Please check the form and try again."
+			);
 			return fail(400, {
-				error: safeActionError(
-					cause,
-					"We couldn't submit the notice. Please check the form and try again."
-				)
+				error,
+				field: noticeErrorField(error)
 			});
 		}
 	}

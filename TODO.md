@@ -1,6 +1,4 @@
 - There is too much difference between different font sizes: large titles are too large compared to smallest text. Keep a small number of typography sizes and reduce the size of largest ones.
-- Extend the reusable section-local `FormFeedback` pattern from review case/moderation forms to the remaining app forms so error, success, and warning feedback is consistently adjacent to the action that produced it.
-- Form feedback when reporting a review should explain clearly which field is problematic and why, when rejecting a notice.
 
 ## Manual ranking placement UX
 

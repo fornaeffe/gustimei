@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import Button from '$lib/components/ui/Button.svelte';
+	import FormFeedback from '$lib/components/ui/FormFeedback.svelte';
 	import StatePanel from '$lib/components/ui/StatePanel.svelte';
 	import { getLocale, localizeHref } from '$lib/paraglide/runtime';
 	import * as m from '$lib/paraglide/messages';
@@ -24,15 +25,12 @@
 				title={m.no_public_identity()}
 				description={m.no_public_identity_body()}
 			/>{/if}
-		{#if form?.section === 'pseudonym' && form.error}<p
-				class="form-status form-status--error"
-				role="alert"
-			>
-				{form.error}
-			</p>{/if}
-		{#if form?.section === 'pseudonym' && form.saved}<p class="form-status" role="status">
-				{m.pseudonym_saved()}
-			</p>{/if}
+		<FormFeedback
+			active={form?.section === 'pseudonym'}
+			error={form?.error}
+			saved={form?.saved}
+			savedMessage={m.pseudonym_saved()}
+		/>
 		<form method="POST" action="?/pseudonym" use:enhance class="stack-form">
 			<div class="field">
 				<label for="pseudonym">{m.public_pseudonym()}</label><input

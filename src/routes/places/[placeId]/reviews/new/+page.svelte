@@ -4,6 +4,7 @@
 	import ReviewComposer from '$lib/components/reviews/ReviewComposer.svelte';
 	import ReviewCard from '$lib/components/reviews/ReviewCard.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
+	import FormFeedback from '$lib/components/ui/FormFeedback.svelte';
 	import PlaceCard from '$lib/components/ui/PlaceCard.svelte';
 	import StatePanel from '$lib/components/ui/StatePanel.svelte';
 	import * as m from '$lib/paraglide/messages';
@@ -38,7 +39,7 @@
 			{/snippet}
 		</StatePanel>
 	{:else}
-		{#if form?.error}<p class="form-status form-status--error" role="alert">{form.error}</p>{/if}
+		<FormFeedback error={form?.error} />
 		<ReviewComposer
 			bind:body={reviewBody}
 			bind:serviceDate

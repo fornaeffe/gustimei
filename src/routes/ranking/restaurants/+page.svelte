@@ -16,6 +16,7 @@
 	} from '$lib/components/ranking/manual-placement';
 	import RankingPlaceActions from '$lib/components/ranking/RankingPlaceActions.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
+	import FormFeedback from '$lib/components/ui/FormFeedback.svelte';
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import StatePanel from '$lib/components/ui/StatePanel.svelte';
 	import * as m from '$lib/paraglide/messages';
@@ -308,7 +309,7 @@
 		{/if}
 	</header>
 
-	{#if form?.error}<p class="form-status form-status--error" role="alert">{form.error}</p>{/if}
+	<FormFeedback error={form?.error} />
 
 	{#if data.tiers.length === 0}
 		<StatePanel title={m.ranking_empty()} description={m.ranking_empty_body()}>
@@ -320,9 +321,7 @@
 		<p id="ranking-adjustment-help" class="ranking-adjustment-help">
 			{m.ranking_manual_move_help()}
 		</p>
-		{#if data.adjusted}
-			<p class="form-status form-status--success" role="status">{m.ranking_adjustment_success()}</p>
-		{/if}
+		<FormFeedback saved={data.adjusted} savedMessage={m.ranking_adjustment_success()} />
 		<form
 			hidden
 			method="POST"

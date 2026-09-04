@@ -57,6 +57,13 @@ Its dataset, selection criteria, and recorded results are documented in
 See [the runtime boundary](docs/runtime-boundary.md) for environment isolation, provider seams,
 and production Node startup details.
 
+Phase 8 defines the restaurant-beta container, credential, workflow, object-storage, monitoring,
+backup/restore, and rollback contracts without provisioning hosted services. Run the complete local
+exercise with `npm run rehearse:phase8`. The architecture is in
+[`docs/phase-8-architecture.md`](docs/phase-8-architecture.md); every manual approval and human test
+that blocks Phase 9 is in
+[`docs/phase-8-readiness-checklist.md`](docs/phase-8-readiness-checklist.md).
+
 Phase 2A database integration tests use the same `db-test` Compose service and can be run with
 `npm run test:db`. The command validates and resets only `gustimei_test` on local port 5433 before
 applying reviewed migrations. See [catalogue operations and compliance](docs/phase-2a-catalogue.md)

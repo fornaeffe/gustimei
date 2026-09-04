@@ -1,5 +1,6 @@
 <script lang="ts">
 	import StatePanel from '$lib/components/ui/StatePanel.svelte';
+	import FormFeedback from '$lib/components/ui/FormFeedback.svelte';
 	import RestaurantMap from '$lib/components/recommendations/RestaurantMap.svelte';
 	import * as m from '$lib/paraglide/messages';
 
@@ -9,9 +10,7 @@
 <svelte:head><title>{m.map_discover_title()} — {m.product_name()}</title></svelte:head>
 
 <section class="recommendations map-recommendations" aria-label={m.map_discover_title()}>
-	{#if form?.section === 'visited' && form?.error}
-		<p class="form-status form-status--error" role="alert">{form.error}</p>
-	{/if}
+	<FormFeedback active={form?.section === 'visited'} error={form?.error} />
 
 	{#if data.page.results.length === 0}
 		<StatePanel
