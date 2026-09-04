@@ -1,5 +1,3 @@
-- There is too much difference between different font sizes: large titles are too large compared to smallest text. Keep a small number of typography sizes and reduce the size of largest ones.
-
 ## Manual ranking placement UX
 
 - [x] Keep traditional press-drag-release behavior separate from click/tap pick-up mode. A native drag now enters dedicated drag state only after the browser recognizes pointer movement; only an un-dragged handle activation enters click/tap mode.

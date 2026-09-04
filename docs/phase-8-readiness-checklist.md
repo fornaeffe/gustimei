@@ -20,8 +20,9 @@ fictional data until the legal/research gates authorize real beta data.
 - With screen readers (VoiceOver and NVDA or TalkBack), keyboard only, high contrast, dark mode, and
   200/400% zoom, verify landmarks, headings, names, errors, focus order, live feedback, dialogs,
   map alternatives, drag alternatives, touch targets, and that colour/position is never the only cue.
-- Confirm typography remains readable across the smallest phone and wide desktop. Decide whether the
-  remaining typography-scale TODO blocks beta; record the accepted scale or schedule its correction.
+- Confirm the compact typography scale remains readable across the smallest phone and wide desktop,
+  including captions, map labels, error feedback, and legal copy. Record any category-specific exception
+  rather than adding an ad-hoc new size.
 
 ## 2. Map, catalogue, and recommendation comprehension
 

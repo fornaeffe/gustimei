@@ -7,6 +7,14 @@
 	--font-sans:
 		Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 	--font-display: Georgia, 'Times New Roman', serif;
+	--text-xs: 0.75rem;
+	--text-sm: 0.875rem;
+	--text-base: 1rem;
+	--text-lg: 1.125rem;
+	--text-xl: 1.35rem;
+	--title-xl: clamp(2.4rem, 5vw, 4.5rem);
+	--title-lg: clamp(1.85rem, 3.5vw, 2.5rem);
+	--title-md: clamp(1.5rem, 3vw, 2rem);
 	--surface-canvas: #f7f4ed;
 	--surface-raised: #fffdf8;
 	--surface-subtle: #ece8dd;
@@ -194,7 +202,7 @@ a:hover {
 	border-radius: 999px;
 	background: var(--accent);
 	color: var(--text-inverse);
-	font-size: 0.7rem;
+	font-size: var(--text-xs);
 	font-weight: 850;
 }
 .user-identity {
@@ -215,12 +223,12 @@ a:hover {
 .user-identity__label small {
 	overflow: hidden;
 	color: var(--text-secondary);
-	font-size: 0.68rem;
+	font-size: var(--text-xs);
 	font-weight: 500;
 	text-overflow: ellipsis;
 }
 .language-switch {
-	font-size: 0.8rem;
+	font-size: var(--text-sm);
 	font-weight: 800;
 	letter-spacing: 0.08em;
 }
@@ -247,7 +255,7 @@ a:hover {
 	border-top: 1px solid var(--border);
 	padding-block: var(--space-6);
 	color: var(--text-secondary);
-	font-size: 0.9rem;
+	font-size: var(--text-sm);
 }
 .site-footer p {
 	margin: 0.2rem 0 0;
@@ -275,22 +283,22 @@ h3 {
 }
 h1 {
 	font-family: var(--font-display);
-	font-size: clamp(2.55rem, 7vw, 5.8rem);
+	font-size: var(--title-xl);
 	font-weight: 500;
 	letter-spacing: -0.045em;
 }
 h2 {
 	font-family: var(--font-display);
-	font-size: clamp(1.75rem, 4vw, 2.7rem);
+	font-size: var(--title-lg);
 	font-weight: 500;
 	letter-spacing: -0.025em;
 }
 h3 {
-	font-size: 1.12rem;
+	font-size: var(--text-lg);
 }
 .eyebrow {
 	color: var(--accent);
-	font-size: 0.78rem;
+	font-size: var(--text-xs);
 	font-weight: 800;
 	letter-spacing: 0.13em;
 	text-transform: uppercase;
@@ -298,7 +306,7 @@ h3 {
 .lede {
 	max-width: 43rem;
 	color: var(--text-secondary);
-	font-size: clamp(1.06rem, 2vw, 1.25rem);
+	font-size: var(--text-lg);
 	line-height: 1.7;
 }
 .stack {
@@ -410,13 +418,13 @@ fieldset legend {
 .field__hint {
 	margin: 0;
 	color: var(--text-secondary);
-	font-size: 0.9rem;
+	font-size: var(--text-sm);
 }
 .field__error {
 	margin: 0;
 	color: var(--danger);
 	font-weight: 650;
-	font-size: 0.9rem;
+	font-size: var(--text-sm);
 }
 input:not([type='checkbox']):not([type='radio']):not([type='file']),
 textarea,
@@ -461,7 +469,7 @@ input[type='radio'] {
 	margin-bottom: var(--space-6);
 }
 .auth-card h1 {
-	font-size: clamp(2.2rem, 6vw, 3.6rem);
+	font-size: var(--title-lg);
 }
 .auth-switch {
 	text-align: center;
@@ -508,7 +516,7 @@ input[type='radio'] {
 }
 .preference-card__question {
 	font-family: var(--font-display);
-	font-size: 1.35rem;
+	font-size: var(--text-xl);
 }
 .preference-choice {
 	display: grid;
@@ -556,7 +564,7 @@ input[type='radio'] {
 	padding: 0.18rem 0.55rem;
 	background: var(--surface-subtle);
 	color: var(--text-secondary);
-	font-size: 0.74rem;
+	font-size: var(--text-xs);
 	font-weight: 750;
 }
 .place-card {
@@ -580,7 +588,7 @@ input[type='radio'] {
 	color: #755f9b;
 }
 .place-card__media span {
-	font-size: 0.78rem;
+	font-size: var(--text-xs);
 	font-weight: 800;
 	letter-spacing: 0.1em;
 	text-transform: uppercase;
@@ -594,7 +602,7 @@ input[type='radio'] {
 	align-items: center;
 	gap: 0.45rem;
 	color: var(--text-secondary);
-	font-size: 0.86rem;
+	font-size: var(--text-sm);
 }
 .place-card__meta {
 	justify-content: space-between;
@@ -613,7 +621,7 @@ input[type='radio'] {
 }
 .state-panel h2 {
 	margin-bottom: 0.35rem;
-	font-size: 1.45rem;
+	font-size: var(--text-xl);
 }
 .state-panel p,
 .moderation-notice p {
@@ -651,7 +659,7 @@ input[type='radio'] {
 }
 .dialog__header h2 {
 	margin-bottom: 0.35rem;
-	font-size: 1.6rem;
+	font-size: var(--text-xl);
 }
 .dialog__header p {
 	margin: 0;
@@ -670,7 +678,7 @@ input[type='radio'] {
 .content-boundary p {
 	margin: 0.15rem 0 0;
 	color: var(--text-secondary);
-	font-size: 0.9rem;
+	font-size: var(--text-sm);
 }
 .content-boundary--private {
 	background: var(--surface-private);
@@ -695,7 +703,7 @@ input[type='radio'] {
 	justify-content: space-between;
 	gap: var(--space-4);
 	color: var(--text-secondary);
-	font-size: 0.88rem;
+	font-size: var(--text-sm);
 }
 .form-footer--end {
 	justify-content: flex-end;
@@ -720,7 +728,7 @@ input[type='radio'] {
 	margin: 0;
 	text-align: right;
 	color: var(--text-secondary);
-	font-size: 0.85rem;
+	font-size: var(--text-sm);
 }
 .review-card {
 	display: grid;
@@ -749,7 +757,7 @@ input[type='radio'] {
 	align-items: center;
 	gap: 0.35rem;
 	color: var(--text-secondary);
-	font-size: 0.86rem;
+	font-size: var(--text-sm);
 }
 .review-card footer {
 	align-items: end;
@@ -792,7 +800,7 @@ input[type='radio'] {
 .case-timeline time,
 .reasoned-decision time {
 	color: var(--text-secondary);
-	font-size: 0.82rem;
+	font-size: var(--text-sm);
 }
 .reasoned-decision {
 	border-left: 4px solid var(--brand);
@@ -811,12 +819,12 @@ input[type='radio'] {
 }
 .legal-page section h2 {
 	font-family: var(--font-sans);
-	font-size: 1.2rem;
+	font-size: var(--text-lg);
 	font-weight: 800;
 }
 .legal-page .version {
 	color: var(--text-secondary);
-	font-size: 0.82rem;
+	font-size: var(--text-sm);
 }
 .map-recommendations {
 	position: relative;
@@ -888,7 +896,7 @@ input[type='radio'] {
 	align-items: center;
 	gap: 0.45rem;
 	color: var(--text-secondary);
-	font-size: 0.82rem;
+	font-size: var(--text-sm);
 }
 .legend-marker,
 .restaurant-marker {
@@ -901,7 +909,7 @@ input[type='radio'] {
 .legend-marker {
 	width: 1.35rem;
 	height: 1.35rem;
-	font-size: 0.72rem;
+	font-size: var(--text-xs);
 }
 .legend-marker--top,
 .restaurant-marker--top {
@@ -953,11 +961,11 @@ input[type='radio'] {
 	line-height: 1;
 }
 .restaurant-cluster strong {
-	font-size: clamp(0.68rem, 75%, 0.8rem);
+	font-size: var(--text-xs);
 }
 .restaurant-cluster small {
 	margin-top: 0.1rem;
-	font-size: 0.52rem;
+	font-size: var(--text-xs);
 }
 .restaurant-cluster--top {
 	border-color: color-mix(in srgb, var(--accent) 70%, transparent);
@@ -1009,18 +1017,18 @@ input[type='radio'] {
 }
 .map-popup__eyebrow {
 	color: #52615a;
-	font-size: 0.72rem;
+	font-size: var(--text-xs);
 	font-weight: 800;
 	letter-spacing: 0.08em;
 	text-transform: uppercase;
 }
 .map-popup__title {
-	font-size: 1.05rem;
+	font-size: var(--text-base);
 	font-weight: 800;
 }
 .map-popup__address {
 	color: #52615a;
-	font-size: 0.82rem;
+	font-size: var(--text-sm);
 }
 .map-popup__states,
 .map-popup__actions {
@@ -1035,7 +1043,7 @@ input[type='radio'] {
 	background: #eef3f0;
 	padding: 0.2rem 0.5rem;
 	color: #52615a;
-	font-size: 0.82rem;
+	font-size: var(--text-sm);
 }
 .map-popup__rank--top {
 	color: #8b4307;
@@ -1055,7 +1063,7 @@ input[type='radio'] {
 }
 .map-popup__status {
 	color: #52615a;
-	font-size: 0.82rem;
+	font-size: var(--text-sm);
 }
 .nearby-recommendations {
 	position: absolute;
@@ -1080,7 +1088,7 @@ input[type='radio'] {
 }
 .ranking-invitation p {
 	margin: 0.15rem 0 0;
-	font-size: 0.82rem;
+	font-size: var(--text-sm);
 }
 .personal-ranking {
 	max-width: 58rem;
@@ -1146,7 +1154,7 @@ input[type='radio'] {
 .nearby-recommendations__explanation p {
 	margin: 0;
 	color: var(--text-secondary);
-	font-size: 0.82rem;
+	font-size: var(--text-sm);
 }
 .nearby-recommendations > .field__hint,
 .nearby-recommendations > p {
@@ -1199,14 +1207,14 @@ input[type='radio'] {
 	background: var(--accent-soft);
 	color: var(--text-primary);
 	padding: 0.25rem 0.55rem;
-	font-size: 0.72rem;
+	font-size: var(--text-xs);
 	font-weight: 800;
 	white-space: nowrap;
 }
 .attribution {
 	margin: 0;
 	color: var(--text-secondary);
-	font-size: 0.84rem;
+	font-size: var(--text-sm);
 }
 .ranking-session {
 	width: min(100%, 68rem);
@@ -1220,7 +1228,7 @@ input[type='radio'] {
 	margin-bottom: var(--space-6);
 }
 .ranking-session__header h1 {
-	font-size: clamp(2.25rem, 6vw, 4.8rem);
+	font-size: var(--title-xl);
 	margin-bottom: var(--space-3);
 }
 .comparison-arena {
@@ -1242,7 +1250,7 @@ input[type='radio'] {
 	border-radius: 50%;
 	background: var(--surface-subtle);
 	color: var(--text-secondary);
-	font-size: 0.78rem;
+	font-size: var(--text-xs);
 	font-weight: 800;
 	text-transform: uppercase;
 }
@@ -1280,7 +1288,7 @@ input[type='radio'] {
 }
 .comparison-place__choice strong {
 	font-family: var(--font-display);
-	font-size: clamp(1.5rem, 3vw, 2.2rem);
+	font-size: var(--title-md);
 	line-height: 1.15;
 }
 .place-card__location {
@@ -1338,7 +1346,7 @@ input[type='radio'] {
 	margin: var(--space-4) 0 0;
 	color: var(--text-secondary);
 	text-align: center;
-	font-size: 0.82rem;
+	font-size: var(--text-sm);
 }
 .ranking-tiers {
 	display: grid;
@@ -1474,7 +1482,7 @@ input[type='radio'] {
 .ranked-place h2 {
 	margin-bottom: 0.25rem;
 	font-family: var(--font-sans);
-	font-size: 1.3rem;
+	font-size: var(--text-xl);
 	font-weight: 800;
 }
 .ranked-place p {
@@ -1484,7 +1492,7 @@ input[type='radio'] {
 .ranking-adjustment-help {
 	margin: 0;
 	color: var(--text-secondary);
-	font-size: 0.92rem;
+	font-size: var(--text-sm);
 }
 .ranked-place__actions {
 	display: flex;
@@ -1515,7 +1523,7 @@ input[type='radio'] {
 .unresolved-ranking h2,
 .review-prompt h2 {
 	font-family: var(--font-sans);
-	font-size: 1.35rem;
+	font-size: var(--text-xl);
 	font-weight: 800;
 }
 .unresolved-ranking > p,
@@ -1542,7 +1550,7 @@ input[type='radio'] {
 	.site-nav {
 		justify-content: flex-start;
 		overflow-x: auto;
-		font-size: 0.78rem;
+		font-size: var(--text-xs);
 	}
 	.site-nav a:not(.language-switch) .ui-icon {
 		display: none;

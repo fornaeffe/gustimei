@@ -1502,9 +1502,17 @@ The reusable `FormFeedback` boundary now covers the remaining server-action form
 profile, ranking, recommendation, review-management, review-composition, notice recovery, and place
 actions. Notice rejection now marks the relevant field and exposes a specific safe validation reason;
 invalid evidence reports its type/size/filename or anonymous-contact problem beside the notice action.
-The two corresponding TODOs are complete. The broader typography-scale TODO remains open because it
-requires the cross-device visual decision listed in the human gate rather than an unreviewed global
-restyle.
+The two corresponding TODOs are complete. The typography scale was subsequently consolidated into five
+body-size tokens and three title tokens; the largest heading is reduced from 5.8rem to 4.5rem and the
+former 0.52rem map microtext now uses the 0.75rem minimum. Cross-device readability remains a human
+gate, but there is no longer an open global typography TODO. The production build and all three
+English/Italian Playwright smoke tests also pass with the compact scale.
+
+**Typography follow-up (2026-09-04):** the remaining Phase 8 typography TODO was completed without
+changing the restaurant-only product scope. The shared stylesheet now uses the documented compact
+token scale for all text, preventing future isolated font-size values from reintroducing the former
+extremes. Prettier, ESLint, zero-warning `svelte-check`, and all 140 unit/component tests pass after
+the change.
 
 The canonical `npm run rehearse:phase8` run passed on 2026-09-03: Prettier/ESLint, zero-warning
 `svelte-check`, all 140 unit/component tests, all 31 PostgreSQL integration tests, the deterministic
